@@ -54,7 +54,7 @@ async function api(apiKey, ver, endpoint, retries=3) {
     const res=await fetch('https://services.leadconnectorhq.com'+endpoint,{
       headers:{'Authorization':'Bearer '+apiKey,'Version':ver,'Content-Type':'application/json'}
     })
-    if(res.status===429){const w=a*12; process.stdout.write(` [429 wait ${w}s]`); await sleep(w*1000); continue}
+    if(res.status===429){const w=a*30; process.stdout.write(` [429 wait ${w}s]`); await sleep(w*1000); continue}
     if(!res.ok){if(res.status===404||res.status===422) return null; throw new Error('GHL '+res.status)}
     return res.json()
   }
@@ -98,22 +98,22 @@ async function main() {
       // 1. Full contact detail
       const detail = await api(config.apiKey, config.apiVersion, '/contacts/'+cid)
       const ct = detail?.contact || detail || {}
-      await sleep(300)
+      await sleep(800)
 
       // 2. Notes
       const notesRes = await api(config.apiKey, config.apiVersion, '/contacts/'+cid+'/notes')
       const notes = notesRes?.notes || []
-      await sleep(300)
+      await sleep(800)
 
       // 3. Tasks
       const tasksRes = await api(config.apiKey, config.apiVersion, '/contacts/'+cid+'/tasks')
       const tasks = tasksRes?.tasks || []
-      await sleep(300)
+      await sleep(800)
 
       // 4. Appointments
       const apptsRes = await api(config.apiKey, config.apiVersion, '/contacts/'+cid+'/appointments')
       const appts = apptsRes?.events || []
-      await sleep(300)
+      await sleep(800)
 
       // 5. Conversations
       const convosRes = await api(config.apiKey, config.apiVersion, '/conversations/search?contactId='+cid)
@@ -210,7 +210,7 @@ async function main() {
         }
       }
 
-      await sleep(300)
+      await sleep(800)
 
     } catch (err) {
       errors.push({ name: csvName, error: err.message?.slice(0,80) || String(err) })
