@@ -1,7 +1,7 @@
 import { C } from '../design'
 
-// ─── SVG Icon helper ────────────────────────────────────────────────────────
-const I = (s, children) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
+// ─── SVG Icon helper (Heroicons style, consistent 1.5px stroke) ────────────
+const I = (s, children) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
 
 export const Icons = {
   plus: (s=16) => I(s, <><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></>),
@@ -42,6 +42,7 @@ export const Icons = {
   play: (s=16) => I(s, <polygon points="5 3 19 12 5 21 5 3"/>),
   pause: (s=16) => I(s, <><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></>),
   toggle: (s=16) => I(s, <><rect x="1" y="5" width="22" height="14" rx="7" ry="7"/><circle cx="16" cy="12" r="3"/></>),
+  eye: (s=16) => I(s, <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>),
 }
 
 // ─── Modal ──────────────────────────────────────────────────────────────────
@@ -58,17 +59,18 @@ export function Modal({ children, onClose, dir, width = 520 }) {
 // ─── Form helpers ───────────────────────────────────────────────────────────
 export function FormField({ label, children, dir }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 5, direction: dir }}>{label}</label>
+    <div style={{ marginBottom: 16 }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: C.textLabel, marginBottom: 6, direction: dir }}>{label}</label>
       {children}
     </div>
   )
 }
 
 export const inputStyle = (dir) => ({
-  width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
-  fontSize: 13, color: C.text, fontFamily: 'inherit', outline: 'none', background: C.white,
+  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: `1px solid #D1D5DB`,
+  fontSize: 14, color: C.text, fontFamily: 'inherit', outline: 'none', background: C.white,
   direction: dir, textAlign: dir === 'rtl' ? 'right' : 'left', boxSizing: 'border-box',
+  transition: 'border-color 150ms ease, box-shadow 150ms ease',
 })
 
 export const selectStyle = (dir) => ({ ...inputStyle(dir), appearance: 'auto' })

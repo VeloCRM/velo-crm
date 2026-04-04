@@ -30,6 +30,7 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
 import { calculateLeadScore } from './lib/ai'
+import { sanitizeContact, sanitizeDeal, sanitizeTicket, sanitizeNotes, isSessionExpired, touchSession, clearAllVeloData } from './lib/sanitize'
 import './App.css'
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
@@ -108,16 +109,17 @@ function daysBetween(d1, d2) {
 // ─── Shared Input Component ─────────────────────────────────────────────────
 function FormField({ label, children, dir }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 5, direction: dir }}>{label}</label>
+    <div style={{ marginBottom: 16 }}>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#6B7280', marginBottom: 6, direction: dir }}>{label}</label>
       {children}
     </div>
   )
 }
 const inputStyle = (dir) => ({
-  width: '100%', padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
-  fontSize: 13, color: C.text, fontFamily: 'inherit', outline: 'none', background: C.white,
+  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: '1px solid #D1D5DB',
+  fontSize: 14, color: C.text, fontFamily: 'inherit', outline: 'none', background: C.white,
   direction: dir, textAlign: dir === 'rtl' ? 'right' : 'left', boxSizing: 'border-box',
+  transition: 'border-color 150ms ease, box-shadow 150ms ease',
 })
 const selectStyle = (dir) => ({ ...inputStyle(dir), appearance: 'auto' })
 
@@ -318,8 +320,22 @@ export default function App() {
     setTickets([])
     setOrgSettings({})
     setShowUserMenu(false)
-    localStorage.removeItem('velo_onboarding_done')
+    clearAllVeloData()
   }
+
+  // Session timeout (8 hours inactivity)
+  useEffect(() => {
+    if (!user) return
+    touchSession()
+    const interval = setInterval(() => {
+      if (isSessionExpired()) { handleSignOut() }
+      else { touchSession() }
+    }, 60000)
+    const onActivity = () => touchSession()
+    window.addEventListener('click', onActivity)
+    window.addEventListener('keydown', onActivity)
+    return () => { clearInterval(interval); window.removeEventListener('click', onActivity); window.removeEventListener('keydown', onActivity) }
+  }, [user])
 
   // Show auth page if not logged in
   if (authLoading) {
@@ -360,7 +376,8 @@ export default function App() {
   const toggleTask = (id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t))
 
   // ── CRUD — Supabase-backed with optimistic local updates ──────────────
-  const addContact = async (c) => {
+  const addContact = async (raw) => {
+    const c = sanitizeContact(raw)
     const optimistic = { ...c, id: genId('c'), createdAt: new Date().toISOString().slice(0,10), documents: [], notesTimeline: [], activityHistory: [] }
     setContacts(prev => [...prev, optimistic])
     addToast(t.contactAdded || (isRTL ? 'تمت إضافة جهة الاتصال' : 'Contact added successfully'), 'success')
@@ -397,7 +414,8 @@ export default function App() {
     addToast(isRTL ? 'تمت إضافة الملاحظة' : 'Note added', 'success')
   }
 
-  const addDeal = async (d) => {
+  const addDeal = async (raw) => {
+    const d = sanitizeDeal(raw)
     const optimistic = { ...d, id: genId('d'), createdAt: new Date().toISOString().slice(0,10), name: d.name || d.title || '' }
     setDeals(prev => [...prev, optimistic])
     addToast(isRTL ? 'تمت إضافة الصفقة' : 'Deal created', 'success')
@@ -430,7 +448,8 @@ export default function App() {
     }
   }
 
-  const addTicket = async (tk) => {
+  const addTicket = async (raw) => {
+    const tk = sanitizeTicket(raw)
     const nums = tickets.map(t => parseInt((t.ticketId||'').replace('VLO-',''))).filter(n => !isNaN(n))
     const nextNum = 'VLO-' + String(Math.max(0, ...nums) + 1).padStart(3, '0')
     const optimistic = { ...tk, id: genId('tkt'), ticketId: nextNum, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), timeline: [{ id: genId('tl'), type: 'created', text: t.ticketCreatedLabel, author: t.adminUser, date: new Date().toISOString() }] }
@@ -504,46 +523,50 @@ export default function App() {
     <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:"'Inter',-apple-system,sans-serif", direction:dir }}>
       {/* ── SIDEBAR (desktop) ────────────────────────────────────────── */}
       <aside className="desktop-sidebar" style={{
-        width: sidebarCollapsed?64:260, minWidth: sidebarCollapsed?64:260,
+        width: sidebarCollapsed?56:240, minWidth: sidebarCollapsed?56:240,
         background: C.sidebar, display:'flex', flexDirection:'column',
-        transition:'width .25s ease, min-width .25s ease',
+        transition:'width 200ms ease, min-width 200ms ease',
         borderRight: isRTL?'none':`1px solid ${C.sidebarBorder}`,
         borderLeft: isRTL?`1px solid ${C.sidebarBorder}`:'none',
         overflow:'hidden', position:'relative', zIndex:10,
       }}>
-        <div style={{ padding: sidebarCollapsed?'20px 12px':'20px 20px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${C.sidebarBorder}`, minHeight:68 }}>
-          <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg,${orgSettings.primary_color || C.primary},#8250DF)`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:16, flexShrink:0 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
+        <div style={{ padding: sidebarCollapsed?'16px 8px':'16px 16px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${C.sidebarBorder}`, minHeight:56 }}>
+          <div style={{ width:32, height:32, borderRadius:8, background:`linear-gradient(135deg,${orgSettings.primary_color || C.primary},${C.purple})`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:14, flexShrink:0 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
           {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
-            <div style={{color:C.sidebarActiveText,fontWeight:700,fontSize:15,letterSpacing:'-.3px'}}>{orgSettings.name || t.appName}</div>
-            <div style={{color:C.sidebarText,fontSize:10,marginTop:1}}>{orgSettings.name ? t.appName : t.appTagline}</div>
+            <div style={{color:C.sidebarActiveText,fontWeight:600,fontSize:15,letterSpacing:'-0.01em'}}>{orgSettings.name || t.appName}</div>
+            <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{orgSettings.name ? t.appName : t.appTagline}</div>
           </div>}
         </div>
-        <nav style={{ flex:1, overflowY:'auto', padding:'12px 8px' }}>
+        <nav style={{ flex:1, overflowY:'auto', padding:'8px' }}>
           {navGroups.map((group, gi) => (
-            <div key={gi} style={{ marginBottom:8 }}>
-              {!sidebarCollapsed && <div style={{ color:C.sidebarText, fontSize:10, fontWeight:600, textTransform:'uppercase', letterSpacing:'1px', padding:'8px 12px 4px', opacity:.6 }}>{group.label}</div>}
+            <div key={gi} style={{ marginBottom:4 }}>
+              {!sidebarCollapsed && <div style={{ color:C.sidebarText, fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', padding:'12px 12px 4px' }}>{group.label}</div>}
               {group.items.map(item => {
                 const active = page === item.id
                 return (
                   <button key={item.id} onClick={() => setPage(item.id)}
-                    style={{ width:'100%', display:'flex', alignItems:'center', gap:10,
-                      padding: sidebarCollapsed?'10px 0':'9px 12px', justifyContent: sidebarCollapsed?'center':'flex-start',
-                      borderRadius:8, border:'none', background: active?C.sidebarActiveBg:'transparent',
-                      color: active?C.sidebarActiveText:C.sidebarText, cursor:'pointer', fontSize:13.5,
-                      fontWeight: active?600:500, transition:'all .15s', fontFamily:'inherit',
-                      textAlign: isRTL?'right':'left', direction:dir }}
+                    style={{ width:'100%', display:'flex', alignItems:'center', gap:8,
+                      padding: sidebarCollapsed?'8px 0':'0 12px', height:36, justifyContent: sidebarCollapsed?'center':'flex-start',
+                      borderRadius:6, border:'none', background: active?C.sidebarActiveBg:'transparent',
+                      color: active?C.sidebarActiveText:C.sidebarText, cursor:'pointer', fontSize:14,
+                      fontWeight: active?500:400, transition:'all 150ms ease', fontFamily:'inherit',
+                      textAlign: isRTL?'right':'left', direction:dir,
+                      borderLeft: active && !isRTL ? `2px solid ${C.sidebarActive}` : '2px solid transparent',
+                      borderRight: active && isRTL ? `2px solid ${C.sidebarActive}` : '2px solid transparent',
+                    }}
                     onMouseEnter={e=>{if(!active) e.currentTarget.style.background=C.sidebarHover}}
-                    onMouseLeave={e=>{if(!active) e.currentTarget.style.background='transparent'}}>
-                    <span style={{ display:'flex', alignItems:'center', color: active?C.sidebarActive:C.sidebarText, flexShrink:0 }}>{item.icon()}</span>
-                    {!sidebarCollapsed && <><span style={{flex:1}}>{item.label}</span>{item.badge && <span style={{ background:C.danger, color:'#fff', fontSize:10, fontWeight:700, padding:'2px 6px', borderRadius:10, minWidth:18, textAlign:'center' }}>{item.badge}</span>}</>}
+                    onMouseLeave={e=>{if(!active) e.currentTarget.style.background=active?C.sidebarActiveBg:'transparent'}}>
+                    <span style={{ display:'flex', alignItems:'center', color: active?C.sidebarActiveText:C.sidebarText, flexShrink:0, opacity: active?1:0.7 }}>{item.icon(16)}</span>
+                    {!sidebarCollapsed && <><span style={{flex:1}}>{item.label}</span>{item.badge && <span style={{ background:C.danger, color:'#fff', fontSize:11, fontWeight:500, padding:'0 8px', borderRadius:10, height:20, display:'inline-flex', alignItems:'center' }}>{item.badge}</span>}</>}
                   </button>
                 )
               })}
             </div>
           ))}
         </nav>
-        <button onClick={() => setSidebarCollapsed(c=>!c)} style={{ padding:12, border:'none', background:'transparent', color:C.sidebarText, cursor:'pointer', borderTop:`1px solid ${C.sidebarBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'inherit' }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <button onClick={() => setSidebarCollapsed(c=>!c)} style={{ height:40, border:'none', background:'transparent', color:C.sidebarText, cursor:'pointer', borderTop:`1px solid ${C.sidebarBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'inherit', transition:'color 150ms ease' }}
+          onMouseEnter={e=>e.currentTarget.style.color=C.sidebarActiveText} onMouseLeave={e=>e.currentTarget.style.color=C.sidebarText}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
             {sidebarCollapsed ? (isRTL?<polyline points="15 18 9 12 15 6"/>:<polyline points="9 18 15 12 9 6"/>) : (isRTL?<polyline points="9 18 15 12 9 6"/>:<polyline points="15 18 9 12 15 6"/>)}
           </svg>
         </button>
@@ -551,7 +574,7 @@ export default function App() {
 
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:C.bg }}>
-        <header className="mobile-header" style={{ height:60, minHeight:60, background:C.white, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
+        <header className="mobile-header" style={{ height:52, minHeight:52, background:C.white, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
           {/* Mobile: Logo + company name in header */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
@@ -560,10 +583,11 @@ export default function App() {
             </div>
           )}
           {/* Search → opens Command Palette */}
-          <div onClick={() => setCmdPaletteOpen(true)} style={{ display:'flex', alignItems:'center', gap:8, background:C.bg, borderRadius:8, padding:'7px 12px', border:`1px solid ${C.border}`, flex:1, maxWidth:400, cursor:'pointer' }}>
-            <span style={{color:C.textMuted,display:'flex'}}>{Icons.search()}</span>
-            <span style={{ fontSize:13, color:C.textMuted, flex:1 }}>{t.searchPlaceholder}</span>
-            <kbd style={{ padding:'1px 6px', borderRadius:4, background:C.white, border:`1px solid ${C.border}`, fontSize:10, color:C.textMuted }}>⌘K</kbd>
+          <div onClick={() => setCmdPaletteOpen(true)} style={{ display:'flex', alignItems:'center', gap:8, background:C.bg, borderRadius:6, padding:'0 12px', height:36, border:`1px solid ${C.border}`, flex:1, maxWidth:360, cursor:'pointer', transition:'border-color 150ms ease' }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='#9CA3AF'} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+            <span style={{color:C.textMuted,display:'flex'}}>{Icons.search(16)}</span>
+            <span style={{ fontSize:14, color:C.textMuted, flex:1 }}>{t.searchPlaceholder}</span>
+            <kbd style={{ padding:'2px 6px', borderRadius:4, background:C.white, border:`1px solid ${C.border}`, fontSize:11, color:C.textMuted, fontFamily:'inherit' }}>Ctrl+K</kbd>
           </div>
           <div style={{flex:1}}/>
           {!isMobile && (
@@ -572,27 +596,30 @@ export default function App() {
             </button>
           )}
           {/* Dark mode toggle */}
-          <button onClick={() => setDarkMode(d => !d)} style={{ width:36, height:36, borderRadius:8, border:`1px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec }}
-            title={darkMode ? 'Light Mode' : 'Dark Mode'}>
+          <button onClick={() => setDarkMode(d => !d)} style={{ width:36, height:36, borderRadius:6, border:`1px solid #D1D5DB`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, transition:'all 150ms ease' }}
+            title={darkMode ? 'Light Mode' : 'Dark Mode'}
+            onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background=C.white}>
             {darkMode
-              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-              : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             }
           </button>
           {/* Notifications */}
-          <button onClick={() => setNotifOpen(v => !v)} style={{ width:36, height:36, borderRadius:8, border:`1px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec, position:'relative' }}>
-            {Icons.bell()}
-            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:4, right:4, minWidth:16, height:16, borderRadius:8, background:C.danger, color:'#fff', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{notifications.filter(n => !n.read).length}</span>}
+          <button onClick={() => setNotifOpen(v => !v)} style={{ width:36, height:36, borderRadius:6, border:`1px solid #D1D5DB`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, position:'relative', transition:'all 150ms ease' }}
+            onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background=C.white}>
+            {Icons.bell(16)}
+            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:C.danger, color:'#fff', fontSize:10, fontWeight:500, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{notifications.filter(n => !n.read).length}</span>}
           </button>
           {/* User avatar + dropdown */}
           <div style={{ position:'relative' }}>
-            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:34, height:34, borderRadius:'50%', background:`linear-gradient(135deg,${C.primary},#8250DF)`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:32, height:32, borderRadius:'50%', background:`linear-gradient(135deg,${C.primary},${C.purple})`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', transition:'transform 150ms ease' }}
+              onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
               {(user?.email || 'U').charAt(0).toUpperCase()}
             </div>
             {showUserMenu && (
               <div style={{
-                position:'absolute', top:42, [isRTL?'left':'right']:0, width:220, background:C.white,
-                borderRadius:12, border:`1px solid ${C.border}`, boxShadow:'0 8px 24px rgba(0,0,0,.12)',
+                position:'absolute', top:40, [isRTL?'left':'right']:0, width:220, background:C.white,
+                borderRadius:8, border:`1px solid ${C.border}`, boxShadow:'0 4px 6px rgba(0,0,0,.07), 0 10px 15px rgba(0,0,0,.05)',
                 zIndex:100, overflow:'hidden', direction:dir,
               }}>
                 <div style={{ padding:'14px 16px', borderBottom:`1px solid ${C.border}` }}>
@@ -613,7 +640,7 @@ export default function App() {
           </div>
         </header>
 
-        <div style={{ flex:1, overflow:'auto', padding: isMobile?14:24 }} className="fade-in mobile-content" key={page}>
+        <div style={{ flex:1, overflow:'auto', padding: isMobile?16:32 }} className="fade-in mobile-content" key={page}>
           {/* Error banner */}
           {dataError && (
             <div style={{ padding:'10px 16px', marginBottom:16, borderRadius:8, background:'#FFEBE9', border:'1px solid #CF222E22', fontSize:13, color:C.danger, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -660,14 +687,14 @@ export default function App() {
               <button type="button" onClick={() => setShowCustomizer(false)} style={makeBtn('primary')}>{t.done}</button>
             </div>
           </div>
-          <p style={{ fontSize:12, color:C.textSec, marginBottom:14 }}>{t.dragToReorder} &middot; {layout.order.filter(id=>layout.visible[id]).length}/{layout.order.length} {t.widgetsVisible}</p>
-          <div style={{ display:'flex', flexDirection:'column', gap:5 }}>
+          <p style={{ fontSize:13, color:C.textMuted, marginBottom:16 }}>{t.dragToReorder} &middot; {layout.order.filter(id=>layout.visible[id]).length}/{layout.order.length} {t.widgetsVisible}</p>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
             {layout.order.map(id => (
               <div key={id} draggable onDragStart={()=>handleDragStart(id)} onDragOver={e=>handleDragOver(e,id)} onDragEnd={handleDragEnd}
-                style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:8, border:`1px solid ${layout.visible[id]?C.border:'transparent'}`, background: dragWidget===id?C.primaryBg:layout.visible[id]?C.white:C.bg, cursor:'grab', transition:'all .15s', opacity: layout.visible[id]?1:.5 }}>
+                style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', borderRadius:6, border:`1px solid ${layout.visible[id]?C.border:'transparent'}`, background: dragWidget===id?C.primaryBg:layout.visible[id]?C.white:C.bg, cursor:'grab', transition:'all 150ms ease', opacity: layout.visible[id]?1:.4 }}>
                 <span style={{color:C.textMuted,cursor:'grab',display:'flex'}}>{Icons.grip()}</span>
-                <span style={{flex:1,fontSize:12,fontWeight:500,color:C.text}}>{widgetNames[id] || id}</span>
-                <button type="button" onClick={()=>toggleWidget(id)} style={{ border:'none', background:'transparent', cursor:'pointer', color: layout.visible[id]?C.primary:C.textMuted, display:'flex', alignItems:'center', padding:4 }}>
+                <span style={{flex:1,fontSize:14,fontWeight:500,color:C.text}}>{widgetNames[id] || id}</span>
+                <button type="button" onClick={()=>toggleWidget(id)} style={{ border:'none', background:'transparent', cursor:'pointer', color: layout.visible[id]?C.primary:C.textMuted, display:'flex', alignItems:'center', padding:4, transition:'color 150ms ease' }}>
                   {layout.visible[id] ? Icons.eye() : Icons.eyeOff()}
                 </button>
               </div>

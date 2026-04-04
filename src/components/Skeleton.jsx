@@ -10,7 +10,7 @@ export function Skeleton({ width = '100%', height = 16, radius = 6, style = {} }
 
 export function SkeletonCard({ lines = 3 }) {
   return (
-    <div style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+    <div style={{ background: C.white, borderRadius: 8, border: `1px solid ${C.border}`, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <Skeleton width={40} height={40} radius={20} />
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
@@ -27,7 +27,7 @@ export function SkeletonCard({ lines = 3 }) {
 
 export function SkeletonTable({ rows = 5, cols = 6 }) {
   return (
-    <div style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+    <div style={{ background: C.white, borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
       <div style={{ display: 'flex', gap: 16, padding: '12px 16px', background: C.bg, borderBottom: `1px solid ${C.border}` }}>
         {Array.from({ length: cols }).map((_, i) => <Skeleton key={i} width={`${100 / cols}%`} height={12} />)}
       </div>
@@ -45,7 +45,7 @@ export function SkeletonDashboard() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 16 }}>
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.border}`, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div key={i} style={{ background: C.white, borderRadius: 8, border: `1px solid ${C.border}`, padding: 20, display: 'flex', flexDirection: 'column', gap: 12 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}><Skeleton width="50%" height={12} /><Skeleton width={38} height={38} radius={10} /></div>
             <Skeleton width="40%" height={28} />
             <Skeleton width="30%" height={12} />
@@ -95,7 +95,7 @@ export function SkeletonPipeline() {
 
 export function SkeletonInbox() {
   return (
-    <div style={{ display: 'flex', gap: 0, background: C.white, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden', minHeight: 500 }}>
+    <div style={{ display: 'flex', gap: 0, background: C.white, borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden', minHeight: 500 }}>
       <div style={{ width: 340, borderRight: `1px solid ${C.border}`, padding: 12, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Skeleton width="100%" height={36} radius={8} />
         {Array.from({ length: 6 }).map((_, i) => (
@@ -133,7 +133,7 @@ export function SkeletonCalendar() {
       </div>
       <div style={{ display: 'flex', gap: 20 }}>
         <div style={{ flex: 1 }}>
-          <div style={{ background: C.white, borderRadius: 12, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
+          <div style={{ background: C.white, borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0 }}>
               {Array.from({ length: 7 }).map((_, i) => (
                 <div key={i} style={{ padding: 8, textAlign: 'center', background: C.bg, borderBottom: `1px solid ${C.border}` }}>
