@@ -203,18 +203,24 @@ async function main() {
 
   // Step 2: Export patients.csv
   console.log('\nStep 2/3 — Exporting patients.csv')
-  const csvHeader = 'id,name,first_name,last_name,email,phone,date_added,tags,source'
-  const csvRows = contacts.map(c => [
-    c.id,
-    csvEscape(`${c.firstName || ''} ${c.lastName || ''}`.trim() || c.name || 'Unknown'),
-    csvEscape(c.firstName || ''),
-    csvEscape(c.lastName || ''),
-    csvEscape(c.email || ''),
-    csvEscape(c.phone || ''),
-    csvEscape(c.dateAdded || c.createdAt || ''),
-    csvEscape((c.tags || []).join('; ')),
-    csvEscape(c.source || ''),
-  ].join(','))
+  const csvHeader = 'id,name,first_name,last_name,email,phone,date_added,tags,doctor,source'
+  const csvRows = contacts.map(c => {
+    const tags = (c.tags || [])
+    const doctor = tags.find(t => t.toLowerCase().includes('saif')) ? 'Dr Saif'
+      : tags.find(t => t.toLowerCase().includes('hawkar')) ? 'Dr Hawkar' : ''
+    return [
+      c.id,
+      csvEscape(`${c.firstName || ''} ${c.lastName || ''}`.trim() || c.name || 'Unknown'),
+      csvEscape(c.firstName || ''),
+      csvEscape(c.lastName || ''),
+      csvEscape(c.email || ''),
+      csvEscape(c.phone || ''),
+      csvEscape(c.dateAdded || c.createdAt || ''),
+      csvEscape(tags.join('; ')),
+      csvEscape(doctor),
+      csvEscape(c.source || ''),
+    ].join(',')
+  })
 
   fs.writeFileSync(
     path.join(dirs.root, 'patients.csv'),
@@ -224,16 +230,24 @@ async function main() {
   console.log(`  ✓ Exported ${contacts.length} patients to patients.csv`)
 
   // Step 3: Fetch notes + documents per contact
-  console.log('\nStep 3/3 — Fetching notes & documents per patient')
+  // Filter to only tagged patients (Dr Saif / Dr Hawkar) to avoid processing 100K+ marketing leads
+  const DOCTOR_TAGS = ['dr saif', 'dr hawkar']
+  const taggedPatients = contacts.filter(c => {
+    const tags = (c.tags || []).map(t => t.toLowerCase().trim())
+    return tags.some(t => DOCTOR_TAGS.some(dt => t.includes(dt)))
+  })
+
+  console.log(`\nStep 3/3 — Fetching notes & documents for tagged patients`)
+  console.log(`  Found ${taggedPatients.length} patients tagged with Dr Saif or Dr Hawkar (out of ${contacts.length} total)`)
   let totalNotes = 0
   let totalDocs = 0
   const errors = []
 
-  for (let i = 0; i < contacts.length; i++) {
-    const c = contacts[i]
+  for (let i = 0; i < taggedPatients.length; i++) {
+    const c = taggedPatients[i]
     const name = `${c.firstName || ''} ${c.lastName || ''}`.trim() || c.name || 'Unknown'
 
-    process.stdout.write(`\r  Processing ${i + 1}/${contacts.length}: ${name.slice(0, 30).padEnd(30)}`)
+    process.stdout.write(`\r  Processing ${i + 1}/${taggedPatients.length}: ${name.slice(0, 30).padEnd(30)}`)
 
     try {
       // Fetch notes
