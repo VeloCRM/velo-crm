@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { T } from './translations'
 import { C, CAT_COLORS, STAGE_COLORS, makeBtn, card } from './design'
 import {
@@ -20,7 +20,11 @@ import FinancePage from './pages/FinancePage'
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
 import NotificationCenter from './components/NotificationCenter'
-import { SkeletonDashboard } from './components/Skeleton'
+import { SkeletonDashboard, SkeletonContacts, SkeletonPipeline, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
+import { useToast, ToastContainer } from './components/Toast'
+import ConfirmDialog from './components/ConfirmDialog'
+import EmptyState from './components/EmptyState'
+import KeyboardShortcutsHelp from './components/KeyboardShortcuts'
 import { MedicalHistoryTab as DentalMedicalHistory, DentalChartTab as DentalChartWrapper, TreatmentPlanTab as DentalTreatments, PrescriptionsTab as DentalPrescriptions, XRaysTab as DentalXRays } from './components/DentalTabs'
 import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
@@ -161,6 +165,31 @@ export default function App() {
   const [tasks, setTasks] = useState(SAMPLE_TASKS)
   const [tickets, setTickets] = useState([])
   const [dragWidget, setDragWidget] = useState(null)
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [notifications, setNotifications] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('velo_notifications') || '[]') } catch { return [] }
+  })
+  const [confirmDialog, setConfirmDialog] = useState(null) // { title, message, onConfirm }
+  const { toasts, addToast, removeToast } = useToast()
+
+  // Persist notifications
+  useEffect(() => { localStorage.setItem('velo_notifications', JSON.stringify(notifications.slice(0, 50))) }, [notifications])
+
+  // Add notification helper
+  const pushNotification = useCallback((type, title, body) => {
+    setNotifications(prev => [{ id: `notif_${Date.now()}_${Math.random().toString(36).slice(2,6)}`, type, title, body, time: new Date().toISOString(), read: false }, ...prev].slice(0, 50))
+  }, [])
+
+  // Notification helpers
+  const markNotifRead = (id) => setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n))
+  const markAllNotifsRead = () => setNotifications(prev => prev.map(n => ({ ...n, read: true })))
+  const dismissNotif = (id) => setNotifications(prev => prev.filter(n => n.id !== id))
+
+  // Confirm dialog helper
+  const showConfirm = useCallback((title, message, onConfirm) => {
+    setConfirmDialog({ title, message, onConfirm })
+  }, [])
+  const closeConfirm = () => setConfirmDialog(null)
 
   const useDB = isSupabaseConfigured()
   const t = T[lang]
@@ -179,6 +208,43 @@ export default function App() {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
     localStorage.setItem('velo_dark', darkMode)
   }, [darkMode])
+
+  // Global keyboard shortcuts
+  useEffect(() => {
+    let gPending = false
+    const handler = (e) => {
+      const tag = e.target.tagName
+      const isInput = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target.isContentEditable
+      // Allow Ctrl+K even in inputs
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') { e.preventDefault(); setCmdPaletteOpen(v => !v); return }
+      if (isInput) return
+      if (e.key === '?') { e.preventDefault(); setShowShortcuts(v => !v); return }
+      if (e.key === 'Escape') {
+        if (showShortcuts) { setShowShortcuts(false); return }
+        if (notifOpen) { setNotifOpen(false); return }
+        if (aiOpen) { setAiOpen(false); return }
+        gPending = false; return
+      }
+      if (e.key === 'n' || e.key === 'N') {
+        e.preventDefault()
+        // "N" triggers new item based on current page
+        if (page === 'contacts') { document.querySelector('[data-action="new-contact"]')?.click() }
+        else if (page === 'pipeline') { document.querySelector('[data-action="new-deal"]')?.click() }
+        else if (page === 'tickets') { document.querySelector('[data-action="new-ticket"]')?.click() }
+        else if (page === 'calendar') { document.querySelector('[data-action="new-event"]')?.click() }
+        return
+      }
+      // G + key navigation
+      if (e.key === 'g') { gPending = true; setTimeout(() => gPending = false, 800); return }
+      if (gPending) {
+        gPending = false
+        const map = { d: 'dashboard', c: 'contacts', p: 'pipeline', i: 'inbox', t: 'tickets', a: 'calendar' }
+        if (map[e.key]) { e.preventDefault(); setPage(map[e.key]) }
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [page, showShortcuts, notifOpen, aiOpen])
 
   // Auth state
   useEffect(() => {
@@ -293,26 +359,30 @@ export default function App() {
   const addContact = async (c) => {
     const optimistic = { ...c, id: genId('c'), createdAt: new Date().toISOString().slice(0,10), documents: [], notesTimeline: [], activityHistory: [] }
     setContacts(prev => [...prev, optimistic])
+    addToast(t.contactAdded || (isRTL ? 'تمت إضافة جهة الاتصال' : 'Contact added successfully'), 'success')
+    pushNotification('contact', isRTL ? 'جهة اتصال جديدة' : 'New contact added', c.name || c.email || '')
     if (useDB) {
       try {
         const saved = await db.insertContact(c)
         setContacts(prev => prev.map(x => x.id === optimistic.id ? saved : x))
-      } catch (err) { console.error('Add contact error:', err); loadAllData() }
+      } catch (err) { console.error('Add contact error:', err); addToast(isRTL ? 'خطأ في إضافة جهة الاتصال' : 'Error adding contact', 'error'); loadAllData() }
     }
   }
   const updateContact = async (id, data) => {
     setContacts(prev => prev.map(c => c.id === id ? { ...c, ...data } : c))
+    addToast(isRTL ? 'تم تحديث جهة الاتصال' : 'Contact updated', 'success')
     if (useDB) {
       try { await db.patchContact(id, data) }
-      catch (err) { console.error('Update contact error:', err); loadAllData() }
+      catch (err) { console.error('Update contact error:', err); addToast(isRTL ? 'خطأ في التحديث' : 'Error updating contact', 'error'); loadAllData() }
     }
   }
   const deleteContact = async (id) => {
     setContacts(prev => prev.filter(c => c.id !== id))
     setDeals(prev => prev.filter(d => d.contactId !== id))
+    addToast(isRTL ? 'تم حذف جهة الاتصال' : 'Contact deleted', 'success')
     if (useDB) {
       try { await db.removeContact(id) }
-      catch (err) { console.error('Delete contact error:', err); loadAllData() }
+      catch (err) { console.error('Delete contact error:', err); addToast(isRTL ? 'خطأ في الحذف' : 'Error deleting contact', 'error'); loadAllData() }
     }
   }
   const addNoteToContact = (contactId, text) => {
@@ -320,30 +390,39 @@ export default function App() {
       ...c,
       notesTimeline: [...(c.notesTimeline||[]), { id: genId('n'), text, date: new Date().toISOString().slice(0,10), author: t.adminUser }],
     } : c))
+    addToast(isRTL ? 'تمت إضافة الملاحظة' : 'Note added', 'success')
   }
 
   const addDeal = async (d) => {
     const optimistic = { ...d, id: genId('d'), createdAt: new Date().toISOString().slice(0,10), name: d.name || d.title || '' }
     setDeals(prev => [...prev, optimistic])
+    addToast(isRTL ? 'تمت إضافة الصفقة' : 'Deal created', 'success')
+    pushNotification('deal', isRTL ? 'صفقة جديدة' : 'New deal created', d.name || d.title || '')
     if (useDB) {
       try {
         const saved = await db.insertDeal(d, contacts)
         setDeals(prev => prev.map(x => x.id === optimistic.id ? saved : x))
-      } catch (err) { console.error('Add deal error:', err); loadAllData() }
+      } catch (err) { console.error('Add deal error:', err); addToast(isRTL ? 'خطأ في إنشاء الصفقة' : 'Error creating deal', 'error'); loadAllData() }
     }
   }
   const updateDeal = async (id, data) => {
-    setDeals(prev => prev.map(d => d.id === id ? { ...d, ...data } : d))
+    const prev = deals.find(d => d.id === id)
+    setDeals(prevDeals => prevDeals.map(d => d.id === id ? { ...d, ...data } : d))
+    addToast(isRTL ? 'تم تحديث الصفقة' : 'Deal updated', 'success')
+    if (data.stage && prev && data.stage !== prev.stage) {
+      pushNotification('deal', isRTL ? 'تغيير مرحلة الصفقة' : 'Deal stage changed', `${prev.name}: ${prev.stage} → ${data.stage}`)
+    }
     if (useDB) {
       try { await db.patchDeal(id, data) }
-      catch (err) { console.error('Update deal error:', err); loadAllData() }
+      catch (err) { console.error('Update deal error:', err); addToast(isRTL ? 'خطأ في التحديث' : 'Error updating deal', 'error'); loadAllData() }
     }
   }
   const deleteDeal = async (id) => {
     setDeals(prev => prev.filter(d => d.id !== id))
+    addToast(isRTL ? 'تم حذف الصفقة' : 'Deal deleted', 'success')
     if (useDB) {
       try { await db.removeDeal(id) }
-      catch (err) { console.error('Delete deal error:', err); loadAllData() }
+      catch (err) { console.error('Delete deal error:', err); addToast(isRTL ? 'خطأ في الحذف' : 'Error deleting deal', 'error'); loadAllData() }
     }
   }
 
@@ -352,18 +431,20 @@ export default function App() {
     const nextNum = 'VLO-' + String(Math.max(0, ...nums) + 1).padStart(3, '0')
     const optimistic = { ...tk, id: genId('tkt'), ticketId: nextNum, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), timeline: [{ id: genId('tl'), type: 'created', text: t.ticketCreatedLabel, author: t.adminUser, date: new Date().toISOString() }] }
     setTickets(prev => [...prev, optimistic])
+    addToast(isRTL ? 'تم إنشاء التذكرة' : 'Ticket created', 'success')
+    pushNotification('ticket', isRTL ? 'تذكرة جديدة' : 'New ticket created', `${nextNum}: ${tk.subject || ''}`)
     if (useDB) {
       try {
         const saved = await db.insertTicket(tk, contacts)
         setTickets(prev => prev.map(x => x.id === optimistic.id ? saved : x))
-      } catch (err) { console.error('Add ticket error:', err); loadAllData() }
+      } catch (err) { console.error('Add ticket error:', err); addToast(isRTL ? 'خطأ في إنشاء التذكرة' : 'Error creating ticket', 'error'); loadAllData() }
     }
   }
   const updateTicket = async (id, data) => {
     setTickets(prev => prev.map(tk => tk.id === id ? { ...tk, ...data, updatedAt: new Date().toISOString() } : tk))
+    addToast(isRTL ? 'تم تحديث التذكرة' : 'Ticket updated', 'success')
     if (useDB) {
       try {
-        // Mark new timeline entries so DB layer knows what to insert
         const withMarkers = { ...data }
         if (data.timeline) {
           const existing = tickets.find(tk => tk.id === id)
@@ -372,7 +453,7 @@ export default function App() {
         }
         const saved = await db.patchTicket(id, withMarkers)
         setTickets(prev => prev.map(tk => tk.id === id ? { ...saved, contactName: tk.contactName, company: tk.company } : tk))
-      } catch (err) { console.error('Update ticket error:', err); loadAllData() }
+      } catch (err) { console.error('Update ticket error:', err); addToast(isRTL ? 'خطأ في التحديث' : 'Error updating ticket', 'error'); loadAllData() }
     }
   }
 
@@ -496,7 +577,8 @@ export default function App() {
           </button>
           {/* Notifications */}
           <button onClick={() => setNotifOpen(v => !v)} style={{ width:36, height:36, borderRadius:8, border:`1px solid ${C.border}`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec, position:'relative' }}>
-            {Icons.bell()}<span style={{ position:'absolute', top:6, right:6, width:8, height:8, borderRadius:'50%', background:C.danger, border:'2px solid #fff' }}/>
+            {Icons.bell()}
+            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:4, right:4, minWidth:16, height:16, borderRadius:8, background:C.danger, color:'#fff', fontSize:9, fontWeight:700, display:'flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{notifications.filter(n => !n.read).length}</span>}
           </button>
           {/* User avatar + dropdown */}
           <div style={{ position:'relative' }}>
@@ -535,25 +617,30 @@ export default function App() {
               <button onClick={() => setDataError(null)} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.danger, fontWeight:700, fontSize:16 }}>&times;</button>
             </div>
           )}
-          {/* Loading spinner */}
+          {/* Loading skeleton — page-specific */}
           {dataLoading ? (
-            <SkeletonDashboard />
+            page === 'contacts' ? <SkeletonContacts /> :
+            page === 'pipeline' ? <SkeletonPipeline /> :
+            page === 'inbox' ? <SkeletonInbox /> :
+            page === 'calendar' ? <SkeletonCalendar /> :
+            page === 'dashboard' ? <SkeletonDashboard /> :
+            <SkeletonGeneric />
           ) : (
             <>
               {page === 'dashboard' && <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} />}
-              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} />}
-              {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} />}
-              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} />}
-              {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} />}
-              {page === 'calendar' && <CalendarPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} />}
-              {page === 'automations' && <AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} />}
-              {page === 'forms' && <FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} />}
-              {page === 'social' && <SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} />}
-              {page === 'finance' && <FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} />}
-              {page === 'integrations' && <IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} />}
+              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} />}
+              {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} />}
+              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} />}
+              {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} />}
+              {page === 'calendar' && <CalendarPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} />}
+              {page === 'automations' && <AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} />}
+              {page === 'forms' && <FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} />}
+              {page === 'social' && <SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} />}
+              {page === 'finance' && <FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} />}
+              {page === 'integrations' && <IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} />}
               {page === 'reports' && <ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} />}
               {page === 'report-builder' && <ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} />}
-              {page === 'settings' && <SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} />}
+              {page === 'settings' && <SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} />}
             </>
           )}
         </div>
@@ -642,10 +729,34 @@ export default function App() {
       )}
 
       {/* Command Palette */}
-      <CommandPalette open={cmdPaletteOpen} onClose={(action) => action === 'toggle' ? setCmdPaletteOpen(v => !v) : setCmdPaletteOpen(false)} contacts={contacts} deals={deals} tickets={tickets} onNavigate={setPage} lang={lang} />
+      <CommandPalette open={cmdPaletteOpen} onClose={(action) => action === 'toggle' ? setCmdPaletteOpen(v => !v) : setCmdPaletteOpen(false)} contacts={contacts} deals={deals} tickets={tickets} onNavigate={setPage} onAction={(action, id) => {
+        if (action === 'add-contact') setPage('contacts')
+        else if (action === 'create-deal') setPage('pipeline')
+        else if (action === 'new-ticket') setPage('tickets')
+        else if (action === 'new-event') setPage('calendar')
+        else if (action === 'view-contact') setPage('contacts')
+        else if (action === 'view-deal') setPage('pipeline')
+        else if (action === 'view-ticket') setPage('tickets')
+      }} lang={lang} />
 
       {/* Notification Center */}
-      <NotificationCenter open={notifOpen} onClose={() => setNotifOpen(false)} lang={lang} />
+      <NotificationCenter open={notifOpen} onClose={() => setNotifOpen(false)} notifications={notifications} onMarkRead={markNotifRead} onMarkAllRead={markAllNotifsRead} onDismiss={dismissNotif} lang={lang} />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} isRTL={isRTL} />
+
+      {/* Keyboard Shortcuts Help */}
+      <KeyboardShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} lang={lang} />
+
+      {/* Confirm Dialog */}
+      <ConfirmDialog
+        open={!!confirmDialog}
+        title={confirmDialog?.title || ''}
+        message={confirmDialog?.message || ''}
+        onConfirm={() => { confirmDialog?.onConfirm?.(); closeConfirm() }}
+        onCancel={closeConfirm}
+        dir={dir}
+      />
 
       {/* AI Assistant */}
       <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts, ${deals.length} deals, ${tickets.length} tickets.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} deals={deals} tickets={tickets} />
@@ -979,7 +1090,7 @@ function FinanceSummaryWidget({ t, contacts, dir, isRTL }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTACTS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency }) {
+function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
@@ -1015,7 +1126,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
         addNoteToContact={addNoteToContact}
         onBack={() => { setSelectedContact(null); setProfileTab('details') }}
         onEdit={() => { setEditingContact(c); setShowForm(true); setSelectedContact(null) }}
-        onDelete={() => { deleteContact(c.id); setSelectedContact(null) }}
+        onDelete={() => showConfirm(isRTL ? 'حذف جهة الاتصال؟' : 'Delete this contact?', isRTL ? 'سيتم حذف جهة الاتصال وجميع الصفقات المرتبطة بها. لا يمكن التراجع.' : 'This will permanently delete the contact and all associated deals. This cannot be undone.', () => { deleteContact(c.id); setSelectedContact(null) })}
         showDealForm={showDealForm} setShowDealForm={setShowDealForm}
         addDeal={addDeal} contacts={contacts}
         isDental={isDental} updateContact={updateContact} currency={currency}
@@ -1031,7 +1142,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
           <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{t.contacts}</h1>
           <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>{filtered.length} {t.contactsCount}</p>
         </div>
-        <button onClick={() => { setEditingContact(null); setShowForm(true) }} style={makeBtn('primary', { gap:6 })}>
+        <button data-action="new-contact" onClick={() => { setEditingContact(null); setShowForm(true) }} style={makeBtn('primary', { gap:6 })}>
           {Icons.plus(16)} {t.addContact}
         </button>
       </div>
@@ -1070,9 +1181,8 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding:48, textAlign:'center', color:C.textMuted }}>
-                <div style={{ marginBottom:8 }}>{Icons.contacts(32)}</div>
-                {t.noContacts}
+              <tr><td colSpan={8} style={{ padding:0 }}>
+                <EmptyState type="contacts" title={contacts.length === 0 ? (isRTL ? 'لا توجد جهات اتصال بعد' : 'No contacts yet') : (isRTL ? 'لا توجد نتائج' : 'No matching contacts')} message={contacts.length === 0 ? (isRTL ? 'أضف أول جهة اتصال لبدء إدارة علاقاتك' : 'Add your first contact to start managing relationships') : (isRTL ? 'جرب تعديل مصطلح البحث أو الفلاتر' : 'Try adjusting your search or filters')} actionLabel={contacts.length === 0 ? t.addContact : null} onAction={contacts.length === 0 ? () => { setEditingContact(null); setShowForm(true) } : null} dir={dir} />
               </td></tr>
             ) : filtered.map(c => {
               const cc = CAT_COLORS[c.category] || CAT_COLORS.other
@@ -1542,6 +1652,7 @@ function resolvePaymentStatus(p) {
 function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, contactDeals, currency, dir, isRTL }) {
   const [showForm, setShowForm] = useState(false)
   const [statusDropdown, setStatusDropdown] = useState(null)
+  const [confirmDeletePayment, setConfirmDeletePayment] = useState(null)
   const today = new Date().toISOString().slice(0,10)
   const [form, setForm] = useState({ amount:'', currency, method:'cash', status:'pending', dueDate:'', paymentDate:'', description:'', dealId:'' })
 
@@ -1634,7 +1745,7 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
               </div>
             </div>
             <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-              <button type="button" onClick={e=>{e.stopPropagation();deletePayment(p.id)}} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:4 }}>{Icons.trash(14)}</button>
+              <button type="button" onClick={e=>{e.stopPropagation();setConfirmDeletePayment(p.id)}} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:4 }}>{Icons.trash(14)}</button>
             </div>
           </div>
         )
@@ -1678,6 +1789,21 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
               <button type="submit" style={makeBtn('primary')}>{isRTL?'إضافة':'Add'}</button>
             </div>
           </form>
+        </Modal>
+      )}
+      {confirmDeletePayment && (
+        <Modal onClose={() => setConfirmDeletePayment(null)} dir={dir} width={400}>
+          <div style={{ textAlign:'center', padding:8 }}>
+            <div style={{ width:48, height:48, borderRadius:'50%', margin:'0 auto 12px', background:'#FFEBE9', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#CF222E" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            </div>
+            <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 8px' }}>{isRTL ? 'حذف الدفعة؟' : 'Delete this payment?'}</h3>
+            <p style={{ fontSize:13, color:C.textSec, margin:'0 0 16px' }}>{isRTL ? 'لا يمكن التراجع عن هذا' : 'This action cannot be undone'}</p>
+            <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
+              <button onClick={() => setConfirmDeletePayment(null)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
+              <button onClick={() => { deletePayment(confirmDeletePayment); setConfirmDeletePayment(null) }} style={makeBtn('danger')}>{isRTL ? 'حذف' : 'Delete'}</button>
+            </div>
+          </div>
         </Modal>
       )}
     </div>
@@ -1779,7 +1905,7 @@ function PipelineBuilderModal({ t, dir, isRTL, pipeline, onSave, onClose }) {
   )
 }
 
-function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDeal, deleteDeal, setPage }) {
+function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDeal, deleteDeal, setPage, toast, showConfirm }) {
   const [pipelines, setPipelines] = useState(() => {
     try { const s = localStorage.getItem('velo_pipelines'); return s ? JSON.parse(s) : [DEFAULT_PIPELINE] } catch { return [DEFAULT_PIPELINE] }
   })
@@ -1950,7 +2076,7 @@ function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDea
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={() => { setEditingPipeline(null); setShowPipelineBuilder(true) }} style={makeBtn('secondary', { gap:6 })}>{Icons.plus(14)} {isRTL?'خط أنابيب جديد':'New Pipeline'}</button>
-          <button onClick={() => { setEditingDeal(null); setShowForm(true) }} style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.addDeal}</button>
+          <button data-action="new-deal" onClick={() => { setEditingDeal(null); setShowForm(true) }} style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.addDeal}</button>
         </div>
       </div>
 
@@ -1965,7 +2091,7 @@ function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDea
             {activePipelineId===pl.id && (
               <div style={{ display:'flex', gap:2 }}>
                 <button onClick={e => { e.stopPropagation(); setEditingPipeline(pl); setShowPipelineBuilder(true) }} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:2 }}>{Icons.edit(12)}</button>
-                {pipelines.length > 1 && <button onClick={e => { e.stopPropagation(); deletePipeline(pl.id) }} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:2 }}>{Icons.x(12)}</button>}
+                {pipelines.length > 1 && <button onClick={e => { e.stopPropagation(); showConfirm(isRTL ? 'حذف خط الأنابيب؟' : 'Delete this pipeline?', isRTL ? 'سيتم حذف خط الأنابيب وجميع المراحل الخاصة به' : 'This will delete the pipeline and all its stages', () => deletePipeline(pl.id)) }} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:2 }}>{Icons.x(12)}</button>}
               </div>
             )}
           </div>
@@ -2245,9 +2371,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket 
         {/* Conversation List */}
         <div style={{ flex: 1, overflow: 'auto' }}>
           {filtered.length === 0 ? (
-            <div style={{ padding: 40, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
-              {t.noMessages}
-            </div>
+            <EmptyState type="inbox" title={isRTL ? 'لا توجد رسائل' : 'No conversations'} message={isRTL ? 'ستظهر المحادثات هنا عند استلام الرسائل' : 'Conversations will appear here when messages are received'} dir={dir} />
           ) : filtered.map(conv => {
             const isActive = conv.id === activeConvId
             const ch = CHANNEL_META[conv.channel]
@@ -2670,7 +2794,7 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
           <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{t.tickets}</h1>
           <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>{filtered.length} {t.tickets?.toLowerCase?.() || 'tickets'}</p>
         </div>
-        <button onClick={() => setShowForm(true)} style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.newTicket}</button>
+        <button data-action="new-ticket" onClick={() => setShowForm(true)} style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.newTicket}</button>
       </div>
 
       {/* Filters */}
@@ -2709,8 +2833,8 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding:48, textAlign:'center', color:C.textMuted }}>
-                <div style={{ marginBottom:8 }}>{Icons.ticket(32)}</div>{t.noTickets}
+              <tr><td colSpan={8} style={{ padding:0 }}>
+                <EmptyState type="tickets" title={tickets.length === 0 ? (isRTL ? 'لا توجد تذاكر بعد' : 'No tickets yet') : (isRTL ? 'لا توجد نتائج' : 'No matching tickets')} message={tickets.length === 0 ? (isRTL ? 'أنشئ تذكرة لتتبع طلبات الدعم' : 'Create a ticket to start tracking support requests') : (isRTL ? 'جرب تعديل البحث أو الفلاتر' : 'Try adjusting your search or filters')} actionLabel={tickets.length === 0 ? t.newTicket : null} onAction={tickets.length === 0 ? () => setShowForm(true) : null} dir={dir} />
               </td></tr>
             ) : filtered.map(tk => {
               const pc = TICKET_PRIORITY_COLORS[tk.priority]
