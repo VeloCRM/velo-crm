@@ -43,7 +43,7 @@ export default function AutomationsPage({ t, lang, dir, isRTL }) {
     <div style={{ direction: dir }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0 }}>{t.automations}</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0, fontFamily: 'DM Sans,Inter,sans-serif' }}>{t.automations}</h1>
           <p style={{ fontSize: 13, color: C.textSec, marginTop: 4 }}>{activeCount} {t.enabled || 'active'} &middot; {totalRuns} {t.totalRuns || 'total runs'}</p>
         </div>
         <button onClick={() => setShowForm(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {t.newAutomation}</button>
@@ -52,12 +52,12 @@ export default function AutomationsPage({ t, lang, dir, isRTL }) {
       {/* Stats row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginBottom: 24 }}>
         {[
-          { label: lang === 'ar' ? 'الأتمتة النشطة' : 'Active Automations', value: activeCount, color: C.success, bg: '#DAFBE1' },
+          { label: lang === 'ar' ? 'الأتمتة النشطة' : 'Active Automations', value: activeCount, color: C.success, bg: C.successBg },
           { label: lang === 'ar' ? 'إجمالي التشغيلات' : 'Total Runs', value: totalRuns, color: C.primary, bg: C.primaryBg },
-          { label: lang === 'ar' ? 'آخر تشغيل' : 'Last Triggered', value: automations[0]?.lastRun || '—', color: C.purple, bg: '#FBEFFF' },
+          { label: lang === 'ar' ? 'آخر تشغيل' : 'Last Triggered', value: automations[0]?.lastRun || '—', color: C.purple, bg: C.purpleBg },
         ].map((s, i) => (
-          <div key={i} style={{ ...card, padding: 18, display: 'flex', alignItems: 'center', gap: 14 }}>
-            <div style={{ width: 40, height: 40, borderRadius: 10, background: s.bg, color: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Icons.zap(20)}</div>
+          <div key={i} style={{ ...card, padding: 16, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 8, background: s.bg, color: s.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{Icons.zap(20)}</div>
             <div><div style={{ fontSize: 12, color: C.textMuted }}>{s.label}</div><div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{s.value}</div></div>
           </div>
         ))}
@@ -69,8 +69,8 @@ export default function AutomationsPage({ t, lang, dir, isRTL }) {
           const trigger = TRIGGERS.find(tr => tr.id === auto.trigger)
           const TriggerIcon = trigger?.icon || Icons.zap
           return (
-            <div key={auto.id} style={{ ...card, padding: 20, display: 'flex', alignItems: 'center', gap: 16, opacity: auto.enabled ? 1 : .6, transition: 'opacity .2s' }}>
-              <div style={{ width: 42, height: 42, borderRadius: 10, background: auto.enabled ? C.primaryBg : C.bg, color: auto.enabled ? C.primary : C.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <div key={auto.id} style={{ ...card, padding: 20, display: 'flex', alignItems: 'center', gap: 16, opacity: auto.enabled ? 1 : .6, transition: 'all 150ms ease' }}>
+              <div style={{ width: 42, height: 42, borderRadius: 8, background: auto.enabled ? C.primaryBg : C.bg, color: auto.enabled ? C.primary : C.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                 {TriggerIcon(20)}
               </div>
               <div style={{ flex: 1 }}>
@@ -81,11 +81,11 @@ export default function AutomationsPage({ t, lang, dir, isRTL }) {
                   <span style={{ padding: '2px 8px', background: C.bg, borderRadius: 4, border: `1px solid ${C.border}` }}>{t.then || 'Then'}: {auto.actionDetail}</span>
                 </div>
               </div>
-              <div style={{ textAlign: 'center', minWidth: 60 }}>
+              <div style={{ textAlign: 'center', minWidth: 56 }}>
                 <div style={{ fontSize: 16, fontWeight: 700, color: C.text }}>{auto.runs}</div>
                 <div style={{ fontSize: 10, color: C.textMuted }}>{t.runs || 'runs'}</div>
               </div>
-              <div style={{ fontSize: 11, color: C.textMuted, minWidth: 70 }}>{auto.lastRun}</div>
+              <div style={{ fontSize: 12, color: C.textMuted, minWidth: 72 }}>{auto.lastRun}</div>
               <Toggle value={auto.enabled} onChange={() => toggleAuto(auto.id)} />
             </div>
           )
@@ -103,8 +103,8 @@ function AutomationFormModal({ t, dir, lang, onSave, onClose }) {
   return (
     <Modal onClose={onClose} dir={dir} width={520}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{t.newAutomation}</h2>
-        <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted }}>{Icons.x(20)}</button>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0, fontFamily: 'DM Sans,Inter,sans-serif' }}>{t.newAutomation}</h2>
+        <button onClick={onClose} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, transition: 'all 150ms ease' }}>{Icons.x(20)}</button>
       </div>
       <FormField label={t.automationName || 'Name'} dir={dir}><input value={form.name} onChange={e => set('name', e.target.value)} style={inputStyle(dir)} /></FormField>
       <FormField label={t.trigger || 'Trigger'} dir={dir}>

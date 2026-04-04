@@ -11,13 +11,13 @@ const INDUSTRIES = [
   { id: 'restaurant', icon: '🍽️', en: 'Restaurant', ar: 'مطعم' },
 ]
 
-const COLORS = ['#0969DA', '#8250DF', '#1A7F37', '#CF222E', '#D29922', '#E16F24', '#0D9488', '#6366F1']
+const COLORS = ['#2563EB', '#7C3AED', '#16A34A', '#DC2626', '#D97706', '#E16F24', '#0D9488', '#6366F1']
 
 export default function OnboardingPage({ user, lang, onComplete }) {
   const [step, setStep] = useState(1)
   const [orgName, setOrgName] = useState('')
   const [industry, setIndustry] = useState('general')
-  const [color, setColor] = useState('#0969DA')
+  const [color, setColor] = useState('#2563EB')
   const [invites, setInvites] = useState([''])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -58,9 +58,9 @@ export default function OnboardingPage({ user, lang, onComplete }) {
         await supabase.from('profiles').update({ org_id: org.id, role: 'admin' }).eq('id', user.id)
 
         await supabase.from('departments').insert([
-          { org_id: org.id, name: isRTL ? 'المبيعات' : 'Sales', color: '#0969DA' },
-          { org_id: org.id, name: isRTL ? 'الدعم' : 'Support', color: '#1A7F37' },
-          { org_id: org.id, name: isRTL ? 'التقنية' : 'Technical', color: '#8250DF' },
+          { org_id: org.id, name: isRTL ? 'المبيعات' : 'Sales', color: '#2563EB' },
+          { org_id: org.id, name: isRTL ? 'الدعم' : 'Support', color: '#16A34A' },
+          { org_id: org.id, name: isRTL ? 'التقنية' : 'Technical', color: '#7C3AED' },
         ])
 
         onComplete(org)
@@ -81,33 +81,34 @@ export default function OnboardingPage({ user, lang, onComplete }) {
   }
 
   const inputStyle = {
-    width: '100%', padding: '11px 14px', borderRadius: 10, border: `1px solid ${C.border}`,
+    width: '100%', padding: '8px 12px', borderRadius: 6, border: `1px solid #D1D5DB`,
     fontSize: 14, color: C.text, fontFamily: "'Inter',sans-serif", outline: 'none',
-    background: C.white, boxSizing: 'border-box', direction: dir,
+    background: C.white, boxSizing: 'border-box', direction: dir, height: 36,
+    transition: 'all 150ms ease',
   }
 
   return (
-    <div dir={dir} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", padding: 20 }}>
+    <div dir={dir} style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.bg, fontFamily: "'Inter',-apple-system,sans-serif", padding: 24 }}>
       <div style={{ width: 520, maxWidth: '100%' }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{ width: 56, height: 56, borderRadius: 14, background: `linear-gradient(135deg, ${color}, #8250DF)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 24, margin: '0 auto 12px' }}>V</div>
+          <div style={{ width: 48, height: 48, borderRadius: 8, background: `linear-gradient(135deg, ${color}, #7C3AED)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 24, margin: '0 auto 12px' }}>V</div>
           <div style={{ fontSize: 12, color: C.textMuted }}>{isRTL ? `الخطوة ${step} من 3` : `Step ${step} of 3`}</div>
-          <div style={{ display: 'flex', gap: 6, justifyContent: 'center', marginTop: 10 }}>
-            {[1, 2, 3].map(s => <div key={s} style={{ width: 40, height: 4, borderRadius: 2, background: s <= step ? color : C.border, transition: 'background .3s' }} />)}
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+            {[1, 2, 3].map(s => <div key={s} style={{ width: 40, height: 4, borderRadius: 2, background: s <= step ? color : C.border, transition: 'all 150ms ease' }} />)}
           </div>
         </div>
 
-        <div style={{ background: C.white, borderRadius: 16, padding: 32, border: `1px solid ${C.border}`, boxShadow: '0 4px 24px rgba(0,0,0,.06)' }}>
-          {error && <div style={{ padding: '10px 14px', borderRadius: 8, marginBottom: 16, background: '#FFEBE9', fontSize: 13, color: '#CF222E' }}>{error}</div>}
+        <div style={{ background: C.white, borderRadius: 12, padding: 32, border: `1px solid ${C.border}`, boxShadow: '0 4px 24px rgba(0,0,0,.06)' }}>
+          {error && <div style={{ padding: '8px 12px', borderRadius: 8, marginBottom: 16, background: C.dangerBg, fontSize: 13, color: C.danger }}>{error}</div>}
 
           {/* Step 1: Org name + color */}
           {step === 1 && (
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px' }}>{txt.step1Title}</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{txt.step1Title}</h2>
               <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 24px' }}>{txt.step1Sub}</p>
-              <div style={{ marginBottom: 20 }}>
-                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSec, marginBottom: 6 }}>{txt.orgLabel}</label>
+              <div style={{ marginBottom: 24 }}>
+                <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: C.textSec, marginBottom: 8 }}>{txt.orgLabel}</label>
                 <input value={orgName} onChange={e => setOrgName(e.target.value)} placeholder={txt.orgPlaceholder} style={inputStyle} autoFocus />
               </div>
               <div>
@@ -115,8 +116,8 @@ export default function OnboardingPage({ user, lang, onComplete }) {
                 <div style={{ display: 'flex', gap: 8 }}>
                   {COLORS.map(c => (
                     <button key={c} onClick={() => setColor(c)} style={{
-                      width: 36, height: 36, borderRadius: 10, background: c, border: color === c ? '3px solid #1F2328' : '3px solid transparent',
-                      cursor: 'pointer', transition: 'border-color .2s',
+                      width: 36, height: 36, borderRadius: 8, background: c, border: color === c ? `3px solid ${C.text}` : '3px solid transparent',
+                      cursor: 'pointer', transition: 'all 150ms ease',
                     }} />
                   ))}
                 </div>
@@ -127,15 +128,15 @@ export default function OnboardingPage({ user, lang, onComplete }) {
           {/* Step 2: Industry */}
           {step === 2 && (
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px' }}>{txt.step2Title}</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{txt.step2Title}</h2>
               <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 24px' }}>{txt.step2Sub}</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {INDUSTRIES.map(ind => (
                   <button key={ind.id} onClick={() => setIndustry(ind.id)} style={{
-                    display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', borderRadius: 12,
+                    display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px', borderRadius: 8,
                     border: industry === ind.id ? `2px solid ${color}` : `1px solid ${C.border}`,
                     background: industry === ind.id ? `${color}08` : C.white,
-                    cursor: 'pointer', fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'all .15s',
+                    cursor: 'pointer', fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'all 150ms ease',
                   }}>
                     <span style={{ fontSize: 24 }}>{ind.icon}</span>
                     <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{isRTL ? ind.ar : ind.en}</span>
@@ -149,13 +150,13 @@ export default function OnboardingPage({ user, lang, onComplete }) {
           {/* Step 3: Invite */}
           {step === 3 && (
             <div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px' }}>{txt.step3Title}</h2>
+              <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{txt.step3Title}</h2>
               <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 24px' }}>{txt.step3Sub}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {invites.map((email, i) => (
                   <input key={i} value={email} onChange={e => { const n = [...invites]; n[i] = e.target.value; setInvites(n) }} placeholder={txt.emailPlaceholder} style={inputStyle} />
                 ))}
-                <button onClick={() => setInvites(prev => [...prev, ''])} style={{ border: 'none', background: 'transparent', color, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', padding: '4px 0' }}>
+                <button onClick={() => setInvites(prev => [...prev, ''])} style={{ border: 'none', background: 'transparent', color, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', padding: '4px 0', transition: 'all 150ms ease' }}>
                   {txt.addAnother}
                 </button>
               </div>
@@ -163,20 +164,20 @@ export default function OnboardingPage({ user, lang, onComplete }) {
           )}
 
           {/* Navigation */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 28 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 32 }}>
             {step > 1 ? (
-              <button onClick={() => setStep(s => s - 1)} style={{ border: `1px solid ${C.border}`, background: C.white, borderRadius: 10, padding: '10px 20px', fontSize: 14, fontWeight: 600, color: C.textSec, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <button onClick={() => setStep(s => s - 1)} style={{ border: `1px solid ${C.border}`, background: C.white, borderRadius: 6, padding: '0 20px', height: 36, fontSize: 14, fontWeight: 500, color: C.textSec, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms ease' }}>
                 {txt.back}
               </button>
             ) : <div />}
             <div style={{ display: 'flex', gap: 8 }}>
               {step === 3 && (
-                <button onClick={handleSkip} style={{ border: `1px solid ${C.border}`, background: C.white, borderRadius: 10, padding: '10px 20px', fontSize: 14, fontWeight: 600, color: C.textSec, cursor: 'pointer', fontFamily: 'inherit' }}>
+                <button onClick={handleSkip} style={{ border: `1px solid ${C.border}`, background: C.white, borderRadius: 6, padding: '0 20px', height: 36, fontSize: 14, fontWeight: 500, color: C.textSec, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms ease' }}>
                   {txt.skip}
                 </button>
               )}
               <button onClick={() => step < 3 ? setStep(s => s + 1) : handleFinish()} disabled={loading}
-                style={{ border: 'none', background: color, borderRadius: 10, padding: '10px 24px', fontSize: 14, fontWeight: 600, color: '#fff', cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit', boxShadow: `0 2px 8px ${color}40` }}>
+                style={{ border: 'none', background: color, borderRadius: 6, padding: '0 24px', height: 36, fontSize: 14, fontWeight: 500, color: '#fff', cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit', boxShadow: `0 2px 8px ${color}40`, transition: 'all 150ms ease' }}>
                 {loading ? '...' : step < 3 ? txt.next : txt.finish}
               </button>
             </div>

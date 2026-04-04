@@ -24,7 +24,10 @@ export async function callClaude({ apiKey, messages, system, maxTokens = 1024 })
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error?.message || `Claude API error: ${res.status}`)
+    const rawMsg = err.error?.message || ''
+    // Sanitize error message to never leak the API key
+    const safeMsg = apiKey && rawMsg.includes(apiKey) ? `Claude API error: ${res.status}` : (rawMsg || `Claude API error: ${res.status}`)
+    throw new Error(safeMsg)
   }
 
   const data = await res.json()

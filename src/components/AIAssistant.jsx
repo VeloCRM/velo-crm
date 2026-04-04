@@ -42,7 +42,7 @@ export default function AIAssistant({ open, onClose, apiKey, context, lang, know
       const reply = await askAssistant({ apiKey: resolvedKey, question: msg, context: fullContext, history: messages.slice(-10) })
       const updated = [...next, { role: 'assistant', content: reply }]
       setMessages(updated); saveHistory(updated)
-    } catch (err) { setError(err.message) }
+    } catch (err) { setError(isRTL ? 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي. تحقق من مفتاح API والشبكة.' : 'Failed to reach the AI service. Please check your API key and network connection.') }
     finally { setLoading(false) }
   }
 

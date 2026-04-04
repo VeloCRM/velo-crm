@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { C } from '../design'
+import { stripHtml } from '../lib/sanitize'
 
 export default function CommandPalette({ open, onClose, contacts, deals, tickets, onNavigate, onAction, lang }) {
   const [query, setQuery] = useState('')
@@ -31,7 +32,7 @@ export default function CommandPalette({ open, onClose, contacts, deals, tickets
 
   if (!open) return null
 
-  const q = query.toLowerCase()
+  const q = stripHtml(query).toLowerCase()
 
   // Navigation pages
   const pages = [

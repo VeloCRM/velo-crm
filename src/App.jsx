@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { T } from './translations'
 import { C, CAT_COLORS, STAGE_COLORS, makeBtn, card } from './design'
 import {
@@ -7,16 +7,16 @@ import {
   SAMPLE_CONVERSATIONS, SAMPLE_TICKETS,
 } from './sampleData'
 import AuthPage from './pages/Auth'
-import CalendarPage from './pages/CalendarPage'
-import AutomationsPage from './pages/AutomationsPage'
-import IntegrationsPage from './pages/IntegrationsPage'
-import ReportsPage from './pages/ReportsPage'
-import SettingsPage from './pages/SettingsPage'
-import OnboardingPage from './pages/Onboarding'
-import ReportBuilder from './pages/ReportBuilder'
-import FormsPage from './pages/FormsPage'
-import SocialPage from './pages/SocialPage'
-import FinancePage from './pages/FinancePage'
+const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const AutomationsPage = lazy(() => import('./pages/AutomationsPage'))
+const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
+const ReportsPage = lazy(() => import('./pages/ReportsPage'))
+const SettingsPage = lazy(() => import('./pages/SettingsPage'))
+const OnboardingPage = lazy(() => import('./pages/Onboarding'))
+const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
+const FormsPage = lazy(() => import('./pages/FormsPage'))
+const SocialPage = lazy(() => import('./pages/SocialPage'))
+const FinancePage = lazy(() => import('./pages/FinancePage'))
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
 import NotificationCenter from './components/NotificationCenter'
@@ -30,7 +30,7 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
 import { calculateLeadScore } from './lib/ai'
-import { sanitizeContact, sanitizeDeal, sanitizeTicket, sanitizeNotes, isSessionExpired, touchSession, clearAllVeloData } from './lib/sanitize'
+import { sanitizeContact, sanitizeDeal, sanitizeTicket, isSessionExpired, touchSession, clearAllVeloData } from './lib/sanitize'
 import './App.css'
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
@@ -77,7 +77,7 @@ const Icons = {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', GBP:'£', IQD:'IQD ', AED:'AED ', SAR:'SAR ' }
 const fmtMoney = (n, currency) => (CURRENCY_SYMBOLS[currency] || '$') + Number(n||0).toLocaleString()
-const fmt$ = (n) => '$' + n.toLocaleString()
+const fmt$ = (n) => '$' + Number(n||0).toLocaleString()
 const WIDGET_IDS = ['stats','chart','tasks','recentContacts','pipeline','ticketStats','activity','inboxPreview','appointments','topLeads','pendingPayments','financeSummary']
 const DEFAULT_LAYOUT = {
   order: WIDGET_IDS,
@@ -354,7 +354,7 @@ export default function App() {
   }
 
   if (needsOnboarding) {
-    return <OnboardingPage user={user} lang={lang} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} />
+    return <Suspense fallback={<SkeletonGeneric />}><OnboardingPage user={user} lang={lang} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} /></Suspense>
   }
 
   const toggleLang = () => setLang(l => l === 'en' ? 'ar' : 'en')
@@ -663,15 +663,15 @@ export default function App() {
               {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} />}
               {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} />}
               {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} />}
-              {page === 'calendar' && <CalendarPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} />}
-              {page === 'automations' && <AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} />}
-              {page === 'forms' && <FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} />}
-              {page === 'social' && <SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} />}
-              {page === 'finance' && <FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} />}
-              {page === 'integrations' && <IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} />}
-              {page === 'reports' && <ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} />}
-              {page === 'report-builder' && <ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} />}
-              {page === 'settings' && <SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={settingsTab} key={settingsTab || 'settings'} />}
+              {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><CalendarPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
+              {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
+              {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
+              {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} /></Suspense>}
+              {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} /></Suspense>}
+              {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
+              {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
+              {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} /></Suspense>}
+              {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={settingsTab} key={settingsTab || 'settings'} /></Suspense>}
             </>
           )}
         </div>
@@ -1135,7 +1135,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
 
   const filtered = contacts.filter(c => {
     const q = search.toLowerCase()
-    const matchSearch = !q || c.name.toLowerCase().includes(q) || c.email.toLowerCase().includes(q) || c.company.toLowerCase().includes(q) || (c.city||'').toLowerCase().includes(q) || (c.tags||[]).some(tag => tag.toLowerCase().includes(q))
+    const matchSearch = !q || (c.name||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.company||'').toLowerCase().includes(q) || (c.city||'').toLowerCase().includes(q) || (c.tags||[]).some(tag => tag.toLowerCase().includes(q))
     const matchStatus = filterStatus === 'all' || c.status === filterStatus
     const matchCat = filterCategory === 'all' || c.category === filterCategory
     return matchSearch && matchStatus && matchCat
@@ -2198,7 +2198,7 @@ function DealFormModal({ t, dir, contacts, deal, defaultContactId, stages, onSav
   // Auto-fill contact info
   const handleContactChange = (cId) => {
     const c = contacts.find(x => x.id === cId)
-    if (c) set('contactId', cId); set('contact', c?.name || ''); set('company', c?.company || '')
+    if (c) { set('contactId', cId); set('contact', c.name || ''); set('company', c.company || '') }
   }
 
   const handleSubmit = () => {
@@ -2804,7 +2804,7 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
 
   const filtered = tickets.filter(tk => {
     const q = search.toLowerCase()
-    const matchSearch = !q || tk.ticketId.toLowerCase().includes(q) || tk.subject.toLowerCase().includes(q) || tk.contactName.toLowerCase().includes(q)
+    const matchSearch = !q || (tk.ticketId||'').toLowerCase().includes(q) || (tk.subject||'').toLowerCase().includes(q) || (tk.contactName||'').toLowerCase().includes(q)
     const matchStatus = filterStatus === 'all' || tk.status === filterStatus
     const matchPriority = filterPriority === 'all' || tk.priority === filterPriority
     const matchDept = filterDept === 'all' || tk.department === filterDept

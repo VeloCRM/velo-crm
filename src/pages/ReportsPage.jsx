@@ -30,7 +30,7 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
 
   // Ticket priority breakdown
   const priorities = ['low', 'medium', 'high', 'urgent']
-  const priorityColors = { low: '#1A7F37', medium: '#D29922', high: '#E16F24', urgent: '#CF222E' }
+  const priorityColors = { low: C.success, medium: C.warning, high: '#E16F24', urgent: C.danger }
   const priorityData = priorities.map(p => ({ p, count: tickets.filter(tk => tk.priority === p).length }))
   const totalTickets = tickets.length || 1
 
@@ -43,10 +43,10 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
 
   const metrics = [
     { label: t.totalContacts, value: totalContacts, icon: Icons.users, color: C.primary, bg: C.primaryBg },
-    { label: t.contactsAdded || 'New Contacts', value: newContacts, icon: Icons.plus, color: '#1A7F37', bg: '#DAFBE1' },
-    { label: t.dealsWon || 'Deals Won', value: dealsWon.length, icon: Icons.check, color: '#8250DF', bg: '#FBEFFF' },
-    { label: t.revenue || 'Revenue', value: fmt$(revenue), icon: Icons.dollar, color: '#D29922', bg: '#FFF8C5' },
-    { label: lang === 'ar' ? 'تذاكر محلولة' : 'Tickets Resolved', value: resolvedTickets, icon: Icons.check, color: '#1A7F37', bg: '#DAFBE1' },
+    { label: t.contactsAdded || 'New Contacts', value: newContacts, icon: Icons.plus, color: C.success, bg: C.successBg },
+    { label: t.dealsWon || 'Deals Won', value: dealsWon.length, icon: Icons.check, color: C.purple, bg: C.purpleBg },
+    { label: t.revenue || 'Revenue', value: fmt$(revenue), icon: Icons.dollar, color: C.warning, bg: C.warningBg },
+    { label: lang === 'ar' ? 'تذاكر محلولة' : 'Tickets Resolved', value: resolvedTickets, icon: Icons.check, color: C.success, bg: C.successBg },
     { label: lang === 'ar' ? 'متوسط وقت الرد' : 'Avg Response', value: '2.4h', icon: Icons.clock, color: C.primary, bg: C.primaryBg },
   ]
 
@@ -54,13 +54,13 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
     <div style={{ direction: dir }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0 }}>{t.reports}</h1>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0, fontFamily: 'DM Sans,Inter,sans-serif' }}>{t.reports}</h1>
           <p style={{ fontSize: 13, color: C.textSec, marginTop: 4 }}>{lang === 'ar' ? 'نظرة عامة على الأداء' : 'Performance overview'}</p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <div style={{ display: 'flex', borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
             {RANGES.map(r => (
-              <button key={r.id} onClick={() => setRange(r.id)} style={{ padding: '6px 14px', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: range === r.id ? C.primary : C.white, color: range === r.id ? '#fff' : C.textSec }}>{r.label}</button>
+              <button key={r.id} onClick={() => setRange(r.id)} style={{ padding: '6px 16px', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: range === r.id ? C.primary : C.white, color: range === r.id ? '#fff' : C.textSec, transition: 'all 150ms ease' }}>{r.label}</button>
             ))}
           </div>
           <button style={makeBtn('secondary', { gap: 6 })}>{Icons.download(14)} {lang === 'ar' ? 'تصدير PDF' : 'Export PDF'}</button>
@@ -69,22 +69,22 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
       </div>
 
       {/* Metrics */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 14, marginBottom: 24 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 16, marginBottom: 24 }}>
         {metrics.map((m, i) => (
           <div key={i} style={{ ...card, padding: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <span style={{ fontSize: 11, color: C.textMuted, fontWeight: 500 }}>{m.label}</span>
-              <div style={{ width: 30, height: 30, borderRadius: 8, background: m.bg, color: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{m.icon(14)}</div>
+              <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 500 }}>{m.label}</span>
+              <div style={{ width: 32, height: 32, borderRadius: 8, background: m.bg, color: m.color, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{m.icon(14)}</div>
             </div>
             <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{m.value}</div>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 24 }}>
         {/* Revenue trend */}
         <div style={{ ...card, padding: 20 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px' }}>{t.monthlyRevenue || 'Revenue Trend'}</h3>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{t.monthlyRevenue || 'Revenue Trend'}</h3>
           <svg width="100%" viewBox="0 0 500 160" style={{ display: 'block' }}>
             <defs><linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor={C.primary} stopOpacity=".15" /><stop offset="100%" stopColor={C.primary} stopOpacity=".01" /></linearGradient></defs>
             {[0, .25, .5, .75, 1].map((p, i) => <line key={i} x1="30" y1={10 + 130 * (1 - p)} x2="490" y2={10 + 130 * (1 - p)} stroke={C.border} strokeDasharray="4 4" />)}
@@ -99,15 +99,15 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
 
         {/* Deals by stage */}
         <div style={{ ...card, padding: 20 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px' }}>{t.dealsByStage || 'Deals by Stage'}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{t.dealsByStage || 'Deals by Stage'}</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {stageData.map(s => {
               const sc = STAGE_COLORS[s.stage]
               return (
-                <div key={s.stage} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span style={{ fontSize: 11, fontWeight: 600, color: C.textSec, width: 80, textAlign: isRTL ? 'right' : 'left' }}>{s.label}</span>
-                  <div style={{ flex: 1, height: 22, background: C.bg, borderRadius: 6, overflow: 'hidden' }}>
-                    <div style={{ height: '100%', borderRadius: 6, background: sc.accent, width: `${(s.count / maxStageCount) * 100}%`, transition: 'width .4s', display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
+                <div key={s.stage} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: C.textSec, width: 80, textAlign: isRTL ? 'right' : 'left' }}>{s.label}</span>
+                  <div style={{ flex: 1, height: 24, background: C.bg, borderRadius: 6, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', borderRadius: 6, background: sc.accent, width: `${(s.count / maxStageCount) * 100}%`, transition: 'all 150ms ease', display: 'flex', alignItems: 'center', paddingLeft: 8 }}>
                       {s.count > 0 && <span style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{s.count}</span>}
                     </div>
                   </div>
@@ -121,7 +121,7 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 20 }}>
         {/* Tickets by priority */}
         <div style={{ ...card, padding: 20 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px' }}>{lang === 'ar' ? 'التذاكر حسب الأولوية' : 'Tickets by Priority'}</h3>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{lang === 'ar' ? 'التذاكر حسب الأولوية' : 'Tickets by Priority'}</h3>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}>
             <svg width="140" height="140" viewBox="0 0 140 140">
               {(() => {
@@ -139,9 +139,9 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
               <text x="70" y="82" textAnchor="middle" fontSize="10" fill={C.textMuted}>{lang === 'ar' ? 'تذكرة' : 'tickets'}</text>
             </svg>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {priorityData.map(({ p, count }) => (
-              <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12 }}>
+              <div key={p} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <div style={{ width: 10, height: 10, borderRadius: 3, background: priorityColors[p] }} />
                   <span style={{ color: C.textSec, textTransform: 'capitalize' }}>{t[`priority${p.charAt(0).toUpperCase() + p.slice(1)}`] || p}</span>
@@ -154,18 +154,18 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
 
         {/* Top contacts */}
         <div style={{ ...card, padding: 20 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px' }}>{t.topContacts || 'Top Contacts by Value'}</h3>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{t.topContacts || 'Top Contacts by Value'}</h3>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.border}` }}>
                 {[t.name, t.company, lang === 'ar' ? 'الصفقات' : 'Deals', t.value].map((h, i) => (
-                  <th key={i} style={{ padding: '8px 12px', textAlign: isRTL ? 'right' : 'left', fontWeight: 600, color: C.textMuted, fontSize: 11 }}>{h}</th>
+                  <th key={i} style={{ padding: '8px 12px', textAlign: isRTL ? 'right' : 'left', fontWeight: 500, color: '#374151', fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {topContacts.map(c => (
-                <tr key={c.id} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <tr key={c.id} style={{ borderBottom: `1px solid ${C.border}`, transition: 'all 150ms ease' }}>
                   <td style={{ padding: '10px 12px', fontWeight: 600, color: C.text }}>{c.name}</td>
                   <td style={{ padding: '10px 12px', color: C.textSec }}>{c.company}</td>
                   <td style={{ padding: '10px 12px', color: C.textSec }}>{c.dealCount}</td>

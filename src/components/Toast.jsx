@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { C } from '../design'
 
 const TYPE_STYLES = {
@@ -20,20 +20,28 @@ let _toastId = 0
 
 export function useToast() {
   const [toasts, setToasts] = useState([])
+  const timersRef = useRef([])
+
+  useEffect(() => {
+    return () => { timersRef.current.forEach(t => clearTimeout(t)); timersRef.current = [] }
+  }, [])
 
   const addToast = useCallback((message, type = 'success', duration = 3500) => {
     const id = ++_toastId
     setToasts(prev => [...prev, { id, message, type, removing: false }])
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
       setToasts(prev => prev.map(t => t.id === id ? { ...t, removing: true } : t))
-      setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300)
+      const t2 = setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300)
+      timersRef.current.push(t2)
     }, duration)
+    timersRef.current.push(t1)
     return id
   }, [])
 
   const removeToast = useCallback((id) => {
     setToasts(prev => prev.map(t => t.id === id ? { ...t, removing: true } : t))
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300)
+    const t = setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 300)
+    timersRef.current.push(t)
   }, [])
 
   return { toasts, addToast, removeToast }

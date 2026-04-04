@@ -24,6 +24,13 @@ const HOURS = Array.from({ length: 14 }, (_, i) => i + 7) // 7am to 8pm
 function loadEvents() { try { return JSON.parse(localStorage.getItem('velo_calendar_events')||'null') || SAMPLE_APPOINTMENTS } catch { return SAMPLE_APPOINTMENTS } }
 function saveEvents(e) { localStorage.setItem('velo_calendar_events', JSON.stringify(e)) }
 
+function toLocalDateStr(d) {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 function getWeekDates(date) {
   const d = new Date(date)
   const day = d.getDay()
@@ -48,7 +55,7 @@ export default function CalendarPage({ t, lang, dir, isRTL, contacts, toast }) {
   const year = currentDate.getFullYear()
   const month = currentDate.getMonth()
   const today = new Date()
-  const todayStr = today.toISOString().slice(0, 10)
+  const todayStr = toLocalDateStr(today)
 
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const firstDay = new Date(year, month, 1).getDay()
@@ -83,7 +90,7 @@ export default function CalendarPage({ t, lang, dir, isRTL, contacts, toast }) {
         if (ev.recurring === 'daily') d.setDate(d.getDate() + i)
         else if (ev.recurring === 'weekly') d.setDate(d.getDate() + (i * 7))
         else if (ev.recurring === 'monthly') d.setMonth(d.getMonth() + i)
-        recurringEvents.push({ ...ev, id: `evt_${Date.now()}_r${i}`, date: d.toISOString().slice(0, 10), parentId: newEvent.id })
+        recurringEvents.push({ ...ev, id: `evt_${Date.now()}_r${i}`, date: toLocalDateStr(d), parentId: newEvent.id })
       }
       persist([...events, ...recurringEvents])
     } else {
@@ -190,7 +197,7 @@ export default function CalendarPage({ t, lang, dir, isRTL, contacts, toast }) {
               <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(7, 1fr)', borderBottom: `1px solid ${C.border}`, position: 'sticky', top: 0, background: C.white, zIndex: 2 }}>
                 <div style={{ padding: 8, borderRight: `1px solid ${C.border}` }} />
                 {weekDates.map((d, i) => {
-                  const dateStr = d.toISOString().slice(0, 10)
+                  const dateStr = toLocalDateStr(d)
                   const isTd = dateStr === todayStr
                   return (
                     <div key={i} style={{ padding: '8px 4px', textAlign: 'center', borderRight: `1px solid ${C.border}`, background: isTd ? `${C.primary}08` : 'transparent' }}>
@@ -208,7 +215,7 @@ export default function CalendarPage({ t, lang, dir, isRTL, contacts, toast }) {
                       {hour > 12 ? `${hour-12} PM` : hour === 12 ? '12 PM' : `${hour} AM`}
                     </div>
                     {weekDates.map((d, di) => {
-                      const dateStr = d.toISOString().slice(0, 10)
+                      const dateStr = toLocalDateStr(d)
                       const hourEvents = getEventsForDate(dateStr).filter(ev => {
                         const evHour = parseInt((ev.time || '00:00').split(':')[0])
                         return evHour === hour
@@ -240,7 +247,7 @@ export default function CalendarPage({ t, lang, dir, isRTL, contacts, toast }) {
             <div style={{ ...card, overflow: 'hidden' }}>
               <div style={{ maxHeight: 560, overflow: 'auto' }}>
                 {HOURS.map(hour => {
-                  const dateStr = currentDate.toISOString().slice(0, 10)
+                  const dateStr = toLocalDateStr(currentDate)
                   const hourEvents = getEventsForDate(dateStr).filter(ev => {
                     const evHour = parseInt((ev.time || '00:00').split(':')[0])
                     return evHour === hour

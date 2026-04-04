@@ -71,19 +71,19 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
     <div style={{ direction: dir }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button onClick={onBack} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textSec, display: 'flex' }}>
+          <button onClick={onBack} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textSec, display: 'flex', transition: 'all 150ms ease' }}>
             {isRTL ? Icons.arrowRight(20) : Icons.arrowLeft(20)}
           </button>
           <div>
             <input value={reportName} onChange={e => setReportName(e.target.value)}
               placeholder={isRTL ? 'اسم التقرير...' : 'Report name...'}
-              style={{ border: 'none', outline: 'none', fontSize: 22, fontWeight: 700, color: C.text, fontFamily: 'inherit', background: 'transparent', direction: dir, width: 300 }} />
+              style={{ border: 'none', outline: 'none', fontSize: 22, fontWeight: 700, color: C.text, fontFamily: 'DM Sans,Inter,sans-serif', background: 'transparent', direction: dir, width: 300 }} />
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <div style={{ display: 'flex', borderRadius: 8, border: `1px solid ${C.border}`, overflow: 'hidden' }}>
             {[{ id: '7', l: '7D' }, { id: '30', l: '30D' }, { id: '90', l: '90D' }].map(r => (
-              <button key={r.id} onClick={() => setRange(r.id)} style={{ padding: '6px 12px', border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: range === r.id ? C.primary : C.white, color: range === r.id ? '#fff' : C.textSec }}>{r.l}</button>
+              <button key={r.id} onClick={() => setRange(r.id)} style={{ padding: '6px 12px', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: range === r.id ? C.primary : C.white, color: range === r.id ? '#fff' : C.textSec, transition: 'all 150ms ease' }}>{r.l}</button>
             ))}
           </div>
           <button onClick={() => setShowMetricPicker(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مقياس' : 'Add Metric'}</button>
@@ -95,12 +95,12 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
 
       {/* Canvas */}
       {widgets.length === 0 ? (
-        <div style={{ ...card, padding: 60, textAlign: 'center' }}>
+        <div style={{ ...card, padding: 48, textAlign: 'center' }}>
           <div style={{ fontSize: 48, marginBottom: 16 }}>📊</div>
-          <h3 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
+          <h3 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 8px', fontFamily: 'DM Sans,Inter,sans-serif' }}>
             {isRTL ? 'ابدأ بإضافة مقاييس' : 'Start by adding metrics'}
           </h3>
-          <p style={{ fontSize: 13, color: C.textMuted, margin: '0 0 20px' }}>
+          <p style={{ fontSize: 13, color: C.textMuted, margin: '0 0 24px' }}>
             {isRTL ? 'اختر مقاييس من المكتبة لبناء تقريرك المخصص' : 'Choose metrics from the library to build your custom report'}
           </p>
           <button onClick={() => setShowMetricPicker(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مقياس' : 'Add Metric'}</button>
@@ -112,19 +112,19 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
             if (!metric) return null
             return (
               <div key={w.id} style={{ ...card, padding: 20 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 18 }}>{metric.icon}</span>
                     <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{metric.label}</span>
                   </div>
-                  <button onClick={() => removeWidget(w.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted }}>{Icons.x(14)}</button>
+                  <button onClick={() => removeWidget(w.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, transition: 'all 150ms ease' }}>{Icons.x(14)}</button>
                 </div>
 
                 {/* Viz selector */}
-                <div style={{ display: 'flex', gap: 4, marginBottom: 14 }}>
+                <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
                   {VIZ_TYPES.map(v => (
                     <button key={v.id} onClick={() => setViz(w.id, v.id)}
-                      style={{ padding: '3px 8px', borderRadius: 4, border: 'none', fontSize: 10, cursor: 'pointer', fontFamily: 'inherit', background: w.viz === v.id ? C.primary : C.bg, color: w.viz === v.id ? '#fff' : C.textSec }}>
+                      style={{ padding: '4px 8px', borderRadius: 4, border: 'none', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', background: w.viz === v.id ? C.primary : C.bg, color: w.viz === v.id ? '#fff' : C.textSec, transition: 'all 150ms ease' }}>
                       {v.icon} {v.label}
                     </button>
                   ))}
@@ -137,9 +137,9 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
                   </div>
                 )}
                 {w.viz === 'bar' && (
-                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 100, padding: '0 8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, height: 100, padding: '0 8px' }}>
                     {[40, 65, 45, 80, 55, 90, 70].map((h, i) => (
-                      <div key={i} style={{ flex: 1, height: `${h}%`, background: `${C.primary}${i === 5 ? '' : '80'}`, borderRadius: '4px 4px 0 0', transition: 'height .3s' }} />
+                      <div key={i} style={{ flex: 1, height: `${h}%`, background: `${C.primary}${i === 5 ? '' : '80'}`, borderRadius: '4px 4px 0 0', transition: 'all 150ms ease' }} />
                     ))}
                   </div>
                 )}
@@ -153,16 +153,16 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
                   <div style={{ display: 'flex', justifyContent: 'center', padding: 8 }}>
                     <svg width="80" height="80" viewBox="0 0 80 80">
                       <circle cx="40" cy="40" r="30" fill="none" stroke={C.primary} strokeWidth="12" strokeDasharray="75 113" transform="rotate(-90 40 40)" />
-                      <circle cx="40" cy="40" r="30" fill="none" stroke="#8250DF" strokeWidth="12" strokeDasharray="45 143" strokeDashoffset="-75" transform="rotate(-90 40 40)" />
-                      <circle cx="40" cy="40" r="30" fill="none" stroke="#D29922" strokeWidth="12" strokeDasharray="30 158" strokeDashoffset="-120" transform="rotate(-90 40 40)" />
+                      <circle cx="40" cy="40" r="30" fill="none" stroke={C.purple} strokeWidth="12" strokeDasharray="45 143" strokeDashoffset="-75" transform="rotate(-90 40 40)" />
+                      <circle cx="40" cy="40" r="30" fill="none" stroke={C.warning} strokeWidth="12" strokeDasharray="30 158" strokeDashoffset="-120" transform="rotate(-90 40 40)" />
                       <circle cx="40" cy="40" r="30" fill="none" stroke={C.border} strokeWidth="12" strokeDasharray="38 150" strokeDashoffset="-150" transform="rotate(-90 40 40)" />
                     </svg>
                   </div>
                 )}
                 {w.viz === 'table' && (
-                  <div style={{ fontSize: 12 }}>
+                  <div style={{ fontSize: 13 }}>
                     {[['Item', 'Value'], ['Q1', '$12,400'], ['Q2', '$18,600'], ['Q3', '$24,200']].map((row, i) => (
-                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: i === 0 ? `1px solid ${C.border}` : 'none', fontWeight: i === 0 ? 600 : 400, color: i === 0 ? C.textSec : C.text }}>
+                      <div key={i} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: i === 0 ? `1px solid ${C.border}` : 'none', fontWeight: i === 0 ? 500 : 400, color: i === 0 ? '#374151' : C.text, fontSize: i === 0 ? 12 : 13, textTransform: i === 0 ? 'uppercase' : 'none', letterSpacing: i === 0 ? '0.05em' : 'normal' }}>
                         <span>{row[0]}</span><span>{row[1]}</span>
                       </div>
                     ))}
@@ -178,26 +178,26 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
       {showMetricPicker && (
         <Modal onClose={() => setShowMetricPicker(false)} dir={dir} width={500}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'مكتبة المقاييس' : 'Metrics Library'}</h2>
-            <button onClick={() => setShowMetricPicker(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted }}>{Icons.x(20)}</button>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0, fontFamily: 'DM Sans,Inter,sans-serif' }}>{isRTL ? 'مكتبة المقاييس' : 'Metrics Library'}</h2>
+            <button onClick={() => setShowMetricPicker(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, transition: 'all 150ms ease' }}>{Icons.x(20)}</button>
           </div>
           <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
             {['all', ...CATEGORIES].map(cat => (
               <button key={cat} onClick={() => setFilterCat(cat)}
-                style={{ padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: filterCat === cat ? C.primary : C.bg, color: filterCat === cat ? '#fff' : C.textSec, textTransform: 'capitalize' }}>
+                style={{ padding: '4px 12px', borderRadius: 6, border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: filterCat === cat ? C.primary : C.bg, color: filterCat === cat ? '#fff' : C.textSec, textTransform: 'capitalize', transition: 'all 150ms ease' }}>
                 {cat === 'all' ? (isRTL ? 'الكل' : 'All') : cat}
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             {METRICS.filter(m => filterCat === 'all' || m.category === filterCat).map(m => (
               <button key={m.id} onClick={() => addWidget(m.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'background .1s' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderRadius: 8, border: `1px solid ${C.border}`, background: C.white, cursor: 'pointer', fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'all 150ms ease' }}
                 onMouseEnter={e => e.currentTarget.style.background = C.bg}
                 onMouseLeave={e => e.currentTarget.style.background = C.white}>
                 <span style={{ fontSize: 20 }}>{m.icon}</span>
                 <span style={{ fontSize: 13, fontWeight: 500, color: C.text, flex: 1 }}>{m.label}</span>
-                <span style={{ fontSize: 10, color: C.textMuted, background: C.bg, padding: '2px 6px', borderRadius: 4, textTransform: 'capitalize' }}>{m.category}</span>
+                <span style={{ fontSize: 12, color: C.textMuted, background: C.bg, padding: '2px 8px', borderRadius: 4, textTransform: 'capitalize' }}>{m.category}</span>
               </button>
             ))}
           </div>

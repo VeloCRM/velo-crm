@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
+import { sanitizeText, sanitizeName, maskApiKey } from '../lib/sanitize'
 
 const TABS = [
   { id: 'organization', icon: Icons.building || Icons.globe },
@@ -94,7 +95,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   const handleSave = () => {
-    if (onSave) onSave(form)
+    if (onSave) onSave({ ...form, name: sanitizeName(form.name) })
     setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
@@ -416,7 +417,7 @@ function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
     if (!newKeyName.trim()) return
     const raw = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('')
     const key = `velo_pk_live_${raw}`
-    const newEntry = { id: `key_${Date.now()}`, name: newKeyName.trim(), key, created: new Date().toISOString(), lastUsed: null }
+    const newEntry = { id: `key_${Date.now()}`, name: sanitizeName(newKeyName), key, created: new Date().toISOString(), lastUsed: null }
     const next = [...keys, newEntry]
     setKeys(next); persist({ generatedKeys: next })
     setNewKeyName(''); setShowNewForm(false)
@@ -429,7 +430,7 @@ function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
     if (toast) toast(ar ? 'تم إلغاء المفتاح' : 'API key revoked', 'success')
   }
 
-  const maskKey = (key) => key ? key.slice(0, 12) + '••••••••••••••' + key.slice(-4) : '••••••••••••••••'
+  const maskKey = (key) => maskApiKey(key)
 
   const saveExternal = () => {
     persist({ anthropic: anthropicKey, meta: metaToken, google: googleKey })
@@ -450,7 +451,7 @@ function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
       })
       if (res.ok) { setTestResult({ ok: true, msg: ar ? 'المفتاح يعمل بنجاح!' : 'Key is valid and working!' }) }
       else { const err = await res.json().catch(() => ({})); setTestResult({ ok: false, msg: err.error?.message || `Error ${res.status}` }) }
-    } catch (err) { setTestResult({ ok: false, msg: err.message }) }
+    } catch (err) { setTestResult({ ok: false, msg: ar ? 'فشل الاتصال بالخادم' : 'Connection failed. Check your network.' }) }
     finally { setTestingAnthropic(false) }
   }
 
@@ -727,7 +728,7 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
                     const { callClaude, buildAutoReplySystem } = await import('../lib/ai')
                     const reply = await callClaude({ apiKey, messages:[{role:'user',content:msg}], system: buildAutoReplySystem(knowledgeBase, personality, 'Test Customer'), maxTokens:256 })
                     setTestMessages(prev=>[...prev, {role:'assistant',content:reply}])
-                  } catch(err) { setTestMessages(prev=>[...prev, {role:'assistant',content:`Error: ${err.message}`}]) }
+                  } catch(err) { setTestMessages(prev=>[...prev, {role:'assistant',content: lang === 'ar' ? 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.' : 'An error occurred while contacting the AI service.'}]) }
                 }
               }} />
           </div>
