@@ -1,0 +1,714 @@
+import { useState, useRef } from 'react'
+import { C, makeBtn, card } from '../design'
+import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
+
+const TABS = [
+  { id: 'organization', icon: Icons.building || Icons.globe },
+  { id: 'profile', icon: Icons.user },
+  { id: 'team', icon: Icons.users },
+  { id: 'notifications', icon: Icons.bell },
+  { id: 'ai', icon: Icons.zap },
+  { id: 'integrations', icon: Icons.link },
+  { id: 'billing', icon: Icons.creditCard },
+  { id: 'apikeys', icon: Icons.key },
+]
+
+const INDUSTRIES = [
+  { id: 'general', icon: '🏢', en: 'General Business', ar: 'أعمال عامة' },
+  { id: 'dental', icon: '🦷', en: 'Dental Clinic', ar: 'عيادة أسنان' },
+  { id: 'real_estate', icon: '🏠', en: 'Real Estate', ar: 'عقارات' },
+  { id: 'beauty', icon: '💅', en: 'Beauty & Spa', ar: 'تجميل وسبا' },
+  { id: 'legal', icon: '⚖️', en: 'Legal Services', ar: 'خدمات قانونية' },
+  { id: 'restaurant', icon: '🍽️', en: 'Restaurant', ar: 'مطعم' },
+]
+
+const CURRENCIES = [
+  { id: 'USD', label: 'USD ($)' },
+  { id: 'IQD', label: 'IQD (د.ع)' },
+  { id: 'EUR', label: 'EUR (€)' },
+  { id: 'AED', label: 'AED (د.إ)' },
+  { id: 'SAR', label: 'SAR (ر.س)' },
+]
+
+const BRAND_COLORS = ['#0969DA','#8250DF','#1A7F37','#CF222E','#D29922','#E16F24','#0D9488','#6366F1','#EC4899','#1F2328']
+
+const SAMPLE_TEAM = [
+  { id: 'tm1', name: 'Admin User', email: 'admin@velo.app', role: 'admin', avatar: 'A' },
+  { id: 'tm2', name: 'Ahmed Hassan', email: 'ahmed@velo.app', role: 'editor', avatar: 'A' },
+  { id: 'tm3', name: 'Sarah Kim', email: 'sarah@velo.app', role: 'editor', avatar: 'S' },
+  { id: 'tm4', name: 'Maria Lopez', email: 'maria@velo.app', role: 'viewer', avatar: 'M' },
+]
+
+export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings }) {
+  const [tab, setTab] = useState('organization')
+
+  const tabLabels = {
+    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys',
+  }
+
+  return (
+    <div style={{ direction: dir }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: '0 0 24px' }}>{t.settings}</h1>
+      <div style={{ display: 'flex', gap: 24 }}>
+        {/* Sidebar tabs */}
+        <div style={{ width: 220, flexShrink: 0 }}>
+          <div style={{ ...card, padding: 8 }}>
+            {TABS.map(tb => (
+              <button key={tb.id} onClick={() => setTab(tb.id)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: 'none', background: tab === tb.id ? C.primaryBg : 'transparent', color: tab === tb.id ? C.primary : C.textSec, cursor: 'pointer', fontSize: 13, fontWeight: tab === tb.id ? 600 : 500, fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'all .15s' }}
+                onMouseEnter={e => { if (tab !== tb.id) e.currentTarget.style.background = C.bg }}
+                onMouseLeave={e => { if (tab !== tb.id) e.currentTarget.style.background = 'transparent' }}>
+                <span style={{ color: tab === tb.id ? C.primary : C.textMuted, display: 'flex' }}>{tb.icon(18)}</span>
+                {tabLabels[tb.id]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab content */}
+        <div style={{ flex: 1 }} className="fade-in" key={tab}>
+          {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
+          {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} />}
+          {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} />}
+          {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} />}
+          {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
+          {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
+          {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
+          {tab === 'apikeys' && <ApiKeysTab t={t} lang={lang} dir={dir} />}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
+  const [form, setForm] = useState({
+    name: orgSettings.name || '',
+    industry: orgSettings.industry || 'general',
+    primary_color: orgSettings.primary_color || '#0969DA',
+    currency: orgSettings.currency || 'USD',
+    timezone: orgSettings.timezone || 'America/New_York',
+  })
+  const [saved, setSaved] = useState(false)
+  const logoRef = useRef(null)
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  const handleSave = () => {
+    if (onSave) onSave(form)
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+  }
+
+  return (
+    <div>
+      {/* Company Info */}
+      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 20px' }}>{lang === 'ar' ? 'معلومات المؤسسة' : 'Organization Info'}</h2>
+
+        {/* Logo + Name */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: `linear-gradient(135deg, ${form.primary_color}, #8250DF)`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 700, flexShrink: 0 }}>
+            {(form.name || 'V').charAt(0).toUpperCase()}
+          </div>
+          <div style={{ flex: 1 }}>
+            <FormField label={lang === 'ar' ? 'اسم الشركة' : 'Company Name'} dir={dir}>
+              <input value={form.name} onChange={e => set('name', e.target.value)} placeholder={lang === 'ar' ? 'اسم شركتك' : 'Your company name'} style={inputStyle(dir)} />
+            </FormField>
+          </div>
+        </div>
+
+        {/* Industry */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 10 }}>{lang === 'ar' ? 'مجال العمل' : 'Industry'}</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+            {INDUSTRIES.map(ind => {
+              const active = form.industry === ind.id
+              return (
+                <button key={ind.id} onClick={() => set('industry', ind.id)} style={{
+                  padding: '14px 10px', borderRadius: 10, textAlign: 'center', cursor: 'pointer', fontFamily: 'inherit',
+                  border: active ? `2px solid ${form.primary_color}` : `1px solid ${C.border}`,
+                  background: active ? `${form.primary_color}10` : C.white,
+                  transition: 'all .15s',
+                }}>
+                  <div style={{ fontSize: 24, marginBottom: 4 }}>{ind.icon}</div>
+                  <div style={{ fontSize: 12, fontWeight: 600, color: active ? form.primary_color : C.text }}>{lang === 'ar' ? ind.ar : ind.en}</div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Brand Color */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 8 }}>{lang === 'ar' ? 'لون العلامة التجارية' : 'Brand Color'}</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {BRAND_COLORS.map(c => (
+              <button key={c} onClick={() => set('primary_color', c)} style={{
+                width: 32, height: 32, borderRadius: 8, background: c, cursor: 'pointer', padding: 0,
+                border: form.primary_color === c ? '3px solid #1F2328' : '3px solid transparent',
+                transition: 'border-color .15s',
+              }} />
+            ))}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
+          <FormField label={lang === 'ar' ? 'العملة' : 'Currency'} dir={dir}>
+            <select value={form.currency} onChange={e => set('currency', e.target.value)} style={selectStyle(dir)}>
+              {CURRENCIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            </select>
+          </FormField>
+          <FormField label={lang === 'ar' ? 'المنطقة الزمنية' : 'Timezone'} dir={dir}>
+            <select value={form.timezone} onChange={e => set('timezone', e.target.value)} style={selectStyle(dir)}>
+              {['America/New_York','America/Chicago','America/Los_Angeles','Europe/London','Asia/Dubai','Asia/Riyadh','Asia/Baghdad','Asia/Seoul'].map(tz =>
+                <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
+              )}
+            </select>
+          </FormField>
+        </div>
+      </div>
+
+      {/* Industry note */}
+      {form.industry === 'dental' && (
+        <div style={{ padding: '12px 16px', borderRadius: 10, background: '#DDF4FF', border: '1px solid #54AEFF44', marginBottom: 20, fontSize: 13, color: '#0969DA', lineHeight: 1.5 }}>
+          🦷 {lang === 'ar' ? 'وضع عيادة الأسنان مفعّل — ستظهر "المرضى" بدلاً من "جهات الاتصال" مع تبويبات المخطط الطبي والعلاجات والأشعة.' : 'Dental mode active — "Patients" replaces "Contacts" with Medical History, Dental Chart, Treatments, Prescriptions, and X-Rays tabs.'}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={handleSave} style={makeBtn(saved ? 'success' : 'primary', { gap: 6 })}>
+          {saved ? Icons.check(14) : null} {saved ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!') : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ProfileTab({ t, lang, dir, isRTL, user }) {
+  const [form, setForm] = useState({
+    fullName: user?.user_metadata?.full_name || 'Admin User',
+    email: user?.email || 'admin@velo.app',
+    phone: '+1 (555) 000-0000',
+    jobTitle: lang === 'ar' ? 'مدير المبيعات' : 'Sales Manager',
+    language: lang,
+    timezone: 'America/New_York',
+  })
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+  const fileRef = useRef(null)
+
+  return (
+    <div style={{ ...card, padding: 28 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 24px' }}>{t.profile}</h2>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 28 }}>
+        <div style={{ width: 72, height: 72, borderRadius: '50%', background: `linear-gradient(135deg, ${C.primary}, #8250DF)`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700 }}>
+          {form.fullName.charAt(0)}
+        </div>
+        <div>
+          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} />
+          <button onClick={() => fileRef.current?.click()} style={makeBtn('secondary', { fontSize: 12 })}>{Icons.upload(13)} {t.changePhoto}</button>
+          <p style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>JPG, PNG. Max 2MB</p>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
+        <FormField label={t.fullName} dir={dir}><input value={form.fullName} onChange={e => set('fullName', e.target.value)} style={inputStyle(dir)} /></FormField>
+        <FormField label={t.emailAddress} dir={dir}><input value={form.email} onChange={e => set('email', e.target.value)} type="email" style={inputStyle(dir)} /></FormField>
+        <FormField label={t.phoneNumber} dir={dir}><input value={form.phone} onChange={e => set('phone', e.target.value)} style={inputStyle(dir)} /></FormField>
+        <FormField label={t.jobTitle} dir={dir}><input value={form.jobTitle} onChange={e => set('jobTitle', e.target.value)} style={inputStyle(dir)} /></FormField>
+        <FormField label={t.language} dir={dir}>
+          <select value={form.language} onChange={e => set('language', e.target.value)} style={selectStyle(dir)}>
+            <option value="en">English</option>
+            <option value="ar">العربية</option>
+          </select>
+        </FormField>
+        <FormField label={t.timezone} dir={dir}>
+          <select value={form.timezone} onChange={e => set('timezone', e.target.value)} style={selectStyle(dir)}>
+            <option value="America/New_York">Eastern Time (ET)</option>
+            <option value="America/Chicago">Central Time (CT)</option>
+            <option value="America/Los_Angeles">Pacific Time (PT)</option>
+            <option value="Europe/London">London (GMT)</option>
+            <option value="Asia/Dubai">Dubai (GST)</option>
+            <option value="Asia/Riyadh">Riyadh (AST)</option>
+            <option value="Asia/Seoul">Seoul (KST)</option>
+          </select>
+        </FormField>
+      </div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
+        <button style={makeBtn('primary')}>{t.saveChanges}</button>
+      </div>
+    </div>
+  )
+}
+
+function TeamTab({ t, lang, dir, isRTL }) {
+  const [team, setTeam] = useState(SAMPLE_TEAM)
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteRole, setInviteRole] = useState('editor')
+
+  const invite = () => {
+    if (!inviteEmail.trim()) return
+    setTeam(prev => [...prev, { id: `tm${Date.now()}`, name: inviteEmail.split('@')[0], email: inviteEmail, role: inviteRole, avatar: inviteEmail.charAt(0).toUpperCase() }])
+    setInviteEmail('')
+  }
+
+  return (
+    <div>
+      {/* Invite */}
+      <div style={{ ...card, padding: 20, marginBottom: 20 }}>
+        <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>{t.inviteMember}</h2>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@company.com" style={{ ...inputStyle(dir), flex: 1 }} onKeyDown={e => e.key === 'Enter' && invite()} />
+          <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ ...selectStyle(dir), width: 120 }}>
+            <option value="admin">{t.admin}</option>
+            <option value="editor">{t.editor}</option>
+            <option value="viewer">{t.viewer}</option>
+          </select>
+          <button onClick={invite} style={makeBtn('primary')}>{t.inviteMember}</button>
+        </div>
+      </div>
+
+      {/* Team list */}
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>{t.teamMembers} ({team.length})</h3>
+        </div>
+        {team.map(member => (
+          <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.primaryBg, color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>{member.avatar}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{member.name}</div>
+              <div style={{ fontSize: 12, color: C.textMuted }}>{member.email}</div>
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: member.role === 'admin' ? C.primaryBg : C.bg, color: member.role === 'admin' ? C.primary : C.textSec, textTransform: 'capitalize' }}>{t[member.role] || member.role}</span>
+            {member.role !== 'admin' && (
+              <button onClick={() => setTeam(prev => prev.filter(m => m.id !== member.id))} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{Icons.trash(14)}</button>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function NotificationsTab({ t, lang, dir }) {
+  const [notifs, setNotifs] = useState({
+    emailNotif: true, whatsappNotif: false, browserNotif: true,
+    dealUpdates: true, contactActivity: true, ticketUpdates: true,
+    weeklyDigest: true, systemAlerts: true, smsAlerts: false,
+  })
+  const toggle = (k) => setNotifs(p => ({ ...p, [k]: !p[k] }))
+
+  const sections = [
+    { title: lang === 'ar' ? 'قنوات الإشعارات' : 'Notification Channels', items: [
+      { key: 'emailNotif', label: t.emailNotifications || 'Email Notifications' },
+      { key: 'whatsappNotif', label: lang === 'ar' ? 'إشعارات واتساب' : 'WhatsApp Notifications' },
+      { key: 'browserNotif', label: lang === 'ar' ? 'إشعارات المتصفح' : 'Browser Notifications' },
+    ]},
+    { title: lang === 'ar' ? 'أنواع الأحداث' : 'Event Types', items: [
+      { key: 'dealUpdates', label: t.dealUpdates },
+      { key: 'contactActivity', label: t.contactActivity },
+      { key: 'ticketUpdates', label: lang === 'ar' ? 'تحديثات التذاكر' : 'Ticket Updates' },
+      { key: 'weeklyDigest', label: t.weeklyDigest },
+      { key: 'systemAlerts', label: t.systemAlerts },
+    ]},
+  ]
+
+  return (
+    <div style={{ ...card, padding: 28 }}>
+      <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 24px' }}>{t.notifications}</h2>
+      {sections.map((sec, si) => (
+        <div key={si} style={{ marginBottom: 28 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.textSec, margin: '0 0 14px', textTransform: 'uppercase', fontSize: 11, letterSpacing: '.5px' }}>{sec.title}</h3>
+          {sec.items.map(item => (
+            <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 13, color: C.text }}>{item.label}</span>
+              <Toggle value={notifs[item.key]} onChange={() => toggle(item.key)} />
+            </div>
+          ))}
+        </div>
+      ))}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button style={makeBtn('primary')}>{t.saveChanges}</button>
+      </div>
+    </div>
+  )
+}
+
+function BillingTab({ t, lang, dir }) {
+  const invoices = [
+    { id: 'inv1', date: 'Apr 1, 2026', amount: '$49.00', status: 'Paid' },
+    { id: 'inv2', date: 'Mar 1, 2026', amount: '$49.00', status: 'Paid' },
+    { id: 'inv3', date: 'Feb 1, 2026', amount: '$49.00', status: 'Paid' },
+  ]
+
+  return (
+    <div>
+      {/* Current plan */}
+      <div style={{ ...card, padding: 24, marginBottom: 20, background: `linear-gradient(135deg, ${C.primary}08, #8250DF08)`, border: `1px solid ${C.primary}22` }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6, background: C.primaryBg, color: C.primary }}>{t.proPlanBadge || 'Pro Plan'}</span>
+              <span style={{ fontSize: 12, color: C.textMuted }}>{t.currentPlan}</span>
+            </div>
+            <div style={{ fontSize: 32, fontWeight: 800, color: C.text }}>$49<span style={{ fontSize: 14, fontWeight: 500, color: C.textMuted }}>{t.perMonth}</span></div>
+          </div>
+          <button style={makeBtn('primary', { gap: 6 })}>{Icons.trendUp(14)} {t.upgradeNow}</button>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginTop: 20 }}>
+          {[
+            { label: t.contacts_used, used: 248, total: 1000 },
+            { label: t.deals_used, used: 34, total: 100 },
+            { label: t.storage_used, used: 1.2, total: 5, unit: 'GB' },
+          ].map((u, i) => (
+            <div key={i}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.textSec, marginBottom: 6 }}>
+                <span>{u.label}</span><span>{u.unit ? `${u.used}${u.unit}` : u.used} / {u.unit ? `${u.total}${u.unit}` : u.total}</span>
+              </div>
+              <div style={{ height: 6, borderRadius: 3, background: `${C.primary}22` }}>
+                <div style={{ height: '100%', borderRadius: 3, background: C.primary, width: `${(u.used / u.total) * 100}%` }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Invoice history */}
+      <div style={{ ...card, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>{lang === 'ar' ? 'سجل الفواتير' : 'Invoice History'}</h3>
+        </div>
+        {invoices.map(inv => (
+          <div key={inv.id} style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderBottom: `1px solid ${C.border}`, gap: 16 }}>
+            <span style={{ fontSize: 13, color: C.textSec, flex: 1 }}>{inv.date}</span>
+            <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{inv.amount}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#DAFBE1', color: '#1A7F37' }}>{inv.status}</span>
+            <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.primary, fontSize: 12, fontFamily: 'inherit' }}>{Icons.download(13)}</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ApiKeysTab({ t, lang, dir }) {
+  const [keys, setKeys] = useState([
+    { id: 'key1', name: 'Production API Key', key: 'velo_pk_live_a1b2c3d4e5f6...', created: 'Mar 15, 2026', lastUsed: 'Today' },
+  ])
+  const [showKey, setShowKey] = useState(null)
+
+  const generateKey = () => {
+    const newKey = { id: `key${Date.now()}`, name: `API Key ${keys.length + 1}`, key: `velo_pk_live_${Math.random().toString(36).slice(2, 14)}...`, created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), lastUsed: 'Never' }
+    setKeys(prev => [...prev, newKey])
+  }
+
+  return (
+    <div>
+      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{lang === 'ar' ? 'مفاتيح API' : 'API Keys'}</h2>
+          <button onClick={generateKey} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {lang === 'ar' ? 'إنشاء مفتاح' : 'Generate Key'}</button>
+        </div>
+        <p style={{ fontSize: 13, color: C.textSec, marginBottom: 20, lineHeight: 1.5 }}>
+          {lang === 'ar' ? 'استخدم مفاتيح API للوصول إلى بيانات Velo من التطبيقات الخارجية.' : 'Use API keys to access Velo data from external applications.'}
+        </p>
+
+        {keys.map(k => (
+          <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0', borderTop: `1px solid ${C.border}` }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: C.bg, color: C.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{Icons.key(16)}</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{k.name}</div>
+              <div style={{ fontSize: 12, fontFamily: 'monospace', color: C.textMuted, marginTop: 2 }}>
+                {showKey === k.id ? k.key : '••••••••••••••••••••'}
+              </div>
+            </div>
+            <div style={{ fontSize: 11, color: C.textMuted, textAlign: 'center', minWidth: 80 }}>
+              <div>{lang === 'ar' ? 'أُنشئ' : 'Created'}</div>
+              <div style={{ fontWeight: 500 }}>{k.created}</div>
+            </div>
+            <button onClick={() => setShowKey(showKey === k.id ? null : k.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{showKey === k.id ? Icons.eye(14) : Icons.eye(14)}</button>
+            <button onClick={() => navigator.clipboard?.writeText(k.key)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{Icons.copy(14)}</button>
+            <button onClick={() => setKeys(prev => prev.filter(x => x.id !== k.id))} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#CF222E', display: 'flex' }}>{Icons.trash(14)}</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
+  const [apiKey, setApiKey] = useState(orgSettings.anthropic_api_key || '')
+  const [personality, setPersonality] = useState(orgSettings.ai_personality || 'professional')
+  const [knowledgeBase, setKnowledgeBase] = useState(orgSettings.ai_knowledge_base || '')
+  const [channels, setChannels] = useState(orgSettings.ai_enabled_channels || { whatsapp: false, instagram: false, email: false })
+  const [workingHours, setWorkingHours] = useState(orgSettings.ai_working_hours || { start: '09:00', end: '17:00', always_on: false })
+  const [escalationKeywords, setEscalationKeywords] = useState(orgSettings.ai_escalation_keywords || 'urgent, help, complaint, manager')
+  const [responseDelay, setResponseDelay] = useState(orgSettings.ai_response_delay || 'instant')
+  const [kbFiles, setKbFiles] = useState(() => { try { return JSON.parse(localStorage.getItem('velo_kb_files')||'[]') } catch { return [] } })
+  const [showTestChat, setShowTestChat] = useState(false)
+  const [testMessages, setTestMessages] = useState([])
+  const [testInput, setTestInput] = useState('')
+  const [saved, setSaved] = useState(false)
+  const fileRef = useRef(null)
+
+  const handleSave = () => {
+    if (onSave) onSave({ anthropic_api_key: apiKey, ai_personality: personality, ai_knowledge_base: knowledgeBase, ai_enabled_channels: channels, ai_working_hours: workingHours, ai_escalation_keywords: escalationKeywords, ai_response_delay: responseDelay })
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+  }
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0]; if (!file) return
+    const reader = new FileReader()
+    reader.onload = (ev) => {
+      setKnowledgeBase(prev => prev + '\n\n--- ' + file.name + ' ---\n' + ev.target.result)
+      const next = [...kbFiles, { name: file.name, size: (file.size/1024).toFixed(1)+'KB', date: new Date().toLocaleDateString() }]
+      setKbFiles(next); localStorage.setItem('velo_kb_files', JSON.stringify(next))
+    }
+    reader.readAsText(file)
+  }
+
+  return (
+    <div>
+      {/* API Key */}
+      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.primary}, #8250DF)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+          </div>
+          <div><h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{lang === 'ar' ? 'إعدادات الذكاء الاصطناعي' : 'AI Agent Settings'}</h2><p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>Powered by Claude (Anthropic)</p></div>
+        </div>
+        <FormField label={lang === 'ar' ? 'مفتاح Anthropic API' : 'Anthropic API Key'} dir={dir}>
+          <input value={apiKey} onChange={e => setApiKey(e.target.value)} type="password" placeholder="sk-ant-..." style={inputStyle(dir)} />
+          <p style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{lang === 'ar' ? 'احصل على مفتاحك من console.anthropic.com' : 'Get your key from console.anthropic.com'}</p>
+        </FormField>
+      </div>
+
+      {/* Personality */}
+      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'شخصية الرد' : 'AI Personality'}</h3>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {[{ id: 'professional', l: lang === 'ar' ? 'مهني' : 'Professional', i: '👔' }, { id: 'friendly', l: lang === 'ar' ? 'ودود' : 'Friendly', i: '😊' }, { id: 'formal', l: lang === 'ar' ? 'رسمي' : 'Formal', i: '📋' }].map(p => (
+            <button key={p.id} onClick={() => setPersonality(p.id)} style={{ flex: 1, padding: '16px 12px', borderRadius: 12, border: personality === p.id ? `2px solid ${C.primary}` : `1px solid ${C.border}`, background: personality === p.id ? C.primaryBg : C.white, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center' }}>
+              <div style={{ fontSize: 28, marginBottom: 6 }}>{p.i}</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: personality === p.id ? C.primary : C.text }}>{p.l}</div>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Channels + Working Hours */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
+        <div style={{ ...card, padding: 24 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'القنوات المفعّلة' : 'Enabled Channels'}</h3>
+          {Object.entries(channels).map(([ch, on]) => (
+            <div key={ch} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
+              <span style={{ fontSize: 13, color: C.text, textTransform: 'capitalize' }}>{ch}</span>
+              <Toggle value={on} onChange={() => setChannels(p => ({ ...p, [ch]: !p[ch] }))} />
+            </div>
+          ))}
+        </div>
+        <div style={{ ...card, padding: 24 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'ساعات العمل' : 'Working Hours'}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <span style={{ fontSize: 13, color: C.text }}>{lang === 'ar' ? 'نشط دائماً' : 'Always Active'}</span>
+            <Toggle value={workingHours.always_on} onChange={() => setWorkingHours(p => ({ ...p, always_on: !p.always_on }))} />
+          </div>
+          {!workingHours.always_on && (
+            <div style={{ display: 'flex', gap: 12 }}>
+              <FormField label={lang === 'ar' ? 'من' : 'From'} dir={dir}><input type="time" value={workingHours.start} onChange={e => setWorkingHours(p => ({ ...p, start: e.target.value }))} style={inputStyle(dir)} /></FormField>
+              <FormField label={lang === 'ar' ? 'إلى' : 'To'} dir={dir}><input type="time" value={workingHours.end} onChange={e => setWorkingHours(p => ({ ...p, end: e.target.value }))} style={inputStyle(dir)} /></FormField>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Knowledge Base */}
+      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>{lang === 'ar' ? 'قاعدة المعرفة' : 'Knowledge Base'}</h3>
+          <div style={{ display:'flex', gap:6 }}>
+            <input ref={fileRef} type="file" accept=".txt,.pdf,.md,.docx" style={{ display: 'none' }} onChange={handleFileUpload} />
+            <button type="button" onClick={() => fileRef.current?.click()} style={makeBtn('secondary', { fontSize: 12, gap: 4 })}>{Icons.upload(13)} {lang === 'ar' ? 'رفع ملف' : 'Upload File'}</button>
+            <button type="button" onClick={() => setShowTestChat(!showTestChat)} style={makeBtn('secondary', { fontSize: 12, gap: 4 })}>🧪 {lang === 'ar' ? 'اختبار' : 'Test AI'}</button>
+          </div>
+        </div>
+        {/* Uploaded files list */}
+        {kbFiles.length > 0 && (
+          <div style={{ marginBottom:12, display:'flex', gap:6, flexWrap:'wrap' }}>
+            {kbFiles.map((f,i) => (
+              <span key={i} style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, padding:'4px 8px', borderRadius:6, background:C.bg, border:`1px solid ${C.border}`, color:C.textSec }}>
+                📄 {f.name}
+                <button type="button" onClick={()=>{const next=kbFiles.filter((_,j)=>j!==i); setKbFiles(next); localStorage.setItem('velo_kb_files',JSON.stringify(next))}} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, fontSize:12, padding:0 }}>&times;</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <textarea value={knowledgeBase} onChange={e => setKnowledgeBase(e.target.value)} rows={6} placeholder={lang === 'ar' ? 'الصق نص الأسئلة الشائعة أو معلومات المنتج هنا...' : 'Paste FAQ text or product information here...'} style={{ ...inputStyle(dir), resize: 'vertical', lineHeight: 1.6 }} />
+        <p style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{lang === 'ar' ? 'سيستخدم الذكاء الاصطناعي هذه المعلومات للرد على العملاء' : 'AI will use this information to answer customer questions'}</p>
+      </div>
+
+      {/* Auto-Reply Configuration */}
+      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'إعدادات الرد التلقائي' : 'Auto-Reply Settings'}</h3>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
+          <FormField label={lang === 'ar' ? 'كلمات التصعيد' : 'Escalation Keywords'} dir={dir}>
+            <input value={escalationKeywords} onChange={e=>setEscalationKeywords(e.target.value)} placeholder="urgent, help, complaint" style={inputStyle(dir)} />
+            <p style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>{lang === 'ar' ? 'إذا ذكر العميل هذه الكلمات → يتم إبلاغ الفريق' : 'If customer mentions these → notify team'}</p>
+          </FormField>
+          <FormField label={lang === 'ar' ? 'تأخير الرد' : 'Response Delay'} dir={dir}>
+            <select value={responseDelay} onChange={e=>setResponseDelay(e.target.value)} style={selectStyle(dir)}>
+              <option value="instant">{lang === 'ar' ? 'فوري' : 'Instant'}</option>
+              <option value="1min">{lang === 'ar' ? 'دقيقة واحدة' : '1 minute'}</option>
+              <option value="3min">{lang === 'ar' ? '3 دقائق' : '3 minutes'}</option>
+            </select>
+            <p style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>{lang === 'ar' ? 'تأخير يجعل الرد يبدو أكثر طبيعية' : 'Delay makes replies feel more human'}</p>
+          </FormField>
+        </div>
+      </div>
+
+      {/* Test Chat */}
+      {showTestChat && (
+        <div style={{ ...card, padding: 20, marginBottom: 20 }}>
+          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 12px' }}>🧪 {lang === 'ar' ? 'اختبار الذكاء الاصطناعي' : 'Test AI Responses'}</h3>
+          <div style={{ maxHeight:200, overflow:'auto', marginBottom:12, display:'flex', flexDirection:'column', gap:8 }}>
+            {testMessages.map((m,i) => (
+              <div key={i} style={{ display:'flex', justifyContent:m.role==='user'?'flex-end':'flex-start' }}>
+                <div style={{ maxWidth:'80%', padding:'8px 12px', borderRadius:10, background:m.role==='user'?C.primary:C.bg, color:m.role==='user'?'#fff':C.text, fontSize:12, lineHeight:1.5 }}>{m.content}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <input value={testInput} onChange={e=>setTestInput(e.target.value)} placeholder={lang === 'ar' ? 'اكتب رسالة تجريبية...' : 'Type a test message...'} style={{ ...inputStyle(dir), flex:1 }}
+              onKeyDown={async e => {
+                if(e.key==='Enter'&&testInput.trim()) {
+                  const msg = testInput.trim(); setTestInput('')
+                  setTestMessages(prev=>[...prev, {role:'user',content:msg}])
+                  try {
+                    const { callClaude, buildAutoReplySystem } = await import('../lib/ai')
+                    const reply = await callClaude({ apiKey, messages:[{role:'user',content:msg}], system: buildAutoReplySystem(knowledgeBase, personality, 'Test Customer'), maxTokens:256 })
+                    setTestMessages(prev=>[...prev, {role:'assistant',content:reply}])
+                  } catch(err) { setTestMessages(prev=>[...prev, {role:'assistant',content:`Error: ${err.message}`}]) }
+                }
+              }} />
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        <button type="button" onClick={handleSave} style={makeBtn(saved ? 'success' : 'primary', { gap: 6 })}>{saved ? Icons.check(14) : null} {saved ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!') : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}</button>
+      </div>
+    </div>
+  )
+}
+
+function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
+  const [wa, setWa] = useState({ phone_id: orgSettings.whatsapp_phone_id || '', token: orgSettings.whatsapp_access_token || '', secret: orgSettings.whatsapp_webhook_secret || '', waba_id: orgSettings.whatsapp_waba_id || '' })
+  const [gmail, setGmail] = useState({ email: orgSettings.gmail_email || '' })
+  const [meta, setMeta] = useState({ token: orgSettings.meta_access_token || '' })
+  const [waStep, setWaStep] = useState(1)
+  const [waTestResult, setWaTestResult] = useState(null)
+  const [saved, setSaved] = useState(false)
+  const webhookUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : ''
+  const verifyToken = orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10)
+  if (!wa.secret) setWa(p => ({ ...p, secret: verifyToken }))
+
+  const handleSave = () => {
+    if (onSave) onSave({ whatsapp_phone_id: wa.phone_id, whatsapp_access_token: wa.token, whatsapp_webhook_secret: wa.secret, whatsapp_waba_id: wa.waba_id, gmail_email: gmail.email, meta_access_token: meta.token })
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+  }
+
+  const testWhatsApp = async () => {
+    setWaTestResult('testing')
+    try {
+      const res = await fetch(`https://graph.facebook.com/v18.0/${wa.phone_id}`, { headers: { Authorization: `Bearer ${wa.token}` } })
+      if (res.ok) { setWaTestResult('success') } else { const d = await res.json(); setWaTestResult(d.error?.message || 'Failed') }
+    } catch (e) { setWaTestResult(e.message) }
+    setTimeout(() => setWaTestResult(null), 5000)
+  }
+
+  const Section = ({ title, icon, children }) => (
+    <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}><span style={{ fontSize:24 }}>{icon}</span><h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:0 }}>{title}</h3></div>
+      {children}
+    </div>
+  )
+
+  const WaStep = ({ num, title, children, active }) => (
+    <div style={{ padding:'16px 0', borderBottom:`1px solid ${C.border}`, opacity: active?1:.5 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: active?12:0, cursor:'pointer' }} onClick={()=>setWaStep(num)}>
+        <div style={{ width:28, height:28, borderRadius:'50%', background: waStep>=num?C.primary:C.bg, color: waStep>=num?'#fff':C.textMuted, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0 }}>{waStep>num?'✓':num}</div>
+        <span style={{ fontSize:13, fontWeight:600, color: active?C.text:C.textSec }}>{title}</span>
+      </div>
+      {active && <div style={{ paddingLeft:38 }}>{children}</div>}
+    </div>
+  )
+
+  return (
+    <div>
+      {/* WhatsApp — Step by step */}
+      <Section title="WhatsApp Cloud API" icon="💬">
+        <WaStep num={1} title={lang==='ar'?'إنشاء حساب Meta Business':'Create Meta Business Account'} active={waStep===1}>
+          <p style={{ fontSize:12, color:C.textSec, lineHeight:1.6, marginBottom:8 }}>{lang==='ar'?'أنشئ حساب أعمال على Meta وقم بإعداد WhatsApp Cloud API':'Create a business account on Meta and set up WhatsApp Cloud API'}</p>
+          <a href="https://business.facebook.com" target="_blank" rel="noopener noreferrer" style={{ ...makeBtn('secondary',{gap:6,fontSize:12}), textDecoration:'none', display:'inline-flex' }}>{Icons.externalLink(13)} business.facebook.com</a>
+          <button type="button" onClick={()=>setWaStep(2)} style={{ ...makeBtn('primary',{fontSize:12}), marginLeft:8 }}>{lang==='ar'?'التالي':'Next'}</button>
+        </WaStep>
+        <WaStep num={2} title={lang==='ar'?'رقم الهاتف':'Phone Number ID'} active={waStep===2}>
+          <FormField label="Phone Number ID" dir={dir}><input value={wa.phone_id} onChange={e=>setWa(p=>({...p,phone_id:e.target.value}))} placeholder="123456789012345" style={inputStyle(dir)} /></FormField>
+          <button type="button" onClick={()=>setWaStep(3)} disabled={!wa.phone_id} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+        </WaStep>
+        <WaStep num={3} title={lang==='ar'?'رمز الوصول':'Access Token'} active={waStep===3}>
+          <FormField label="Permanent Access Token" dir={dir}><input value={wa.token} onChange={e=>setWa(p=>({...p,token:e.target.value}))} type="password" placeholder="EAAx..." style={inputStyle(dir)} /></FormField>
+          <button type="button" onClick={()=>setWaStep(4)} disabled={!wa.token} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+        </WaStep>
+        <WaStep num={4} title={lang==='ar'?'معرف حساب WhatsApp Business':'WABA ID'} active={waStep===4}>
+          <FormField label="WhatsApp Business Account ID" dir={dir}><input value={wa.waba_id} onChange={e=>setWa(p=>({...p,waba_id:e.target.value}))} placeholder="123456789012345" style={inputStyle(dir)} /></FormField>
+          <button type="button" onClick={()=>setWaStep(5)} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+        </WaStep>
+        <WaStep num={5} title={lang==='ar'?'إعداد Webhook':'Webhook Setup'} active={waStep===5}>
+          <div style={{ padding:'10px 14px', borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>Webhook URL</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <code style={{ fontSize:12, color:C.primary, flex:1, wordBreak:'break-all' }}>{webhookUrl}</code>
+              <button type="button" onClick={()=>navigator.clipboard?.writeText(webhookUrl)} style={makeBtn('secondary',{fontSize:10,padding:'4px 8px'})}>{Icons.copy(12)}</button>
+            </div>
+          </div>
+          <button type="button" onClick={()=>setWaStep(6)} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+        </WaStep>
+        <WaStep num={6} title={lang==='ar'?'رمز التحقق':'Verify Token'} active={waStep===6}>
+          <div style={{ padding:'10px 14px', borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, marginBottom:12 }}>
+            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>Verify Token ({lang==='ar'?'انسخه إلى Meta':'paste in Meta'})</div>
+            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+              <code style={{ fontSize:12, color:C.primary, flex:1 }}>{wa.secret}</code>
+              <button type="button" onClick={()=>navigator.clipboard?.writeText(wa.secret)} style={makeBtn('secondary',{fontSize:10,padding:'4px 8px'})}>{Icons.copy(12)}</button>
+            </div>
+          </div>
+          <div style={{ display:'flex', gap:8 }}>
+            <button type="button" onClick={testWhatsApp} style={makeBtn('secondary',{gap:6,fontSize:12})}>
+              {waTestResult==='testing'?'...' : waTestResult==='success'?'✓ Connected':lang==='ar'?'اختبار الاتصال':'Test Connection'}
+            </button>
+            {waTestResult && waTestResult !== 'testing' && waTestResult !== 'success' && <span style={{ fontSize:11, color:'#CF222E', alignSelf:'center' }}>{waTestResult}</span>}
+          </div>
+        </WaStep>
+      </Section>
+
+      {/* Facebook / Instagram */}
+      <Section title="Facebook & Instagram" icon="📱">
+        <p style={{ fontSize:13, color:C.textSec, lineHeight:1.6, marginBottom:12 }}>{lang==='ar'?'اربط صفحة فيسبوك لتلقي رسائل Messenger و Instagram DM.':'Connect your Facebook Page to receive Messenger and Instagram DM messages.'}</p>
+        <FormField label="Meta Access Token" dir={dir}><input value={meta.token} onChange={e=>setMeta({token:e.target.value})} type="password" placeholder="EAAx..." style={inputStyle(dir)} /></FormField>
+        <div style={{ display:'flex', gap:8 }}>
+          <button type="button" style={makeBtn('secondary',{gap:6})}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1877F2" strokeWidth="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg> {lang==='ar'?'ربط فيسبوك':'Connect Facebook'}</button>
+          <button type="button" style={makeBtn('secondary',{gap:6})}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E4405F" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/></svg> {lang==='ar'?'ربط إنستغرام':'Connect Instagram'}</button>
+        </div>
+      </Section>
+
+      {/* Gmail */}
+      <Section title="Gmail" icon="📧">
+        <FormField label={lang==='ar'?'بريد Gmail':'Connected Gmail'} dir={dir}><input value={gmail.email} onChange={e=>setGmail({email:e.target.value})} placeholder="your@gmail.com" style={inputStyle(dir)} /></FormField>
+        <button type="button" style={makeBtn('secondary',{gap:6})}>{Icons.externalLink(13)} {lang==='ar'?'ربط حساب Google':'Connect Google Account'}</button>
+      </Section>
+
+      <div style={{ display:'flex', justifyContent:'flex-end' }}>
+        <button type="button" onClick={handleSave} style={makeBtn(saved?'success':'primary',{gap:6})}>{saved?Icons.check(14):null} {saved?(lang==='ar'?'تم الحفظ!':'Saved!'):(lang==='ar'?'حفظ الإعدادات':'Save Settings')}</button>
+      </div>
+    </div>
+  )
+}

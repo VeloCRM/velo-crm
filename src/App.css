@@ -1,0 +1,97 @@
+/* Velo CRM — Global Styles */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background: #F6F8FA; color: #1F2328; -webkit-font-smoothing: antialiased; }
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #D0D7DE; border-radius: 3px; }
+
+.fade-in { animation: fadeIn .25s ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px) } to { opacity:1; transform:translateY(0) } }
+
+.widget-dragging { opacity:.6; transform:scale(.97); }
+.chart-grid-line { stroke:#D0D7DE; stroke-dasharray:4 4; }
+.chart-line { fill:none; stroke:#0969DA; stroke-width:2.5; stroke-linecap:round; stroke-linejoin:round; }
+.chart-area { fill:url(#chartGrad); }
+.chart-dot { fill:#0969DA; stroke:#fff; stroke-width:2; }
+
+/* Toggle */
+.toggle-track { width:38px; height:20px; border-radius:10px; background:#D0D7DE; position:relative; cursor:pointer; transition:background .2s; }
+.toggle-track.active { background:#0969DA; }
+.toggle-knob { width:16px; height:16px; border-radius:50%; background:#fff; position:absolute; top:2px; left:2px; transition:transform .2s; box-shadow:0 1px 3px rgba(0,0,0,.15); }
+.toggle-track.active .toggle-knob { transform:translateX(18px); }
+
+/* Modal */
+.modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:1000; display:flex; align-items:center; justify-content:center; animation:fadeIn .2s ease; }
+.modal-content { background:#fff; border-radius:16px; padding:28px; width:480px; max-width:90vw; max-height:80vh; overflow-y:auto; box-shadow:0 24px 48px rgba(0,0,0,.15); }
+
+/* Dark mode */
+[data-theme="dark"] body { background:#0D1117; color:#E6EDF3; }
+[data-theme="dark"] .modal-content { background:#161B22; border:1px solid #30363D; }
+[data-theme="dark"] .modal-overlay { background:rgba(0,0,0,.6); }
+[data-theme="dark"] ::-webkit-scrollbar-thumb { background:#30363D; }
+[data-theme="dark"] .toggle-track { background:#30363D; }
+
+/* ═══ MOBILE ════════════════════════════════════════════════════════════ */
+
+/* Mobile bottom nav */
+.mobile-bottom-nav {
+  display: none;
+  position: fixed; bottom: 0; left: 0; right: 0;
+  height: 60px; background: #0D1117;
+  border-top: 1px solid rgba(240,246,252,0.1);
+  z-index: 200; padding: 0 8px;
+  align-items: center; justify-content: space-around;
+}
+
+/* Mobile drawer overlay */
+.mobile-drawer-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,.5);
+  z-index: 300; animation: fadeIn .15s ease;
+}
+.mobile-drawer {
+  position: fixed; bottom: 0; left: 0; right: 0;
+  background: #0D1117; border-radius: 16px 16px 0 0;
+  padding: 16px 16px 32px; z-index: 301;
+  max-height: 60vh; overflow-y: auto;
+  animation: slideUp .2s ease;
+}
+@keyframes slideUp { from { transform:translateY(100%) } to { transform:translateY(0) } }
+
+@media (max-width: 768px) {
+  /* Show mobile nav, hide desktop sidebar */
+  .mobile-bottom-nav { display: flex; }
+  .desktop-sidebar { display: none !important; }
+
+  /* Main area fills screen */
+  .mobile-main { padding-bottom: 60px !important; }
+  .mobile-header { padding: 0 12px !important; gap: 8px !important; }
+  .mobile-content { padding: 14px !important; }
+
+  /* Modal → bottom sheet */
+  .modal-overlay { align-items: flex-end !important; }
+  .modal-content {
+    width: 100% !important; max-width: 100% !important;
+    border-radius: 16px 16px 0 0 !important;
+    max-height: 85vh !important; padding: 24px 20px !important;
+  }
+
+  /* Touch-friendly buttons */
+  button { min-height: 36px; }
+
+  /* Tables scroll */
+  table { display: block; overflow-x: auto; white-space: nowrap; }
+  thead, tbody, tr { display: table; width: 100%; table-layout: auto; }
+
+  /* AI assistant panel */
+  .ai-panel { width: 100% !important; right: 0 !important; left: 0 !important; bottom: 60px !important; height: calc(100vh - 120px) !important; border-radius: 16px 16px 0 0 !important; }
+
+  /* Notification center */
+  .notif-panel { width: 100% !important; right: 0 !important; left: 0 !important; top: 60px !important; max-height: calc(100vh - 120px) !important; border-radius: 0 0 16px 16px !important; }
+}
+
+@media (max-width: 480px) {
+  .modal-content { padding: 20px 16px !important; }
+}
