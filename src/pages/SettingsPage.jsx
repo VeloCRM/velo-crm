@@ -742,15 +742,14 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 }
 
 function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
-  const [wa, setWa] = useState({ phone_id: orgSettings.whatsapp_phone_id || '', token: orgSettings.whatsapp_access_token || '', secret: orgSettings.whatsapp_webhook_secret || '', waba_id: orgSettings.whatsapp_waba_id || '' })
+  const defaultSecret = orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10)
+  const [wa, setWa] = useState({ phone_id: orgSettings.whatsapp_phone_id || '', token: orgSettings.whatsapp_access_token || '', secret: orgSettings.whatsapp_webhook_secret || defaultSecret, waba_id: orgSettings.whatsapp_waba_id || '' })
   const [gmail, setGmail] = useState({ email: orgSettings.gmail_email || '' })
   const [meta, setMeta] = useState({ token: orgSettings.meta_access_token || '' })
   const [waStep, setWaStep] = useState(1)
   const [waTestResult, setWaTestResult] = useState(null)
   const [saved, setSaved] = useState(false)
   const webhookUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : ''
-  const verifyToken = orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10)
-  if (!wa.secret) setWa(p => ({ ...p, secret: verifyToken }))
 
   const handleSave = () => {
     if (onSave) onSave({ whatsapp_phone_id: wa.phone_id, whatsapp_access_token: wa.token, whatsapp_webhook_secret: wa.secret, whatsapp_waba_id: wa.waba_id, gmail_email: gmail.email, meta_access_token: meta.token })

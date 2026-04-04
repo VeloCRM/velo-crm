@@ -3,9 +3,6 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 
+/* Velo CRM v1.0 */
 const root = createRoot(document.getElementById('root'))
-root.render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+root.render(<StrictMode><App /></StrictMode>)
