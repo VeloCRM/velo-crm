@@ -39,8 +39,8 @@ const SAMPLE_TEAM = [
   { id: 'tm4', name: 'Maria Lopez', email: 'maria@velo.app', role: 'viewer', avatar: 'M' },
 ]
 
-export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings }) {
-  const [tab, setTab] = useState('organization')
+export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab }) {
+  const [tab, setTab] = useState(initialTab || 'organization')
 
   const tabLabels = {
     organization: lang === 'ar' ? 'المؤسسة' : 'Organization', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys',
@@ -74,7 +74,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
-          {tab === 'apikeys' && <ApiKeysTab t={t} lang={lang} dir={dir} />}
+          {tab === 'apikeys' && <ApiKeysTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} toast={toast} />}
         </div>
       </div>
     </div>
@@ -390,46 +390,187 @@ function BillingTab({ t, lang, dir }) {
   )
 }
 
-function ApiKeysTab({ t, lang, dir }) {
-  const [keys, setKeys] = useState([
-    { id: 'key1', name: 'Production API Key', key: 'velo_pk_live_a1b2c3d4e5f6...', created: 'Mar 15, 2026', lastUsed: 'Today' },
-  ])
+function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
+  const STORAGE_KEY = 'velo_api_keys'
+  const loadStored = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') } catch { return {} } }
+  const [stored, setStored] = useState(loadStored)
+  const [keys, setKeys] = useState(() => stored.generatedKeys || [])
   const [showKey, setShowKey] = useState(null)
+  const [newKeyName, setNewKeyName] = useState('')
+  const [showNewForm, setShowNewForm] = useState(false)
+  const [anthropicKey, setAnthropicKey] = useState(() => stored.anthropic || orgSettings?.anthropic_api_key || '')
+  const [metaToken, setMetaToken] = useState(() => stored.meta || '')
+  const [googleKey, setGoogleKey] = useState(() => stored.google || '')
+  const [testingAnthropic, setTestingAnthropic] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+  const [saved, setSaved] = useState(false)
+  const ar = lang === 'ar'
+
+  const persist = (updates) => {
+    const next = { ...stored, ...updates }
+    setStored(next)
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+  }
 
   const generateKey = () => {
-    const newKey = { id: `key${Date.now()}`, name: `API Key ${keys.length + 1}`, key: `velo_pk_live_${Math.random().toString(36).slice(2, 14)}...`, created: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), lastUsed: 'Never' }
-    setKeys(prev => [...prev, newKey])
+    if (!newKeyName.trim()) return
+    const raw = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('')
+    const key = `velo_pk_live_${raw}`
+    const newEntry = { id: `key_${Date.now()}`, name: newKeyName.trim(), key, created: new Date().toISOString(), lastUsed: null }
+    const next = [...keys, newEntry]
+    setKeys(next); persist({ generatedKeys: next })
+    setNewKeyName(''); setShowNewForm(false)
+    if (toast) toast(ar ? 'تم إنشاء المفتاح' : 'API key generated', 'success')
   }
+
+  const revokeKey = (id) => {
+    const next = keys.filter(k => k.id !== id)
+    setKeys(next); persist({ generatedKeys: next })
+    if (toast) toast(ar ? 'تم إلغاء المفتاح' : 'API key revoked', 'success')
+  }
+
+  const maskKey = (key) => key ? key.slice(0, 12) + '••••••••••••••' + key.slice(-4) : '••••••••••••••••'
+
+  const saveExternal = () => {
+    persist({ anthropic: anthropicKey, meta: metaToken, google: googleKey })
+    // Also push Anthropic key to orgSettings so AIAssistant picks it up live
+    if (onSave) onSave({ anthropic_api_key: anthropicKey })
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+    if (toast) toast(ar ? 'تم حفظ المفاتيح' : 'API keys saved', 'success')
+  }
+
+  const testAnthropicKey = async () => {
+    if (!anthropicKey) { setTestResult({ ok: false, msg: ar ? 'أدخل المفتاح أولاً' : 'Enter a key first' }); return }
+    setTestingAnthropic(true); setTestResult(null)
+    try {
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
+        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 16, messages: [{ role: 'user', content: 'Say OK' }] }),
+      })
+      if (res.ok) { setTestResult({ ok: true, msg: ar ? 'المفتاح يعمل بنجاح!' : 'Key is valid and working!' }) }
+      else { const err = await res.json().catch(() => ({})); setTestResult({ ok: false, msg: err.error?.message || `Error ${res.status}` }) }
+    } catch (err) { setTestResult({ ok: false, msg: err.message }) }
+    finally { setTestingAnthropic(false) }
+  }
+
+  const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString(ar ? 'ar-SA' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
 
   return (
     <div>
+      {/* ── Your API Keys ─────────────────────────────────── */}
       <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{lang === 'ar' ? 'مفاتيح API' : 'API Keys'}</h2>
-          <button onClick={generateKey} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {lang === 'ar' ? 'إنشاء مفتاح' : 'Generate Key'}</button>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{ar ? 'مفاتيح API الخاصة بك' : 'Your API Keys'}</h2>
+          <button onClick={() => setShowNewForm(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {ar ? 'إنشاء مفتاح' : 'Generate Key'}</button>
         </div>
-        <p style={{ fontSize: 13, color: C.textSec, marginBottom: 20, lineHeight: 1.5 }}>
-          {lang === 'ar' ? 'استخدم مفاتيح API للوصول إلى بيانات Velo من التطبيقات الخارجية.' : 'Use API keys to access Velo data from external applications.'}
+        <p style={{ fontSize: 13, color: C.textSec, marginBottom: 16, lineHeight: 1.5 }}>
+          {ar ? 'استخدم هذه المفاتيح للوصول إلى Velo API من التطبيقات الخارجية.' : 'Use these keys to access Velo API from external applications.'}
         </p>
 
-        {keys.map(k => (
-          <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 0', borderTop: `1px solid ${C.border}` }}>
+        {/* Generate key form */}
+        {showNewForm && (
+          <div style={{ display: 'flex', gap: 8, marginBottom: 16, padding: 14, borderRadius: 10, background: C.bg, border: `1px solid ${C.border}` }}>
+            <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder={ar ? 'اسم المفتاح (مثال: تطبيق الموبايل)' : 'Key name (e.g. Mobile App)'} style={{ ...inputStyle(dir), flex: 1 }} onKeyDown={e => e.key === 'Enter' && generateKey()} />
+            <button onClick={generateKey} style={makeBtn('primary', { fontSize: 12 })}>{ar ? 'إنشاء' : 'Generate'}</button>
+            <button onClick={() => setShowNewForm(false)} style={makeBtn('secondary', { fontSize: 12 })}>{ar ? 'إلغاء' : 'Cancel'}</button>
+          </div>
+        )}
+
+        {/* Keys list */}
+        {keys.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '28px 16px', color: C.textMuted }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>🔑</div>
+            <div style={{ fontSize: 13 }}>{ar ? 'لم تنشئ أي مفاتيح بعد' : 'No API keys generated yet'}</div>
+          </div>
+        ) : keys.map(k => (
+          <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderTop: `1px solid ${C.border}` }}>
             <div style={{ width: 36, height: 36, borderRadius: 8, background: C.bg, color: C.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{Icons.key(16)}</div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{k.name}</div>
-              <div style={{ fontSize: 12, fontFamily: 'monospace', color: C.textMuted, marginTop: 2 }}>
-                {showKey === k.id ? k.key : '••••••••••••••••••••'}
+              <div style={{ fontSize: 11, fontFamily: 'monospace', color: C.textMuted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {showKey === k.id ? k.key : maskKey(k.key)}
               </div>
             </div>
-            <div style={{ fontSize: 11, color: C.textMuted, textAlign: 'center', minWidth: 80 }}>
-              <div>{lang === 'ar' ? 'أُنشئ' : 'Created'}</div>
-              <div style={{ fontWeight: 500 }}>{k.created}</div>
+            <div style={{ fontSize: 10, color: C.textMuted, textAlign: 'center', minWidth: 70, flexShrink: 0 }}>
+              <div>{ar ? 'أُنشئ' : 'Created'}</div>
+              <div style={{ fontWeight: 500 }}>{fmtDate(k.created)}</div>
             </div>
-            <button onClick={() => setShowKey(showKey === k.id ? null : k.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{showKey === k.id ? Icons.eye(14) : Icons.eye(14)}</button>
-            <button onClick={() => navigator.clipboard?.writeText(k.key)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{Icons.copy(14)}</button>
-            <button onClick={() => setKeys(prev => prev.filter(x => x.id !== k.id))} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#CF222E', display: 'flex' }}>{Icons.trash(14)}</button>
+            <div style={{ fontSize: 10, color: C.textMuted, textAlign: 'center', minWidth: 70, flexShrink: 0 }}>
+              <div>{ar ? 'آخر استخدام' : 'Last used'}</div>
+              <div style={{ fontWeight: 500 }}>{k.lastUsed ? fmtDate(k.lastUsed) : (ar ? 'أبداً' : 'Never')}</div>
+            </div>
+            <button onClick={() => setShowKey(showKey === k.id ? null : k.id)} title={showKey === k.id ? 'Hide' : 'Show'} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex', padding: 4 }}>{Icons.eye(14)}</button>
+            <button onClick={() => { navigator.clipboard?.writeText(k.key); if (toast) toast(ar ? 'تم النسخ' : 'Copied to clipboard', 'info') }} title="Copy" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex', padding: 4 }}>{Icons.copy(14)}</button>
+            <button onClick={() => revokeKey(k.id)} title="Revoke" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#CF222E', display: 'flex', padding: 4 }}>{Icons.trash(14)}</button>
           </div>
         ))}
+      </div>
+
+      {/* ── External API Keys ─────────────────────────────── */}
+      <div style={{ ...card, padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, #8250DF, ${C.primary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            {Icons.link(18, '#fff')}
+          </div>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{ar ? 'مفاتيح API الخارجية' : 'External API Keys'}</h2>
+            <p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>{ar ? 'اربط خدمات الطرف الثالث مع Velo' : 'Connect third-party services with Velo'}</p>
+          </div>
+        </div>
+
+        {/* Anthropic */}
+        <div style={{ marginTop: 20, padding: 18, borderRadius: 12, border: `1px solid ${C.border}`, background: C.bg }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 22 }}>🧠</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{ar ? 'مفتاح Anthropic API' : 'Anthropic API Key'}</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>{ar ? 'لتشغيل مساعد الذكاء الاصطناعي (Claude)' : 'Powers the AI Assistant (Claude)'}</div>
+            </div>
+            <button onClick={testAnthropicKey} disabled={testingAnthropic} style={makeBtn('secondary', { fontSize: 11, padding: '5px 12px', gap: 4 })}>
+              {testingAnthropic ? '...' : '🧪'} {ar ? 'اختبار' : 'Test'}
+            </button>
+          </div>
+          <input value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} type="password" placeholder="sk-ant-api03-..." style={inputStyle(dir)} />
+          <p style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{ar ? 'احصل على مفتاحك من console.anthropic.com' : 'Get your key from console.anthropic.com'}</p>
+          {testResult && (
+            <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500, background: testResult.ok ? '#DAFBE1' : '#FFEBE9', color: testResult.ok ? '#1A7F37' : '#CF222E', display: 'flex', alignItems: 'center', gap: 6 }}>
+              {testResult.ok ? '✓' : '✗'} {testResult.msg}
+            </div>
+          )}
+        </div>
+
+        {/* Meta */}
+        <div style={{ marginTop: 14, padding: 18, borderRadius: 12, border: `1px solid ${C.border}`, background: C.bg }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 22 }}>📱</span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{ar ? 'رمز وصول Meta' : 'Meta Access Token'}</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>{ar ? 'لتكامل WhatsApp و Facebook' : 'For WhatsApp & Facebook integration'}</div>
+            </div>
+          </div>
+          <input value={metaToken} onChange={e => setMetaToken(e.target.value)} type="password" placeholder="EAABs..." style={inputStyle(dir)} />
+          <p style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{ar ? 'من developers.facebook.com' : 'From developers.facebook.com'}</p>
+        </div>
+
+        {/* Google */}
+        <div style={{ marginTop: 14, padding: 18, borderRadius: 12, border: `1px solid ${C.border}`, background: C.bg }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            <span style={{ fontSize: 22 }}>📅</span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{ar ? 'مفتاح Google API' : 'Google API Key'}</div>
+              <div style={{ fontSize: 11, color: C.textMuted }}>{ar ? 'لمزامنة التقويم' : 'For Calendar sync'}</div>
+            </div>
+          </div>
+          <input value={googleKey} onChange={e => setGoogleKey(e.target.value)} type="password" placeholder="AIza..." style={inputStyle(dir)} />
+          <p style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{ar ? 'من console.cloud.google.com' : 'From console.cloud.google.com'}</p>
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+          <button onClick={saveExternal} style={makeBtn(saved ? 'success' : 'primary', { gap: 6, minWidth: 120 })}>
+            {saved ? Icons.check(14) : Icons.shield(14)} {saved ? (ar ? 'تم الحفظ!' : 'Saved!') : (ar ? 'حفظ المفاتيح' : 'Save Keys')}
+          </button>
+        </div>
       </div>
     </div>
   )

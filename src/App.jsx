@@ -157,6 +157,7 @@ export default function App() {
     return () => window.removeEventListener('resize', check)
   }, [])
   const [page, setPage] = useState('dashboard')
+  const [settingsTab, setSettingsTab] = useState(null)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [layout, setLayout] = useState(loadLayout)
   const [showCustomizer, setShowCustomizer] = useState(false)
@@ -354,6 +355,8 @@ export default function App() {
   }
   const handleDragEnd = () => setDragWidget(null)
   const toggleTask = (id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t))
+  // Clear settingsTab when navigating away from settings
+  useEffect(() => { if (page !== 'settings') setSettingsTab(null) }, [page])
 
   // ── CRUD — Supabase-backed with optimistic local updates ──────────────
   const addContact = async (c) => {
@@ -640,7 +643,7 @@ export default function App() {
               {page === 'integrations' && <IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} />}
               {page === 'reports' && <ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} />}
               {page === 'report-builder' && <ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} />}
-              {page === 'settings' && <SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} />}
+              {page === 'settings' && <SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={settingsTab} key={settingsTab || 'settings'} />}
             </>
           )}
         </div>
@@ -759,7 +762,7 @@ export default function App() {
       />
 
       {/* AI Assistant */}
-      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts, ${deals.length} deals, ${tickets.length} tickets.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} deals={deals} tickets={tickets} />
+      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts, ${deals.length} deals, ${tickets.length} tickets.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} deals={deals} tickets={tickets} onNavigateToApiKeys={() => { setPage('settings'); setSettingsTab('apikeys') }} />
 
       {/* AI Floating Button */}
       {!aiOpen && (
