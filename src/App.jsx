@@ -307,6 +307,9 @@ export default function App() {
     if (user) loadAllData()
   }, [user])
 
+  // Clear settingsTab when navigating away from settings
+  useEffect(() => { if (page !== 'settings') setSettingsTab(null) }, [page])
+
   const handleSignOut = async () => {
     await signOut()
     setUser(null)
@@ -355,8 +358,6 @@ export default function App() {
   }
   const handleDragEnd = () => setDragWidget(null)
   const toggleTask = (id) => setTasks(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t))
-  // Clear settingsTab when navigating away from settings
-  useEffect(() => { if (page !== 'settings') setSettingsTab(null) }, [page])
 
   // ── CRUD — Supabase-backed with optimistic local updates ──────────────
   const addContact = async (c) => {
