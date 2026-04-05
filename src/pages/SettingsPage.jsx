@@ -40,8 +40,13 @@ const SAMPLE_TEAM = [
   { id: 'tm4', name: 'Maria Lopez', email: 'maria@velo.app', role: 'viewer', avatar: 'M' },
 ]
 
-export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab }) {
-  const [tab, setTab] = useState(initialTab || 'organization')
+export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate }) {
+  const [tab, _setTab] = useState(initialTab || 'organization')
+
+  const setTab = (t) => {
+    _setTab(t)
+    if (navigate) navigate('/settings/' + t)
+  }
 
   const tabLabels = {
     organization: lang === 'ar' ? 'المؤسسة' : 'Organization', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys',

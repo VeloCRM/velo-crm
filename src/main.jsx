@@ -1,5 +1,6 @@
 import { StrictMode, Component } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.jsx'
 
@@ -20,4 +21,4 @@ class ErrorBoundary extends Component {
 
 /* Velo CRM v1.1 */
 const root = createRoot(document.getElementById('root'))
-root.render(<StrictMode><ErrorBoundary><App /></ErrorBoundary></StrictMode>)
+root.render(<StrictMode><BrowserRouter><ErrorBoundary><App /></ErrorBoundary></BrowserRouter></StrictMode>)

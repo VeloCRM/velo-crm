@@ -21,20 +21,23 @@ const FIELD_TYPES = [
 function loadForms() { try { return JSON.parse(localStorage.getItem('velo_forms') || '[]') } catch { return [] } }
 function saveForms(f) { localStorage.setItem('velo_forms', JSON.stringify(f)) }
 
-export default function FormsPage({ t, lang, dir, isRTL }) {
+export default function FormsPage({ t, lang, dir, isRTL, urlFormId, navigate }) {
   const [forms, setForms] = useState(loadForms)
-  const [editingForm, setEditingForm] = useState(null)
+  const [editingForm, setEditingForm] = useState(urlFormId || null)
   const [previewForm, setPreviewForm] = useState(null)
   const [viewSubmissions, setViewSubmissions] = useState(null)
 
   const persist = (next) => { setForms(next); saveForms(next) }
   const deleteForm = (id) => persist(forms.filter(f => f.id !== id))
 
+  const navToForm = (id) => { if (navigate) navigate('/forms/' + id); setEditingForm(id) }
+  const navToForms = () => { if (navigate) navigate('/forms'); setEditingForm(null) }
+
   if (editingForm !== null) {
     const form = editingForm === 'new' ? null : forms.find(f => f.id === editingForm)
     return <FormBuilder form={form} lang={lang} dir={dir} isRTL={isRTL}
-      onSave={(f) => { persist(f.id ? forms.map(x => x.id === f.id ? f : x) : [...forms, { ...f, id: `form_${Date.now()}`, createdAt: new Date().toISOString().slice(0,10), submissions: [] }]); setEditingForm(null) }}
-      onCancel={() => setEditingForm(null)} />
+      onSave={(f) => { persist(f.id ? forms.map(x => x.id === f.id ? f : x) : [...forms, { ...f, id: `form_${Date.now()}`, createdAt: new Date().toISOString().slice(0,10), submissions: [] }]); navToForms() }}
+      onCancel={() => navToForms()} />
   }
 
   if (previewForm) {
@@ -54,7 +57,7 @@ export default function FormsPage({ t, lang, dir, isRTL }) {
           <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0, fontFamily:'DM Sans,Inter,sans-serif' }}>{isRTL?'النماذج':'Forms'}</h1>
           <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>{forms.length} {isRTL?'نموذج':'forms'}</p>
         </div>
-        <button type="button" onClick={() => setEditingForm('new')} style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
+        <button type="button" onClick={() => navToForm('new')} style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
       </div>
 
       {forms.length === 0 ? (
@@ -62,7 +65,7 @@ export default function FormsPage({ t, lang, dir, isRTL }) {
           <div style={{ fontSize:48, marginBottom:16 }}>📋</div>
           <h3 style={{ fontSize:18, fontWeight:700, color:C.text, margin:'0 0 8px', fontFamily:'DM Sans,Inter,sans-serif' }}>{isRTL?'لا توجد نماذج بعد':'No forms yet'}</h3>
           <p style={{ fontSize:13, color:C.textMuted, margin:'0 0 24px' }}>{isRTL?'أنشئ نموذجاً لجمع بيانات العملاء':'Create a form to collect customer data'}</p>
-          <button type="button" onClick={() => setEditingForm('new')} style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
+          <button type="button" onClick={() => navToForm('new')} style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:16 }}>
@@ -76,7 +79,7 @@ export default function FormsPage({ t, lang, dir, isRTL }) {
               </div>
               <div style={{ fontSize:13, color:C.textMuted }}>{f.fields?.length||0} {isRTL?'حقل':'fields'} &middot; {(f.submissions||[]).length} {isRTL?'إرسال':'submissions'} &middot; {f.createdAt}</div>
               <div style={{ display:'flex', gap:8, marginTop:4 }}>
-                <button type="button" onClick={() => setEditingForm(f.id)} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.edit(12)} {isRTL?'تعديل':'Edit'}</button>
+                <button type="button" onClick={() => navToForm(f.id)} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.edit(12)} {isRTL?'تعديل':'Edit'}</button>
                 <button type="button" onClick={() => setPreviewForm(f.id)} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.eye(12)} {isRTL?'معاينة':'Preview'}</button>
                 <button type="button" onClick={() => setViewSubmissions(f.id)} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{isRTL?'الإرسالات':'Submissions'}</button>
                 <button type="button" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/form/${f.id}`) }} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.link(12)} {isRTL?'نسخ الرابط':'Copy Link'}</button>
