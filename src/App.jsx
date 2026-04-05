@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { T } from './translations'
 import { C, CAT_COLORS, STAGE_COLORS, makeBtn, card } from './design'
 import {
@@ -17,6 +18,11 @@ const ReportBuilder = lazy(() => import('./pages/ReportBuilder'))
 const FormsPage = lazy(() => import('./pages/FormsPage'))
 const SocialPage = lazy(() => import('./pages/SocialPage'))
 const FinancePage = lazy(() => import('./pages/FinancePage'))
+const TasksPage = lazy(() => import('./pages/TasksPage'))
+const ProjectsPage = lazy(() => import('./pages/ProjectsPage'))
+const GoalsPage = lazy(() => import('./pages/GoalsPage'))
+const DocsPage = lazy(() => import('./pages/DocsPage'))
+const AgencyDashboard = lazy(() => import('./pages/AgencyDashboard'))
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
 import NotificationCenter from './components/NotificationCenter'
@@ -137,6 +143,8 @@ function Modal({ children, onClose, dir, width = 520 }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // APP
 // ═══════════════════════════════════════════════════════════════════════════
+const SUPER_ADMIN_EMAIL = 'alialjobory89@gmail.com'
+
 export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem('velo_lang') || 'en')
   const [user, setUser] = useState(null)
@@ -158,8 +166,12 @@ export default function App() {
     check(); window.addEventListener('resize', check)
     return () => window.removeEventListener('resize', check)
   }, [])
-  const [page, setPage] = useState('dashboard')
-  const [settingsTab, setSettingsTab] = useState(null)
+  const navigate = useNavigate()
+  const location = useLocation()
+  const _pathParts = location.pathname.split('/').filter(Boolean)
+  const page = _pathParts[0] || 'dashboard'
+  const pageSubId = _pathParts[1] || null
+  const setPage = useCallback((p) => navigate('/' + p), [navigate])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [layout, setLayout] = useState(loadLayout)
   const [showCustomizer, setShowCustomizer] = useState(false)
@@ -167,6 +179,7 @@ export default function App() {
   const [deals, setDeals] = useState([])
   const [tasks, setTasks] = useState(SAMPLE_TASKS)
   const [tickets, setTickets] = useState([])
+  const [allPayments, setAllPayments] = useState([])
   const [dragWidget, setDragWidget] = useState(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [notifications, setNotifications] = useState(() => {
@@ -205,6 +218,11 @@ export default function App() {
     localStorage.setItem('velo_lang', lang)
   }, [lang, dir])
   useEffect(() => { saveLayout(layout) }, [layout])
+
+  // Redirect / to /dashboard
+  useEffect(() => {
+    if (location.pathname === '/') navigate('/dashboard', { replace: true })
+  }, [location.pathname, navigate])
 
   // Dark mode
   useEffect(() => {
@@ -285,15 +303,17 @@ export default function App() {
         }
       }
 
-      const [rawContacts, rawDeals, rawTickets] = await Promise.all([
+      const [rawContacts, rawDeals, rawTickets, rawPayments] = await Promise.all([
         db.fetchContacts(),
         db.fetchDeals(),
         db.fetchTickets(),
+        db.fetchAllPayments().catch(() => []),
       ])
       const hydrated = db.hydrateReferences(rawContacts, rawDeals, rawTickets)
       setContacts(hydrated.contacts)
       setDeals(hydrated.deals)
       setTickets(hydrated.tickets)
+      setAllPayments(rawPayments)
     } catch (err) {
       console.error('Data load error:', err)
       setDataError(err.message || 'Failed to load data')
@@ -309,8 +329,7 @@ export default function App() {
     if (user) loadAllData()
   }, [user])
 
-  // Clear settingsTab when navigating away from settings
-  useEffect(() => { if (page !== 'settings') setSettingsTab(null) }, [page])
+  // settingsTab is now derived from URL: /settings/:tab
 
   const handleSignOut = async () => {
     await signOut()
@@ -357,6 +376,9 @@ export default function App() {
     return <Suspense fallback={<SkeletonGeneric />}><OnboardingPage user={user} lang={lang} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} /></Suspense>
   }
 
+  // Super Admin check
+  const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL
+
   const toggleLang = () => setLang(l => l === 'en' ? 'ar' : 'en')
   const toggleWidget = (id) => setLayout(prev => ({ ...prev, visible: { ...prev.visible, [id]: !prev.visible[id] } }))
 
@@ -390,10 +412,25 @@ export default function App() {
     }
   }
   const updateContact = async (id, data) => {
+    if (data._fromDb) {
+      setContacts(prev => prev.map(c => c.id === id ? data._fromDb : c))
+      return
+    }
     setContacts(prev => prev.map(c => c.id === id ? { ...c, ...data } : c))
     addToast(isRTL ? 'تم تحديث جهة الاتصال' : 'Contact updated', 'success')
     if (useDB) {
-      try { await db.patchContact(id, data) }
+      try {
+        // If notes (bio) changed, rebuild the JSON preserving timeline/docs
+        if (data.notes !== undefined) {
+          const current = contacts.find(c => c.id === id)
+          let parsed = { bio: '', timeline: [], documents: [] }
+          try { parsed = JSON.parse(current?._rawNotes || '{}'); if (!parsed.timeline) parsed = { bio: '', timeline: [], documents: [] } } catch {}
+          parsed.bio = data.notes
+          data = { ...data, _rawNotes: JSON.stringify(parsed) }
+          delete data.notes
+        }
+        await db.patchContact(id, data)
+      }
       catch (err) { console.error('Update contact error:', err); addToast(isRTL ? 'خطأ في التحديث' : 'Error updating contact', 'error'); loadAllData() }
     }
   }
@@ -406,12 +443,19 @@ export default function App() {
       catch (err) { console.error('Delete contact error:', err); addToast(isRTL ? 'خطأ في الحذف' : 'Error deleting contact', 'error'); loadAllData() }
     }
   }
-  const addNoteToContact = (contactId, text) => {
+  const addNoteToContact = async (contactId, text) => {
+    const newNote = { id: genId('n'), text, date: new Date().toISOString().slice(0,10), author: t.adminUser }
     setContacts(prev => prev.map(c => c.id === contactId ? {
       ...c,
-      notesTimeline: [...(c.notesTimeline||[]), { id: genId('n'), text, date: new Date().toISOString().slice(0,10), author: t.adminUser }],
+      notesTimeline: [...(c.notesTimeline||[]), newNote],
     } : c))
     addToast(isRTL ? 'تمت إضافة الملاحظة' : 'Note added', 'success')
+    if (useDB) {
+      try {
+        const saved = await db.addContactNote(contactId, newNote)
+        setContacts(prev => prev.map(c => c.id === contactId ? saved : c))
+      } catch (err) { console.error('Add note error:', err) }
+    }
   }
 
   const addDeal = async (raw) => {
@@ -499,8 +543,12 @@ export default function App() {
       { id: 'inbox', icon: Icons.inbox, label: t.inbox, badge: 2 },
       { id: 'tickets', icon: Icons.ticket, label: t.tickets, badge: tickets.filter(tk => tk.status === 'open').length || undefined },
       { id: 'calendar', icon: Icons.calendar, label: t.calendar },
+      { id: 'tasks', icon: Icons.check, label: isRTL ? 'المهام' : 'Tasks' },
     ]},
     { label: t.tools, items: [
+      { id: 'projects', icon: Icons.target, label: isRTL ? 'المشاريع' : 'Projects' },
+      { id: 'goals', icon: Icons.trendUp, label: isRTL ? 'الأهداف' : 'Goals' },
+      { id: 'docs', icon: Icons.file, label: isRTL ? 'المستندات' : 'Docs' },
       { id: 'automations', icon: Icons.automations, label: t.automations },
       { id: 'forms', icon: Icons.file, label: isRTL ? 'النماذج' : 'Forms' },
       { id: 'social', icon: Icons.globe, label: isRTL ? 'التواصل' : 'Social' },
@@ -509,6 +557,7 @@ export default function App() {
       { id: 'finance', icon: Icons.dollar, label: isRTL ? 'المالية' : 'Finance' },
     ]},
     { label: t.account, items: [
+      ...(isSuperAdmin ? [{ id: 'agency', icon: Icons.building, label: isRTL ? 'لوحة الوكالة' : 'Agency' }] : []),
       { id: 'settings', icon: Icons.settings, label: t.settings },
     ]},
   ]
@@ -640,7 +689,7 @@ export default function App() {
           </div>
         </header>
 
-        <div style={{ flex:1, overflow:'auto', padding: isMobile?16:32 }} className="fade-in mobile-content" key={page}>
+        <div style={{ flex:1, overflow:'auto', padding: isMobile?16:32 }} className="fade-in mobile-content" key={location.pathname}>
           {/* Error banner */}
           {dataError && (
             <div style={{ padding:'10px 16px', marginBottom:16, borderRadius:8, background:'#FFEBE9', border:'1px solid #CF222E22', fontSize:13, color:C.danger, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -658,20 +707,33 @@ export default function App() {
             <SkeletonGeneric />
           ) : (
             <>
-              {page === 'dashboard' && <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} />}
-              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} />}
+              {page === 'dashboard' && <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} />}
+              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} />}
               {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} />}
-              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} />}
-              {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} />}
+              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} urlConvId={pageSubId} navigate={navigate} />}
+              {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} urlTicketId={pageSubId} navigate={navigate} />}
               {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><CalendarPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
-              {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
+              {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
               {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} /></Suspense>}
               {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
               {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} /></Suspense>}
-              {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={settingsTab} key={settingsTab || 'settings'} /></Suspense>}
+              {page === 'tasks' && <Suspense fallback={<SkeletonGeneric />}><TasksPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} user={user} toast={addToast} showConfirm={showConfirm} /></Suspense>}
+              {page === 'projects' && <Suspense fallback={<SkeletonGeneric />}><ProjectsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} showConfirm={showConfirm} /></Suspense>}
+              {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
+              {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
+              {page === 'agency' && isSuperAdmin && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={async (orgId) => {
+                if (isSupabaseConfigured()) {
+                  try {
+                    const { supabase: sb } = await import('./lib/supabase.js')
+                    const { data: org } = await sb.from('organizations').select('*').eq('id', orgId).single()
+                    if (org) { setOrgSettings(org); setPage('dashboard') }
+                  } catch (err) { console.error('Enter org error:', err) }
+                }
+              }} onSignOut={handleSignOut} /></Suspense>}
+              {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} /></Suspense>}
             </>
           )}
         </div>
@@ -790,7 +852,7 @@ export default function App() {
       />
 
       {/* AI Assistant */}
-      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts, ${deals.length} deals, ${tickets.length} tickets.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} deals={deals} tickets={tickets} onNavigateToApiKeys={() => { setPage('settings'); setSettingsTab('apikeys') }} />
+      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts, ${deals.length} deals, ${tickets.length} tickets.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} deals={deals} tickets={tickets} onNavigateToApiKeys={() => navigate('/settings/apikeys')} />
 
       {/* AI Floating Button */}
       {!aiOpen && (
@@ -813,7 +875,7 @@ export default function App() {
 // ═══════════════════════════════════════════════════════════════════════════
 // DASHBOARD PAGE (unchanged from Day 1)
 // ═══════════════════════════════════════════════════════════════════════════
-function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage }) {
+function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments }) {
   const widgetRenderers = {
     stats: () => <StatsCards t={t} contacts={contacts} deals={deals} tickets={tickets} dir={dir} />,
     chart: () => <MonthlyChart t={t} isRTL={isRTL} />,
@@ -825,8 +887,8 @@ function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, t
     inboxPreview: () => <InboxWidget t={t} dir={dir} />,
     appointments: () => <AppointmentsWidget t={t} dir={dir} />,
     topLeads: () => <TopLeadsWidget t={t} contacts={contacts} deals={deals} dir={dir} isRTL={isRTL} />,
-    pendingPayments: () => <PendingPaymentsWidget t={t} contacts={contacts} dir={dir} isRTL={isRTL} />,
-    financeSummary: () => <FinanceSummaryWidget t={t} contacts={contacts} dir={dir} isRTL={isRTL} />,
+    pendingPayments: () => <PendingPaymentsWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
+    financeSummary: () => <FinanceSummaryWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
   }
   return (
     <div>
@@ -1072,9 +1134,11 @@ function TopLeadsWidget({ t, contacts, deals, dir, isRTL }) {
   )
 }
 
-function PendingPaymentsWidget({ t, contacts, dir, isRTL }) {
-  const all = []
-  contacts.forEach(c => { try { const s = localStorage.getItem(`velo_payments_${c.id}`); if(s) JSON.parse(s).filter(p => p.status==='pending'||p.status==='overdue'||(p.status==='pending'&&p.dueDate&&new Date(p.dueDate)<new Date())).forEach(p => all.push({...p,contactName:c.name})) } catch {} })
+function PendingPaymentsWidget({ t, contacts, allPayments, dir, isRTL }) {
+  const contactMap = Object.fromEntries(contacts.map(c => [c.id, c]))
+  const all = (allPayments || [])
+    .filter(p => p.status === 'pending' || p.status === 'overdue' || (p.status === 'pending' && p.dueDate && new Date(p.dueDate) < new Date()))
+    .map(p => ({ ...p, contactName: contactMap[p.contactId]?.name || '' }))
   all.sort((a,b) => (a.dueDate||'9').localeCompare(b.dueDate||'9'))
   return (
     <div style={{ ...card, padding:20, direction:dir }}>
@@ -1093,9 +1157,9 @@ function PendingPaymentsWidget({ t, contacts, dir, isRTL }) {
   )
 }
 
-function FinanceSummaryWidget({ t, contacts, dir, isRTL }) {
+function FinanceSummaryWidget({ t, contacts, allPayments, dir, isRTL }) {
   let totalPaid=0, totalPending=0
-  contacts.forEach(c => { try { const s=localStorage.getItem(`velo_payments_${c.id}`); if(s) JSON.parse(s).forEach(p => { if(p.status==='paid') totalPaid+=Number(p.amount||0); else if(p.status!=='cancelled') totalPending+=Number(p.amount||0) }) } catch {} })
+  ;(allPayments || []).forEach(p => { if(p.status==='paid') totalPaid+=Number(p.amount||0); else if(p.status!=='cancelled') totalPending+=Number(p.amount||0) })
   const expenses = (() => { try { return JSON.parse(localStorage.getItem('velo_expenses')||'[]').reduce((s,e)=>s+Number(e.amount||0),0) } catch { return 0 } })()
   return (
     <div style={{ ...card, padding:20, direction:dir }}>
@@ -1121,21 +1185,33 @@ function FinanceSummaryWidget({ t, contacts, dir, isRTL }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTACTS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm }) {
+function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
   const [showForm, setShowForm] = useState(false)
   const [editingContact, setEditingContact] = useState(null)
-  const [selectedContact, setSelectedContact] = useState(null)
+  const [_selectedContact, _setSelectedContact] = useState(urlContactId || null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
   const [profileTab, setProfileTab] = useState('details')
   const [newNote, setNewNote] = useState('')
   const [showDealForm, setShowDealForm] = useState(false)
 
+  // Sync URL param to state
+  useEffect(() => { _setSelectedContact(urlContactId || null) }, [urlContactId])
+
+  // Navigate-aware setter
+  const selectedContact = _selectedContact
+  const setSelectedContact = (id) => {
+    if (id) navigate('/contacts/' + id)
+    else navigate('/contacts')
+  }
+
+  const normalizePhoneSearch = (p) => (p || '').replace(/[\s\-()]/g, '').replace(/^\+964/, '0').replace(/^964/, '0').replace(/^0+/, '')
   const filtered = contacts.filter(c => {
     const q = search.toLowerCase()
-    const matchSearch = !q || (c.name||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.company||'').toLowerCase().includes(q) || (c.city||'').toLowerCase().includes(q) || (c.tags||[]).some(tag => tag.toLowerCase().includes(q))
+    const qDigits = normalizePhoneSearch(search)
+    const matchSearch = !q || (c.name||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.company||'').toLowerCase().includes(q) || (c.city||'').toLowerCase().includes(q) || (c.tags||[]).some(tag => tag.toLowerCase().includes(q)) || (qDigits.length >= 3 && normalizePhoneSearch(c.phone).includes(qDigits))
     const matchStatus = filterStatus === 'all' || c.status === filterStatus
     const matchCat = filterCategory === 'all' || c.category === filterCategory
     return matchSearch && matchStatus && matchCat
@@ -1366,14 +1442,31 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
   })
   const dentalContact = { ...contact, ...dentalData }
 
-  // Payments stored locally
-  const [payments, setPayments] = useState(() => {
-    try { const s = localStorage.getItem(`velo_payments_${contact.id}`); return s ? JSON.parse(s) : [] } catch { return [] }
-  })
-  const persistPayments = (next) => { setPayments(next); try { localStorage.setItem(`velo_payments_${contact.id}`, JSON.stringify(next)) } catch {} }
-  const addPayment = (p) => persistPayments([...payments, { ...p, id: `pay_${Date.now()}` }])
-  const updatePayment = (id, data) => persistPayments(payments.map(p => p.id === id ? { ...p, ...data } : p))
-  const deletePayment = (id) => persistPayments(payments.filter(p => p.id !== id))
+  // Payments from Supabase
+  const [payments, setPayments] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    db.fetchPaymentsByContact(contact.id).then(data => { if (!cancelled) setPayments(data) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [contact.id])
+  const addPayment = async (p) => {
+    try {
+      const saved = await db.insertPayment({ ...p, contactId: contact.id })
+      setPayments(prev => [saved, ...prev])
+    } catch (err) { console.error('Add payment error:', err) }
+  }
+  const updatePayment = async (id, data) => {
+    try {
+      const saved = await db.patchPayment(id, data)
+      setPayments(prev => prev.map(p => p.id === id ? saved : p))
+    } catch (err) { console.error('Update payment error:', err) }
+  }
+  const deletePayment = async (id) => {
+    try {
+      await db.removePayment(id)
+      setPayments(prev => prev.filter(p => p.id !== id))
+    } catch (err) { console.error('Delete payment error:', err) }
+  }
   const onUpdateDentalLocal = (data) => {
     setDentalData(prev => {
       const next = { ...prev, ...data }
@@ -1403,11 +1496,38 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
 
   const fileInputRef = useRef(null)
   const [docs, setDocs] = useState(contact.documents || [])
+  const [docUploading, setDocUploading] = useState(false)
 
-  const handleFileUpload = (e) => {
+  const handleFileUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    setDocs(prev => [...prev, { id: genId('doc'), name: file.name, size: (file.size / 1024).toFixed(1) + ' KB', date: new Date().toLocaleDateString() }])
+    setDocUploading(true)
+    try {
+      const saved = await db.uploadContactDocument(contact.id, file)
+      setDocs(saved.documents || [])
+      if (updateContact) updateContact(contact.id, { _fromDb: saved })
+    } catch (err) {
+      console.error('Upload error:', err)
+      setDocs(prev => [...prev, { id: genId('doc'), name: file.name, size: (file.size / 1024).toFixed(1) + ' KB', date: new Date().toLocaleDateString() }])
+    }
+    setDocUploading(false)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  const handleDocDownload = async (doc) => {
+    if (!doc.path) return
+    try {
+      const url = await db.getDocumentSignedUrl(doc.path)
+      window.open(url, '_blank')
+    } catch (err) { console.error('Download error:', err) }
+  }
+
+  const handleDocRemove = async (doc) => {
+    setDocs(prev => prev.filter(d => d.id !== doc.id))
+    try {
+      const saved = await db.removeContactDocument(contact.id, doc.id, doc.path)
+      setDocs(saved.documents || [])
+    } catch (err) { console.error('Remove doc error:', err) }
   }
 
   return (
@@ -1511,10 +1631,10 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
                 </div>
               ))}
             </div>
-            {contact.notes && (
+            {contact.notes && !contact.notes.startsWith('{') && (
               <div style={{ marginTop:20, padding:16, background:C.bg, borderRadius:8 }}>
                 <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:6 }}>{t.notes}</div>
-                <div style={{ fontSize:13, color:C.text, lineHeight:1.6 }}>{contact.notes}</div>
+                <div style={{ fontSize:13, color:C.text, lineHeight:1.6, whiteSpace:'pre-wrap' }}>{contact.notes}</div>
               </div>
             )}
           </div>
@@ -1564,10 +1684,10 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
 
         {profileTab === 'documents' && (
           <div style={{ ...card, padding:24 }}>
-            <div style={{ marginBottom:16 }}>
+            <div style={{ marginBottom:16, display:'flex', alignItems:'center', gap:12 }}>
               <input ref={fileInputRef} type="file" style={{display:'none'}} onChange={handleFileUpload} />
-              <button onClick={() => fileInputRef.current?.click()} style={makeBtn('secondary', { gap:6 })}>
-                {Icons.upload(14)} {t.uploadDocument}
+              <button onClick={() => fileInputRef.current?.click()} disabled={docUploading} style={makeBtn('secondary', { gap:6 })}>
+                {Icons.upload(14)} {docUploading ? (isRTL ? 'جاري الرفع...' : 'Uploading...') : t.uploadDocument}
               </button>
             </div>
             {docs.length === 0
@@ -1578,10 +1698,13 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
                   </tr></thead>
                   <tbody>{docs.map(doc => (
                     <tr key={doc.id} style={{ borderBottom:`1px solid ${C.border}` }}>
-                      <td style={{padding:'10px 12px',display:'flex',alignItems:'center',gap:8}}>{Icons.file(14)}<span>{doc.name}</span></td>
+                      <td style={{padding:'10px 12px',display:'flex',alignItems:'center',gap:8}}>{Icons.file(14)}<span style={{cursor: doc.path ? 'pointer' : 'default', color: doc.path ? C.primary : C.text, textDecoration: doc.path ? 'underline' : 'none'}} onClick={() => handleDocDownload(doc)}>{doc.name}</span></td>
                       <td style={{padding:'10px 12px',color:C.textMuted}}>{doc.size}</td>
                       <td style={{padding:'10px 12px',color:C.textMuted}}>{doc.date}</td>
-                      <td style={{padding:'10px 12px'}}><button onClick={()=>setDocs(prev=>prev.filter(d=>d.id!==doc.id))} style={{border:'none',background:'transparent',cursor:'pointer',color:C.danger,fontSize:12}}>{t.removeDoc}</button></td>
+                      <td style={{padding:'10px 12px', display:'flex', gap:8}}>
+                        {doc.path && <button onClick={() => handleDocDownload(doc)} style={{border:'none',background:'transparent',cursor:'pointer',color:C.primary,fontSize:12}}>{isRTL ? 'تحميل' : 'Download'}</button>}
+                        <button onClick={() => handleDocRemove(doc)} style={{border:'none',background:'transparent',cursor:'pointer',color:C.danger,fontSize:12}}>{t.removeDoc}</button>
+                      </td>
                     </tr>
                   ))}</tbody>
                 </table>
@@ -2275,9 +2398,17 @@ const FILTER_TABS = [
   { id: 'sms', key: 'sms' },
 ]
 
-function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket }) {
+function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate }) {
   const [conversations, setConversations] = useState(SAMPLE_CONVERSATIONS)
-  const [activeConvId, setActiveConvId] = useState(null)
+  const [_activeConvId, _setActiveConvId] = useState(urlConvId || null)
+
+  useEffect(() => { _setActiveConvId(urlConvId || null) }, [urlConvId])
+
+  const activeConvId = _activeConvId
+  const setActiveConvId = (id) => {
+    if (id) navigate('/inbox/' + id)
+    else navigate('/inbox')
+  }
   const [filter, setFilter] = useState('all')
   const [searchQ, setSearchQ] = useState('')
   const [msgInput, setMsgInput] = useState('')
@@ -2793,14 +2924,22 @@ function TicketStatsWidget({ t, tickets, dir }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // TICKETS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, updateTicket, setPage }) {
+function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, updateTicket, setPage, urlTicketId, navigate }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterPriority, setFilterPriority] = useState('all')
   const [filterDept, setFilterDept] = useState('all')
   const [filterAssignee, setFilterAssignee] = useState('all')
   const [showForm, setShowForm] = useState(false)
-  const [selectedTicket, setSelectedTicket] = useState(null)
+  const [_selectedTicket, _setSelectedTicket] = useState(urlTicketId || null)
+
+  useEffect(() => { _setSelectedTicket(urlTicketId || null) }, [urlTicketId])
+
+  const selectedTicket = _selectedTicket
+  const setSelectedTicket = (id) => {
+    if (id) navigate('/tickets/' + id)
+    else navigate('/tickets')
+  }
 
   const filtered = tickets.filter(tk => {
     const q = search.toLowerCase()

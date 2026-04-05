@@ -43,6 +43,7 @@ export const Icons = {
   pause: (s=16) => I(s, <><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></>),
   toggle: (s=16) => I(s, <><rect x="1" y="5" width="22" height="14" rx="7" ry="7"/><circle cx="16" cy="12" r="3"/></>),
   eye: (s=16) => I(s, <><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></>),
+  target: (s=16) => I(s, <><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></>),
 }
 
 // ─── Modal ──────────────────────────────────────────────────────────────────

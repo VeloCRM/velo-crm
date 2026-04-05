@@ -380,6 +380,41 @@ export const T = {
     assigneeChanged: 'Assignee changed',
     ticketCreatedLabel: 'Ticket created',
     viewTicket: 'View Ticket',
+
+    // Tasks & Projects
+    tasks: 'Tasks',
+    projects: 'Projects',
+    goals: 'Goals',
+    docs: 'Documents',
+    newTask: 'New Task',
+    newProject: 'New Project',
+    newGoal: 'New Goal',
+    newDocument: 'New Document',
+    boardView: 'Board',
+    listView: 'List',
+    todo: 'To Do',
+    inProgress: 'In Progress',
+    inReview: 'In Review',
+    done: 'Done',
+    milestones: 'Milestones',
+    subtasks: 'Subtasks',
+    assignee: 'Assignee',
+    dueDate: 'Due Date',
+
+    // Finance
+    finance: 'Finance',
+    totalPaid: 'Total Paid',
+    totalPending: 'Total Pending',
+    overdue: 'Overdue',
+    netBalance: 'Net Balance',
+
+    // Agency
+    agency: 'Agency Dashboard',
+    allOrganizations: 'All Organizations',
+    enterOrg: 'Enter',
+    suspendOrg: 'Suspend',
+    activateOrg: 'Activate',
+    addOrganization: 'Add Organization',
   },
 
   ar: {
@@ -761,5 +796,40 @@ export const T = {
     assigneeChanged: 'تم تغيير المسند إليه',
     ticketCreatedLabel: 'تم إنشاء التذكرة',
     viewTicket: 'عرض التذكرة',
+
+    // Tasks & Projects
+    tasks: 'المهام',
+    projects: 'المشاريع',
+    goals: 'الأهداف',
+    docs: 'المستندات',
+    newTask: 'مهمة جديدة',
+    newProject: 'مشروع جديد',
+    newGoal: 'هدف جديد',
+    newDocument: 'مستند جديد',
+    boardView: 'لوحة',
+    listView: 'قائمة',
+    todo: 'مهام',
+    inProgress: 'قيد التنفيذ',
+    inReview: 'قيد المراجعة',
+    done: 'مكتمل',
+    milestones: 'المعالم',
+    subtasks: 'المهام الفرعية',
+    assignee: 'المسند إليه',
+    dueDate: 'تاريخ الاستحقاق',
+
+    // Finance
+    finance: 'المالية',
+    totalPaid: 'إجمالي المدفوع',
+    totalPending: 'إجمالي المعلق',
+    overdue: 'متأخر',
+    netBalance: 'صافي الرصيد',
+
+    // Agency
+    agency: 'لوحة الوكالة',
+    allOrganizations: 'جميع المنظمات',
+    enterOrg: 'دخول',
+    suspendOrg: 'تعليق',
+    activateOrg: 'تفعيل',
+    addOrganization: 'إضافة منظمة',
   },
 }
