@@ -24,7 +24,7 @@ export default function SocialConnections({ orgId }) {
 
   const cardStyle = {
     background: '#111827', borderRadius: 10, padding: 24,
-    border: '1px solid rgba(255,255,255,0.06)',
+    border: '1px solid rgba(0,212,255,0.12)',
     boxShadow: '0 0 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
     display: 'flex', alignItems: 'flex-start', gap: 20,
   }
@@ -59,7 +59,7 @@ export default function SocialConnections({ orgId }) {
           <button disabled style={{
             flexShrink: 0, padding: '8px 18px', borderRadius: 8,
             background: 'rgba(255,255,255,0.04)', color: '#475569',
-            border: '1px solid rgba(255,255,255,0.06)',
+            border: '1px solid rgba(0,212,255,0.12)',
             fontSize: 13, fontWeight: 500, cursor: 'not-allowed', fontFamily: 'inherit',
           }}>
             Connect

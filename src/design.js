@@ -14,7 +14,7 @@ export const C = {
   // Content
   bg: '#080c14',
   white: '#111827',
-  border: 'rgba(255,255,255,0.06)',
+  border: 'rgba(0,212,255,0.12)',
   borderLight: 'rgba(255,255,255,0.04)',
   text: '#e2e8f0',
   textSec: '#94a3b8',
@@ -97,6 +97,7 @@ export function makeBtn(variant = 'primary', extra = {}) {
 export const card = {
   background: '#111827',
   borderRadius: 10,
-  border: '1px solid rgba(255,255,255,0.06)',
+  border: '1px solid rgba(0,212,255,0.12)',
   boxShadow: '0 0 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
+  color: '#e2e8f0',
 }

@@ -2,6 +2,8 @@ import { useState, useRef } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
 import { sanitizeText, sanitizeName, maskApiKey } from '../lib/sanitize'
+import { supabase } from '../lib/supabase'
+import { callClaude, clearAgencyKeyCache } from '../lib/ai'
 
 const TABS = [
   { id: 'organization', icon: Icons.building || Icons.globe },
@@ -12,6 +14,7 @@ const TABS = [
   { id: 'integrations', icon: Icons.link },
   { id: 'billing', icon: Icons.creditCard },
   { id: 'apikeys', icon: Icons.key },
+  { id: 'agencyai', icon: Icons.zap, superAdminOnly: true },
 ]
 
 const INDUSTRIES = [
@@ -31,7 +34,7 @@ const CURRENCIES = [
   { id: 'SAR', label: 'SAR (ر.س)' },
 ]
 
-const BRAND_COLORS = ['#0969DA','#8250DF','#1A7F37','#CF222E','#D29922','#E16F24','#0D9488','#6366F1','#EC4899','#1F2328']
+const BRAND_COLORS = ['#00d4ff','#7c3aed','#00ff88','#ef4444','#f59e0b','#E16F24','#0D9488','#6366F1','#EC4899','#e2e8f0']
 
 const SAMPLE_TEAM = [
   { id: 'tm1', name: 'Admin User', email: 'admin@velo.app', role: 'admin', avatar: 'A' },
@@ -40,7 +43,7 @@ const SAMPLE_TEAM = [
   { id: 'tm4', name: 'Maria Lopez', email: 'maria@velo.app', role: 'viewer', avatar: 'M' },
 ]
 
-export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate }) {
+export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate, isSuperAdmin }) {
   const [tab, _setTab] = useState(initialTab || 'organization')
 
   const setTab = (t) => {
@@ -48,8 +51,10 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
     if (navigate) navigate('/settings/' + t)
   }
 
+  const visibleTabs = TABS.filter(tb => !tb.superAdminOnly || isSuperAdmin)
+
   const tabLabels = {
-    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys',
+    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
   }
 
   return (
@@ -59,7 +64,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
         {/* Sidebar tabs */}
         <div style={{ width: 220, flexShrink: 0 }}>
           <div style={{ ...card, padding: 8 }}>
-            {TABS.map(tb => (
+            {visibleTabs.map(tb => (
               <button key={tb.id} onClick={() => setTab(tb.id)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: 'none', background: tab === tb.id ? C.primaryBg : 'transparent', color: tab === tb.id ? C.primary : C.textSec, cursor: 'pointer', fontSize: 13, fontWeight: tab === tb.id ? 600 : 500, fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'all .15s' }}
                 onMouseEnter={e => { if (tab !== tb.id) e.currentTarget.style.background = C.bg }}
@@ -81,6 +86,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
           {tab === 'apikeys' && <ApiKeysTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} toast={toast} />}
+          {tab === 'agencyai' && isSuperAdmin && <AgencyAITab lang={lang} dir={dir} toast={toast} />}
         </div>
       </div>
     </div>
@@ -91,7 +97,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
   const [form, setForm] = useState({
     name: orgSettings.name || '',
     industry: orgSettings.industry || 'general',
-    primary_color: orgSettings.primary_color || '#0969DA',
+    primary_color: orgSettings.primary_color || '#00d4ff',
     currency: orgSettings.currency || 'USD',
     timezone: orgSettings.timezone || 'America/New_York',
   })
@@ -175,7 +181,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
 
       {/* Industry note */}
       {form.industry === 'dental' && (
-        <div style={{ padding: '12px 16px', borderRadius: 10, background: '#DDF4FF', border: '1px solid #54AEFF44', marginBottom: 20, fontSize: 13, color: '#0969DA', lineHeight: 1.5 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(0,212,255,0.08)', border: '1px solid #54AEFF44', marginBottom: 20, fontSize: 13, color: '#00d4ff', lineHeight: 1.5 }}>
           🦷 {lang === 'ar' ? 'وضع عيادة الأسنان مفعّل — ستظهر "المرضى" بدلاً من "جهات الاتصال" مع تبويبات المخطط الطبي والعلاجات والأشعة.' : 'Dental mode active — "Patients" replaces "Contacts" with Medical History, Dental Chart, Treatments, Prescriptions, and X-Rays tabs.'}
         </div>
       )}
@@ -387,7 +393,7 @@ function BillingTab({ t, lang, dir }) {
           <div key={inv.id} style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderBottom: `1px solid ${C.border}`, gap: 16 }}>
             <span style={{ fontSize: 13, color: C.textSec, flex: 1 }}>{inv.date}</span>
             <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{inv.amount}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: '#DAFBE1', color: '#1A7F37' }}>{inv.status}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: 'rgba(0,255,136,0.1)', color: '#00ff88' }}>{inv.status}</span>
             <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.primary, fontSize: 12, fontFamily: 'inherit' }}>{Icons.download(13)}</button>
           </div>
         ))}
@@ -508,7 +514,7 @@ function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
             </div>
             <button onClick={() => setShowKey(showKey === k.id ? null : k.id)} title={showKey === k.id ? 'Hide' : 'Show'} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex', padding: 4 }}>{Icons.eye(14)}</button>
             <button onClick={() => { navigator.clipboard?.writeText(k.key); if (toast) toast(ar ? 'تم النسخ' : 'Copied to clipboard', 'info') }} title="Copy" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex', padding: 4 }}>{Icons.copy(14)}</button>
-            <button onClick={() => revokeKey(k.id)} title="Revoke" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#CF222E', display: 'flex', padding: 4 }}>{Icons.trash(14)}</button>
+            <button onClick={() => revokeKey(k.id)} title="Revoke" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#ef4444', display: 'flex', padding: 4 }}>{Icons.trash(14)}</button>
           </div>
         ))}
       </div>
@@ -540,7 +546,7 @@ function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
           <input value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} type="password" placeholder="sk-ant-api03-..." style={inputStyle(dir)} />
           <p style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{ar ? 'احصل على مفتاحك من console.anthropic.com' : 'Get your key from console.anthropic.com'}</p>
           {testResult && (
-            <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500, background: testResult.ok ? '#DAFBE1' : '#FFEBE9', color: testResult.ok ? '#1A7F37' : '#CF222E', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500, background: testResult.ok ? 'rgba(0,255,136,0.1)' : 'rgba(239,68,68,0.1)', color: testResult.ok ? '#00ff88' : '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
               {testResult.ok ? '✓' : '✗'} {testResult.msg}
             </div>
           )}
@@ -831,7 +837,7 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
             <button type="button" onClick={testWhatsApp} style={makeBtn('secondary',{gap:6,fontSize:12})}>
               {waTestResult==='testing'?'...' : waTestResult==='success'?'✓ Connected':lang==='ar'?'اختبار الاتصال':'Test Connection'}
             </button>
-            {waTestResult && waTestResult !== 'testing' && waTestResult !== 'success' && <span style={{ fontSize:11, color:'#CF222E', alignSelf:'center' }}>{waTestResult}</span>}
+            {waTestResult && waTestResult !== 'testing' && waTestResult !== 'success' && <span style={{ fontSize:11, color:'#ef4444', alignSelf:'center' }}>{waTestResult}</span>}
           </div>
         </WaStep>
       </Section>
@@ -854,6 +860,167 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 
       <div style={{ display:'flex', justifyContent:'flex-end' }}>
         <button type="button" onClick={handleSave} style={makeBtn(saved?'success':'primary',{gap:6})}>{saved?Icons.check(14):null} {saved?(lang==='ar'?'تم الحفظ!':'Saved!'):(lang==='ar'?'حفظ الإعدادات':'Save Settings')}</button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Agency AI Settings (Super Admin Only) ──────────────────────────────────
+function AgencyAITab({ lang, dir, toast }) {
+  const isRTL = dir === 'rtl'
+  const [apiKey, setApiKey] = useState('')
+  const [showKey, setShowKey] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
+  const [testResult, setTestResult] = useState(null)
+
+  // Load existing key
+  useState(() => {
+    if (!supabase) { setLoading(false); return }
+    supabase.from('agency_settings').select('value').eq('key', 'anthropic_api_key').single()
+      .then(({ data }) => { if (data?.value) setApiKey(data.value); setLoading(false) })
+      .catch(() => setLoading(false))
+  })
+
+  const handleSave = async () => {
+    if (!supabase || !apiKey.trim()) return
+    setSaving(true)
+    setTestResult(null)
+    const { error } = await supabase.from('agency_settings').upsert(
+      { key: 'anthropic_api_key', value: apiKey.trim(), updated_at: new Date().toISOString() },
+      { onConflict: 'key' }
+    )
+    if (error) {
+      console.error('Save agency key error:', error)
+      if (toast) toast(isRTL ? 'خطأ في الحفظ' : 'Error saving key', 'error')
+    } else {
+      clearAgencyKeyCache()
+      if (toast) toast(isRTL ? 'تم حفظ مفتاح الوكالة' : 'Agency API key saved', 'success')
+    }
+    setSaving(false)
+  }
+
+  const handleTest = async () => {
+    if (!apiKey.trim()) return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      await callClaude({
+        apiKey: apiKey.trim(),
+        messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
+        system: 'Reply with exactly one word: OK',
+        maxTokens: 8,
+      })
+      setTestResult({ ok: true, message: isRTL ? 'المفتاح يعمل!' : 'Key is valid!' })
+    } catch (err) {
+      setTestResult({ ok: false, message: err.message || (isRTL ? 'فشل الاتصال' : 'Connection failed') })
+    }
+    setTesting(false)
+  }
+
+  return (
+    <div>
+      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #00d4ff, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>
+              {isRTL ? 'إعدادات AI الوكالة' : 'Agency AI Settings'}
+            </h2>
+            <p style={{ fontSize: 12, color: '#475569', margin: '2px 0 0' }}>
+              {isRTL ? 'مفتاح API مشترك لجميع المؤسسات' : 'Shared API key for all organizations'}
+            </p>
+          </div>
+        </div>
+
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.1)', fontSize: 12, color: '#00d4ff', lineHeight: 1.5, marginBottom: 20 }}>
+          {isRTL
+            ? 'هذا المفتاح يُستخدم كمفتاح افتراضي لجميع المؤسسات التي ليس لديها مفتاح خاص. يتيح لك تشغيل AI Growth Agent والمساعد الذكي لجميع العملاء.'
+            : 'This key serves as the default for all organizations without their own key. It powers the AI Growth Agent and AI Assistant for all clients.'}
+        </div>
+
+        {loading ? (
+          <div style={{ padding: 20, textAlign: 'center', color: '#475569', fontSize: 13 }}>
+            {isRTL ? 'جاري التحميل...' : 'Loading...'}
+          </div>
+        ) : (
+          <>
+            <FormField label={isRTL ? 'مفتاح Anthropic API' : 'Anthropic API Key'} dir={dir}>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <input
+                    type={showKey ? 'text' : 'password'}
+                    value={apiKey}
+                    onChange={e => { setApiKey(e.target.value); setTestResult(null) }}
+                    placeholder="sk-ant-api03-..."
+                    style={{ ...inputStyle(dir), paddingRight: 40 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowKey(v => !v)}
+                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', display: 'flex', padding: 4 }}
+                  >
+                    {showKey ? Icons.eyeOff(16) : Icons.eye(16)}
+                  </button>
+                </div>
+              </div>
+            </FormField>
+
+            {testResult && (
+              <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, fontSize: 12, fontWeight: 500, background: testResult.ok ? 'rgba(0,255,136,0.08)' : 'rgba(239,68,68,0.08)', color: testResult.ok ? '#00ff88' : '#ef4444', border: `1px solid ${testResult.ok ? 'rgba(0,255,136,0.15)' : 'rgba(239,68,68,0.15)'}`, display: 'flex', alignItems: 'center', gap: 8 }}>
+                {testResult.ok
+                  ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>}
+                {testResult.message}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                onClick={handleTest}
+                disabled={testing || !apiKey.trim()}
+                style={makeBtn('secondary', { gap: 6, opacity: testing || !apiKey.trim() ? 0.5 : 1 })}
+              >
+                {testing
+                  ? (isRTL ? 'جاري الاختبار...' : 'Testing...')
+                  : (isRTL ? 'اختبار المفتاح' : 'Test Key')}
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={saving || !apiKey.trim()}
+                style={makeBtn('primary', { gap: 6, opacity: saving || !apiKey.trim() ? 0.5 : 1 })}
+              >
+                {saving
+                  ? (isRTL ? 'جاري الحفظ...' : 'Saving...')
+                  : (isRTL ? 'حفظ مفتاح الوكالة' : 'Save Agency Key')}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Info card */}
+      <div style={{ ...card, padding: 20 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: '0 0 12px' }}>
+          {isRTL ? 'كيف يعمل' : 'How it works'}
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {[
+            { icon: '1️⃣', text: isRTL ? 'أضف مفتاح Anthropic API أعلاه' : 'Add your Anthropic API key above' },
+            { icon: '2️⃣', text: isRTL ? 'جميع المؤسسات تستخدم هذا المفتاح تلقائياً' : 'All organizations automatically use this key' },
+            { icon: '3️⃣', text: isRTL ? 'المؤسسات يمكنها تجاوزه بمفتاحها الخاص' : 'Organizations can override with their own key' },
+          ].map((step, i) => (
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#94a3b8' }}>
+              <span>{step.icon}</span>
+              <span>{step.text}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   )

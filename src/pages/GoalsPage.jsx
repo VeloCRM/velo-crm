@@ -26,7 +26,7 @@ const CAT_COLORS = {
   contacts: { bg: C.primaryBg, color: C.primary },
   deals:    { bg: C.purpleBg,  color: C.purple },
   tasks:    { bg: C.warningBg, color: C.warning },
-  custom:   { bg: '#F9FAFB',   color: C.textSec },
+  custom:   { bg: 'rgba(255,255,255,0.04)', color: C.textSec },
 }
 
 function loadGoals() {

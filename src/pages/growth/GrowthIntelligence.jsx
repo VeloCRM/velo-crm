@@ -11,7 +11,7 @@ const tabs = [
   { id: 'reports',      label: '📋 Reports' },
 ]
 
-export default function GrowthIntelligence({ orgId }) {
+export default function GrowthIntelligence({ orgId, isSuperAdmin }) {
   const [activeTab, setActiveTab] = useState('dashboard')
 
   return (
@@ -27,18 +27,20 @@ export default function GrowthIntelligence({ orgId }) {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: 'flex', gap: 2, background: '#0d1420', borderRadius: 10, padding: 3, marginBottom: 24, width: 'fit-content', border: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ display: 'flex', gap: 4, borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 24, paddingBottom: 0 }}>
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             style={{
-              padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 500,
+              padding: '10px 20px', borderRadius: '8px 8px 0 0', fontSize: 14, fontWeight: 500,
+              minWidth: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               border: 'none', cursor: 'pointer', fontFamily: 'inherit',
               transition: 'all 200ms ease',
               background: activeTab === tab.id ? 'rgba(0,212,255,0.08)' : 'transparent',
               color: activeTab === tab.id ? '#00d4ff' : '#94a3b8',
               borderBottom: activeTab === tab.id ? '2px solid #00d4ff' : '2px solid transparent',
+              marginBottom: -1,
             }}
           >
             {tab.label}
@@ -47,7 +49,7 @@ export default function GrowthIntelligence({ orgId }) {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'dashboard'   && <GrowthDashboard orgId={orgId} onGoToSocials={() => setActiveTab('socials')} />}
+      {activeTab === 'dashboard'   && <GrowthDashboard orgId={orgId} onGoToSocials={() => setActiveTab('socials')} isSuperAdmin={isSuperAdmin} />}
       {activeTab === 'socials'     && <SocialConnections orgId={orgId} />}
       {activeTab === 'competitors' && <CompetitorSetup orgId={orgId} />}
       {activeTab === 'reports'     && <GrowthReports orgId={orgId} />}

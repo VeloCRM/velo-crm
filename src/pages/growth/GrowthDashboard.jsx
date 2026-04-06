@@ -1,19 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
-import { callClaude } from '../../lib/ai'
+import { callClaude, resolveApiKey } from '../../lib/ai'
 import { C, card } from '../../design'
 
 const HISTORY_KEY = 'velo_growth_chat'
 function loadHistory() { try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]') } catch { return [] } }
 function saveHistory(h) { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(h.slice(-50))) } catch {} }
 
-function getStoredAnthropicKey() {
-  try { return JSON.parse(localStorage.getItem('velo_api_keys') || '{}').anthropic || '' } catch { return '' }
-}
-
 const SYSTEM_PROMPT = `You are Velo's expert marketing growth agent. You are a senior digital marketing strategist with 15+ years experience. You analyze real data from the client's social media and competitors. You NEVER make up numbers — only analyze data provided to you. If data is missing, say so clearly. You respond in the same language the user writes in (Arabic or English). Your goal: help the client grow faster than their competitors by giving specific, actionable advice.`
 
-export default function GrowthDashboard({ orgId, onGoToSocials }) {
+export default function GrowthDashboard({ orgId, onGoToSocials, isSuperAdmin }) {
   const [messages, setMessages] = useState(loadHistory)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -24,13 +20,9 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
   const endRef = useRef(null)
   const inputRef = useRef(null)
 
-  // ── Fetch API key ───────────────────────────────────────────────────
+  // ── Fetch API key (org-level → agency-level fallback) ────────────────
   useEffect(() => {
-    const stored = getStoredAnthropicKey()
-    if (stored) { setApiKey(stored); return }
-    if (!orgId || !supabase) return
-    supabase.from('organizations').select('anthropic_api_key').eq('id', orgId).single()
-      .then(({ data }) => { if (data?.anthropic_api_key) setApiKey(data.anthropic_api_key) })
+    resolveApiKey().then(key => { if (key) setApiKey(key) })
   }, [orgId])
 
   // ── Fetch org growth data ───────────────────────────────────────────
@@ -119,28 +111,42 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
 
   const totalDataPoints = dataContext.competitors.length + dataContext.socialMetrics.length + dataContext.competitorMetrics.length
 
-  // ── No API key — setup card ─────────────────────────────────────────
+  // ── No API key ──────────────────────────────────────────────────────
   if (!apiKey) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 16px' }}>
-        <div style={{ ...card, maxWidth: 480, width: '100%', padding: 32, textAlign: 'center' }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, rgba(0,212,255,0.1), rgba(124,58,237,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', border: '1px solid rgba(0,212,255,0.15)' }}>
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <div style={{ maxWidth: 480, width: '100%', padding: 32, textAlign: 'center', background: 'linear-gradient(135deg, #0d1420 0%, #111827 100%)', border: '1px solid rgba(0,212,255,0.2)', borderRadius: 16, boxShadow: '0 0 30px rgba(0,0,0,0.4), 0 0 40px rgba(0,212,255,0.03)' }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: 'rgba(0,212,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', border: '1px solid rgba(0,212,255,0.15)' }}>
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00d4ff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
           </div>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
-            Set Up Velo Growth Agent
-          </h2>
-          <p style={{ fontSize: 13, color: C.textSec, lineHeight: 1.6, margin: '0 0 6px' }}>
-            The AI Growth Agent analyzes your competitors and social metrics to give you actionable marketing strategies.
-          </p>
-          <p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 24px' }}>
-            Add your Anthropic API key in <strong>Settings → API Keys</strong> to get started.
-          </p>
-          <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,212,255,0.06)', fontSize: 12, color: '#00d4ff', lineHeight: 1.5, border: '1px solid rgba(0,212,255,0.1)' }}>
-            Get your API key from <strong>console.anthropic.com</strong>
-          </div>
+          {isSuperAdmin ? (
+            <>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0', margin: '0 0 8px' }}>
+                Set Up Agency AI Key
+              </h2>
+              <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, margin: '0 0 6px' }}>
+                Add your Anthropic API key in <strong style={{ color: '#e2e8f0' }}>Settings → Agency AI</strong> to power the Growth Agent for all organizations.
+              </p>
+              <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,212,255,0.06)', fontSize: 12, color: '#00d4ff', lineHeight: 1.5, border: '1px solid rgba(0,212,255,0.1)', marginTop: 16 }}>
+                Get your API key from <strong>console.anthropic.com</strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0', margin: '0 0 8px' }}>
+                Velo Growth Agent
+              </h2>
+              <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, margin: '0 0 6px' }}>
+                The AI Growth Agent is powered by Velo Agency. Contact your agency administrator to enable AI features.
+              </p>
+              <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(124,58,237,0.06)', fontSize: 12, color: '#7c3aed', lineHeight: 1.5, border: '1px solid rgba(124,58,237,0.1)', marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/></svg>
+                AI powered by Velo Agency
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
@@ -217,13 +223,13 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
               ].map((q, i) => (
                 <button key={i} onClick={() => send(q)} style={{
                   padding: '8px 14px', borderRadius: 8,
-                  border: '1px solid rgba(255,255,255,0.06)', background: '#111827',
+                  border: '1px solid rgba(0,212,255,0.12)', background: '#111827',
                   color: '#94a3b8', fontSize: 12, cursor: 'pointer',
                   fontFamily: 'inherit', transition: 'all 150ms ease',
                   lineHeight: 1.4,
                 }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(0,212,255,0.3)'; e.currentTarget.style.background = 'rgba(0,212,255,0.06)' }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.background = '#111827' }}>
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(0,212,255,0.12)'; e.currentTarget.style.background = '#111827' }}>
                   {q}
                 </button>
               ))}
@@ -243,7 +249,7 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
               maxWidth: '75%', padding: '10px 14px', borderRadius: 12,
               background: msg.role === 'user' ? 'linear-gradient(135deg, #00d4ff, #0099cc)' : '#0d1420',
               color: msg.role === 'user' ? '#080c14' : '#e2e8f0',
-              border: msg.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.06)',
+              border: msg.role === 'user' ? 'none' : '1px solid rgba(0,212,255,0.12)',
               fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
               {msg.content}
@@ -257,7 +263,7 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
             <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.primary}, ${C.purple})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
             </div>
-            <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: '#0d1420', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12 }}>
+            <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: '#0d1420', border: '1px solid rgba(0,212,255,0.12)', borderRadius: 12 }}>
               {[0, 1, 2].map(i => (
                 <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: C.primary, opacity: 0.4, animation: `growthPulse 0.6s ease ${i * 0.15}s infinite alternate` }} />
               ))}

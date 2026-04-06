@@ -14,17 +14,17 @@ const STATUS_LABELS = {
 }
 
 const COLUMN_BG = {
-  todo:        '#F9FAFB',
-  in_progress: '#EFF6FF',
-  in_review:   '#F5F3FF',
-  done:        '#F0FDF4',
+  todo:        'rgba(255,255,255,0.02)',
+  in_progress: 'rgba(0,212,255,0.04)',
+  in_review:   'rgba(124,58,237,0.04)',
+  done:        'rgba(0,255,136,0.04)',
 }
 
 const PRIORITY_COLORS = {
-  urgent: { color: '#DC2626', bg: '#FEF2F2' },
-  high:   { color: '#D97706', bg: '#FFFBEB' },
-  medium: { color: '#2563EB', bg: '#EFF6FF' },
-  low:    { color: '#6B7280', bg: '#F9FAFB' },
+  urgent: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
+  high:   { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
+  medium: { color: '#00d4ff', bg: 'rgba(0,212,255,0.1)' },
+  low:    { color: '#64748b', bg: 'rgba(255,255,255,0.04)' },
 }
 
 const PRIORITY_LABELS = {
@@ -394,7 +394,7 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
                       key={task.id}
                       onClick={() => setDetailTask(task)}
                       style={{ borderBottom: `1px solid ${C.borderLight}`, cursor: 'pointer', transition: 'background 150ms ease' }}
-                      onMouseEnter={e => e.currentTarget.style.background = '#F9FAFB'}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <td style={{ padding: '10px 12px', fontWeight: 500, color: C.text, maxWidth: 260 }}>

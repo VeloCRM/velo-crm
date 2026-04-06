@@ -1,12 +1,12 @@
 import { C } from '../design'
 
 const TYPE_ICONS = {
-  deal: { icon: '💰', bg: '#DAFBE1', color: '#1A7F37' },
-  contact: { icon: '👤', bg: '#DDF4FF', color: '#0969DA' },
-  ticket: { icon: '🎫', bg: '#FBEFFF', color: '#8250DF' },
-  payment: { icon: '💳', bg: '#FFF8C5', color: '#7D4E00' },
-  appointment: { icon: '📅', bg: '#DDF4FF', color: '#0969DA' },
-  system: { icon: '⚙️', bg: '#F6F8FA', color: '#57606A' },
+  deal: { icon: '💰', bg: 'rgba(0,255,136,0.1)', color: '#00ff88' },
+  contact: { icon: '👤', bg: 'rgba(0,212,255,0.1)', color: '#00d4ff' },
+  ticket: { icon: '🎫', bg: 'rgba(124,58,237,0.1)', color: '#7c3aed' },
+  payment: { icon: '💳', bg: 'rgba(245,158,11,0.1)', color: '#f59e0b' },
+  appointment: { icon: '📅', bg: 'rgba(0,212,255,0.1)', color: '#00d4ff' },
+  system: { icon: '⚙️', bg: 'rgba(255,255,255,0.04)', color: '#64748b' },
 }
 
 export default function NotificationCenter({ open, onClose, notifications, onMarkRead, onMarkAllRead, onDismiss, lang }) {

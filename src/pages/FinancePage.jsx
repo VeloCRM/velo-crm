@@ -126,8 +126,8 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
   if (isSuperAdmin) {
     const activeOrgs = orgs.filter(o => o.status === 'active' || !o.status)
     const totalMRR = activeOrgs.reduce((sum, o) => sum + (SUBSCRIPTION_PRICING[o.plan] || 0), 0)
-    const planBadge = { free: { color: C.textMuted, bg: C.bg }, starter: { color: C.primary, bg: C.primaryBg }, pro: { color: '#7C3AED', bg: '#F3E8FF' }, enterprise: { color: C.success, bg: C.successBg } }
-    const statusBadge = { active: { color: '#166534', bg: '#F0FDF4' }, suspended: { color: '#92400E', bg: '#FFFBEB' }, deleted: { color: '#991B1B', bg: '#FEF2F2' } }
+    const planBadge = { free: { color: C.textMuted, bg: C.bg }, starter: { color: C.primary, bg: C.primaryBg }, pro: { color: '#7c3aed', bg: 'rgba(124,58,237,0.1)' }, enterprise: { color: C.success, bg: C.successBg } }
+    const statusBadge = { active: { color: '#00ff88', bg: 'rgba(0,255,136,0.1)' }, suspended: { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' }, deleted: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)' } }
 
     return (
       <div style={{ direction: dir }}>
@@ -154,7 +154,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
               {[
                 { label: isRTL ? 'الإيرادات الشهرية' : 'Total MRR', value: `$${totalMRR.toLocaleString()}`, color: C.success, bg: C.successBg },
                 { label: isRTL ? 'الإيرادات السنوية' : 'Annual Revenue', value: `$${(totalMRR * 12).toLocaleString()}`, color: C.primary, bg: C.primaryBg },
-                { label: isRTL ? 'اشتراكات نشطة' : 'Active Subscriptions', value: activeOrgs.length, color: '#7C3AED', bg: '#F3E8FF' },
+                { label: isRTL ? 'اشتراكات نشطة' : 'Active Subscriptions', value: activeOrgs.length, color: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
                 { label: isRTL ? 'متوسط الإيراد' : 'Avg Revenue / Org', value: activeOrgs.length ? `$${Math.round(totalMRR / activeOrgs.length)}` : '$0', color: C.warning, bg: C.warningBg },
               ].map((s, i) => (
                 <div key={i} style={{ ...card, padding: 18, textAlign: 'center' }}>

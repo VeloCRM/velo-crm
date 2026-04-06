@@ -128,7 +128,7 @@ export default function AIAssistant({ open, onClose, apiKey, context, lang, know
             )}
             {messages.map((msg,i) => (
               <div key={i} style={{ display:'flex', justifyContent:msg.role==='user'?'flex-end':'flex-start' }}>
-                <div style={{ maxWidth:'85%', padding:'10px 14px', borderRadius:12, background:msg.role==='user'?'linear-gradient(135deg, #00d4ff, #0099cc)':'#0d1420', color:msg.role==='user'?'#080c14':'#e2e8f0', border:msg.role==='user'?'none':'1px solid rgba(255,255,255,0.06)', fontSize:13, lineHeight:1.5, whiteSpace:'pre-wrap' }}>{msg.content}</div>
+                <div style={{ maxWidth:'85%', padding:'10px 14px', borderRadius:12, background:msg.role==='user'?'linear-gradient(135deg, #00d4ff, #0099cc)':'#0d1420', color:msg.role==='user'?'#080c14':'#e2e8f0', border:msg.role==='user'?'none':'1px solid rgba(0,212,255,0.12)', fontSize:13, lineHeight:1.5, whiteSpace:'pre-wrap' }}>{msg.content}</div>
               </div>
             ))}
             {loading && <div style={{ display:'flex', gap:4, padding:'8px 14px' }}>{[0,1,2].map(i=><div key={i} style={{ width:8, height:8, borderRadius:'50%', background:C.primary, opacity:.4, animation:`pulse .6s ease ${i*.15}s infinite alternate` }}/>)}<style>{`@keyframes pulse { to { opacity: 1 } }`}</style></div>}

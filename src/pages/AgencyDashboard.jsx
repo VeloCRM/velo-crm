@@ -201,7 +201,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        borderBottom: '1px solid rgba(0,212,255,0.12)',
         boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -306,7 +306,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
-                  <tr style={{ background: '#0d1420', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  <tr style={{ background: '#0d1420', borderBottom: '1px solid rgba(0,212,255,0.12)' }}>
                     {['Org Name', 'Industry', 'Plan', 'Status', 'Contacts', 'Created', 'Actions'].map(h => (
                       <th key={h} style={{
                         padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600,

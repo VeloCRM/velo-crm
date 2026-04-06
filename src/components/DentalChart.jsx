@@ -2,12 +2,12 @@ import { useState } from 'react'
 import { C, makeBtn, card } from '../design'
 
 const TOOTH_STATUS = {
-  healthy:    { color: '#1A7F37', bg: '#DAFBE1', label: 'Healthy' },
-  cavity:     { color: '#D29922', bg: '#FFF8C5', label: 'Cavity' },
-  crown:      { color: '#0969DA', bg: '#DDF4FF', label: 'Crown' },
-  missing:    { color: '#8C959F', bg: '#F6F8FA', label: 'Missing' },
-  implant:    { color: '#8250DF', bg: '#FBEFFF', label: 'Implant' },
-  root_canal: { color: '#CF222E', bg: '#FFEBE9', label: 'Root Canal' },
+  healthy:    { color: '#00ff88', bg: 'rgba(0,255,136,0.1)', label: 'Healthy' },
+  cavity:     { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', label: 'Cavity' },
+  crown:      { color: '#00d4ff', bg: 'rgba(0,212,255,0.1)', label: 'Crown' },
+  missing:    { color: '#64748b', bg: 'rgba(255,255,255,0.04)', label: 'Missing' },
+  implant:    { color: '#7c3aed', bg: 'rgba(124,58,237,0.1)', label: 'Implant' },
+  root_canal: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', label: 'Root Canal' },
 }
 
 const UPPER_TEETH = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]

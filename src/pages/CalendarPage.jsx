@@ -5,11 +5,11 @@ import { SAMPLE_APPOINTMENTS } from '../sampleData'
 import EmptyState from '../components/EmptyState'
 
 const TYPE_COLORS = {
-  meeting:     { bg:'#DAFBE1', text:'#1A7F37', accent:'#1A7F37', label:'Meeting', ar:'اجتماع' },
-  call:        { bg:'#DDF4FF', text:'#0969DA', accent:'#0969DA', label:'Call', ar:'مكالمة' },
-  demo:        { bg:'#FBEFFF', text:'#8250DF', accent:'#8250DF', label:'Demo', ar:'عرض' },
-  'follow-up': { bg:'#FFF8C5', text:'#7D4E00', accent:'#D29922', label:'Follow-up', ar:'متابعة' },
-  appointment: { bg:'#DDF4FF', text:'#0969DA', accent:'#0969DA', label:'Appointment', ar:'موعد' },
+  meeting:     { bg:'rgba(0,255,136,0.1)', text:'#00ff88', accent:'#00ff88', label:'Meeting', ar:'اجتماع' },
+  call:        { bg:'rgba(0,212,255,0.1)', text:'#00d4ff', accent:'#00d4ff', label:'Call', ar:'مكالمة' },
+  demo:        { bg:'rgba(124,58,237,0.1)', text:'#7c3aed', accent:'#7c3aed', label:'Demo', ar:'عرض' },
+  'follow-up': { bg:'rgba(245,158,11,0.1)', text:'#f59e0b', accent:'#D29922', label:'Follow-up', ar:'متابعة' },
+  appointment: { bg:'rgba(0,212,255,0.1)', text:'#00d4ff', accent:'#00d4ff', label:'Appointment', ar:'موعد' },
 }
 
 const REMINDERS = [
@@ -341,8 +341,8 @@ export default function CalendarPage({ t, lang, dir, isRTL, contacts, toast }) {
       {confirmDeleteId && (
         <div className="modal-overlay" onClick={() => setConfirmDeleteId(null)} style={{ zIndex: 3000 }}>
           <div className="modal-content" onClick={e => e.stopPropagation()} style={{ direction: dir, width: 400, maxWidth: '92vw', textAlign: 'center', padding: 28 }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', margin: '0 auto 14px', background: '#FFEBE9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#CF222E" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+            <div style={{ width: 48, height: 48, borderRadius: '50%', margin: '0 auto 14px', background: 'rgba(239,68,68,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
             </div>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>{isRTL ? 'حذف الموعد؟' : 'Delete this event?'}</h3>
             <p style={{ fontSize: 13, color: C.textSec, margin: '0 0 20px' }}>{isRTL ? 'لا يمكن التراجع عن هذا الإجراء' : 'This action cannot be undone'}</p>

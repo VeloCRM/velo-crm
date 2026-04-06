@@ -100,9 +100,9 @@ function loadLayout() {
 function saveLayout(layout) { localStorage.setItem('velo_dashboard_layout', JSON.stringify(layout)) }
 
 const STATUS_COLORS = {
-  active: { bg: '#DAFBE1', text: '#1A7F37' },
-  lead: { bg: '#DDF4FF', text: '#0969DA' },
-  inactive: { bg: '#F6F8FA', text: '#57606A' },
+  active: { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' },
+  lead: { bg: 'rgba(0,212,255,0.1)', text: '#00d4ff' },
+  inactive: { bg: 'rgba(255,255,255,0.04)', text: '#64748b' },
 }
 
 let _idCounter = 100
@@ -123,8 +123,8 @@ function FormField({ label, children, dir }) {
   )
 }
 const inputStyle = (dir) => ({
-  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: '1px solid #D1D5DB',
-  fontSize: 14, color: C.text, fontFamily: 'inherit', outline: 'none', background: C.white,
+  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)',
+  fontSize: 14, color: C.text, fontFamily: 'inherit', outline: 'none', background: '#0f1729',
   direction: dir, textAlign: dir === 'rtl' ? 'right' : 'left', boxSizing: 'border-box',
   transition: 'border-color 150ms ease, box-shadow 150ms ease',
 })
@@ -778,7 +778,7 @@ export default function App() {
             </button>
           )}
           {/* Dark mode toggle */}
-          <button onClick={() => setDarkMode(d => !d)} style={{ width:36, height:36, borderRadius:6, border:`1px solid #D1D5DB`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, transition:'all 150ms ease' }}
+          <button onClick={() => setDarkMode(d => !d)} style={{ width:36, height:36, borderRadius:6, border:`1px solid rgba(255,255,255,0.08)`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, transition:'all 150ms ease' }}
             title={darkMode ? 'Light Mode' : 'Dark Mode'}
             onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background=C.white}>
             {darkMode
@@ -787,7 +787,7 @@ export default function App() {
             }
           </button>
           {/* Notifications */}
-          <button onClick={() => setNotifOpen(v => !v)} style={{ width:36, height:36, borderRadius:6, border:`1px solid #D1D5DB`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, position:'relative', transition:'all 150ms ease' }}
+          <button onClick={() => setNotifOpen(v => !v)} style={{ width:36, height:36, borderRadius:6, border:`1px solid rgba(255,255,255,0.08)`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, position:'relative', transition:'all 150ms ease' }}
             onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background=C.white}>
             {Icons.bell(16)}
             {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:C.danger, color:'#fff', fontSize:10, fontWeight:500, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{notifications.filter(n => !n.read).length}</span>}
@@ -813,7 +813,7 @@ export default function App() {
                   {Icons.settings(15)} {t.settings}
                 </button>
                 <button onClick={handleSignOut} style={{ width:'100%', padding:'10px 16px', border:'none', background:'transparent', textAlign:isRTL?'right':'left', cursor:'pointer', fontSize:13, color:C.danger, fontFamily:'inherit', display:'flex', alignItems:'center', gap:8, borderTop:`1px solid ${C.border}` }}
-                  onMouseEnter={e=>e.currentTarget.style.background='#FFEBE9'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                  onMouseEnter={e=>e.currentTarget.style.background='rgba(239,68,68,0.1)'} onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                   {lang === 'ar' ? 'تسجيل الخروج' : 'Sign Out'}
                 </button>
@@ -864,7 +864,7 @@ export default function App() {
         <div style={{ flex:1, overflow:'auto', padding: isMobile?16:32 }} className="page-transition mobile-content">
           {/* Error banner */}
           {dataError && (
-            <div style={{ padding:'10px 16px', marginBottom:16, borderRadius:8, background:'#FFEBE9', border:'1px solid #CF222E22', fontSize:13, color:C.danger, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+            <div style={{ padding:'10px 16px', marginBottom:16, borderRadius:8, background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.13)', fontSize:13, color:C.danger, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
               <span>{dataError}</span>
               <button onClick={() => setDataError(null)} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.danger, fontWeight:700, fontSize:16 }}>&times;</button>
             </div>
@@ -888,7 +888,7 @@ export default function App() {
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
               {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} /></Suspense>}
-              {page === 'growth' && <Suspense fallback={<SkeletonGeneric />}><GrowthIntelligence orgId={orgSettings?.id} /></Suspense>}
+              {page === 'growth' && <Suspense fallback={<SkeletonGeneric />}><GrowthIntelligence orgId={orgSettings?.id} isSuperAdmin={isSuperAdmin} /></Suspense>}
               {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin && !impersonation} orgPayments={impersonation ? allPayments : null} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
@@ -900,7 +900,7 @@ export default function App() {
               {page === 'agency' && isSuperAdmin && !impersonation && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
               {page === 'billing' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الفواتير' : 'Billing'} description={isRTL ? 'إدارة الفواتير والمدفوعات قريباً' : 'Billing management coming soon.'} icon={Icons.file} />}
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
-              {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} /></Suspense>}
+              {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isSuperAdmin={isSuperAdmin} /></Suspense>}
             </>
           )}
         </div>
@@ -1431,7 +1431,7 @@ function AppointmentsWidget({ t, dir }) {
 
 function TopLeadsWidget({ t, contacts, deals, dir, isRTL }) {
   const scored = contacts.map(c => ({ ...c, ...calculateLeadScore(c, deals, []) })).sort((a,b) => b.score - a.score).slice(0, 5)
-  const tierStyles = { hot:{ bg:'#FFEBE9', color:'#CF222E', icon:'🔥' }, warm:{ bg:'#FFF8C5', color:'#D29922', icon:'🌡️' }, cold:{ bg:'#DDF4FF', color:'#0969DA', icon:'❄️' } }
+  const tierStyles = { hot:{ bg:'rgba(239,68,68,0.1)', color:'#ef4444', icon:'🔥' }, warm:{ bg:'rgba(245,158,11,0.1)', color:'#D29922', icon:'🌡️' }, cold:{ bg:'rgba(0,212,255,0.1)', color:'#00d4ff', icon:'❄️' } }
   return (
     <div style={{ ...card, padding:20, direction:dir }}>
       <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:'0 0 14px' }}>{isRTL?'أفضل العملاء المحتملين':'Top Leads by Score'}</h3>
@@ -1462,9 +1462,9 @@ function PendingPaymentsWidget({ t, contacts, allPayments, dir, isRTL }) {
         const overdue = p.dueDate && new Date(p.dueDate) < new Date()
         return (
           <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ width:28, height:28, borderRadius:6, background: overdue?'#FFEBE9':'#FFF8C5', color: overdue?'#CF222E':'#D29922', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>{Icons.dollar(14)}</div>
+            <div style={{ width:28, height:28, borderRadius:6, background: overdue?'rgba(239,68,68,0.1)':'rgba(245,158,11,0.1)', color: overdue?'#ef4444':'#D29922', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>{Icons.dollar(14)}</div>
             <div style={{ flex:1 }}><div style={{ fontSize:12, fontWeight:600, color:C.text }}>{p.contactName}</div><div style={{ fontSize:10, color:C.textMuted }}>{isRTL?'استحقاق:':'Due:'} {p.dueDate||'—'}</div></div>
-            <span style={{ fontSize:12, fontWeight:700, color: overdue?'#CF222E':'#D29922' }}>{fmtMoney(p.amount, p.currency||'USD')}</span>
+            <span style={{ fontSize:12, fontWeight:700, color: overdue?'#ef4444':'#D29922' }}>{fmtMoney(p.amount, p.currency||'USD')}</span>
           </div>
         )
       })}
@@ -1481,9 +1481,9 @@ function FinanceSummaryWidget({ t, contacts, allPayments, dir, isRTL }) {
       <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:'0 0 14px' }}>{isRTL?'ملخص مالي':'Finance Summary'}</h3>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
         {[
-          { label:isRTL?'الإيرادات':'Revenue', value:totalPaid, color:'#1A7F37', bg:'#DAFBE1' },
-          { label:isRTL?'معلق':'Pending', value:totalPending, color:'#D29922', bg:'#FFF8C5' },
-          { label:isRTL?'المصروفات':'Expenses', value:expenses, color:'#CF222E', bg:'#FFEBE9' },
+          { label:isRTL?'الإيرادات':'Revenue', value:totalPaid, color:'#00ff88', bg:'rgba(0,255,136,0.1)' },
+          { label:isRTL?'معلق':'Pending', value:totalPending, color:'#D29922', bg:'rgba(245,158,11,0.1)' },
+          { label:isRTL?'المصروفات':'Expenses', value:expenses, color:'#ef4444', bg:'rgba(239,68,68,0.1)' },
           { label:isRTL?'الصافي':'Net', value:totalPaid-expenses, color:C.primary, bg:C.primaryBg },
         ].map((s,i) => (
           <div key={i} style={{ padding:10, borderRadius:8, background:s.bg, textAlign:'center' }}>
@@ -1615,7 +1615,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
               const cc = CAT_COLORS[c.category] || CAT_COLORS.other
               const sc = STATUS_COLORS[c.status] || STATUS_COLORS.lead
               const ls = calculateLeadScore(c, deals, [])
-              const lsColors = { hot:{ bg:'#FFEBE9', color:'#CF222E', icon:'🔥' }, warm:{ bg:'#FFF8C5', color:'#D29922', icon:'🌡️' }, cold:{ bg:'#DDF4FF', color:'#0969DA', icon:'❄️' } }
+              const lsColors = { hot:{ bg:'rgba(239,68,68,0.1)', color:'#ef4444', icon:'🔥' }, warm:{ bg:'rgba(245,158,11,0.1)', color:'#D29922', icon:'🌡️' }, cold:{ bg:'rgba(0,212,255,0.1)', color:'#00d4ff', icon:'❄️' } }
               const lsc = lsColors[ls.tier]
               return (
                 <tr key={c.id} onClick={() => setSelectedContact(c.id)}
@@ -1866,7 +1866,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
               <h2 style={{ fontSize:22, fontWeight:700, color:C.text, margin:0 }}>{contact.name}</h2>
-              {(() => { const ls=calculateLeadScore(contact,contactDeals,[]); const lc={hot:{bg:'#FFEBE9',color:'#CF222E',icon:'🔥'},warm:{bg:'#FFF8C5',color:'#D29922',icon:'🌡️'},cold:{bg:'#DDF4FF',color:'#0969DA',icon:'❄️'}}[ls.tier]; return <span title={ls.reasons.join(', ')} style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:6, background:lc.bg, color:lc.color }}>{lc.icon} {ls.score}</span> })()}
+              {(() => { const ls=calculateLeadScore(contact,contactDeals,[]); const lc={hot:{bg:'rgba(239,68,68,0.1)',color:'#ef4444',icon:'🔥'},warm:{bg:'rgba(245,158,11,0.1)',color:'#D29922',icon:'🌡️'},cold:{bg:'rgba(0,212,255,0.1)',color:'#00d4ff',icon:'❄️'}}[ls.tier]; return <span title={ls.reasons.join(', ')} style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:6, background:lc.bg, color:lc.color }}>{lc.icon} {ls.score}</span> })()}
               <span style={{ fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:6, background:sc.bg, color:sc.text }}>{statusLabel}</span>
               <span style={{ fontSize:11, fontWeight:500, padding:'3px 10px', borderRadius:6, background:cc.bg, color:cc.text }}>{t[contact.category]||contact.category}</span>
             </div>
@@ -1903,7 +1903,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
         {contact.email && <button type="button" onClick={(e)=>{e.stopPropagation();setShowEmailModal(true)}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:'none',background:'#E16F2418',color:'#E16F24',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36}}>
           {Icons.mail(14)} Email
         </button>}
-        {contact.phone && <button type="button" onClick={(e)=>{e.stopPropagation();setShowCallModal(true)}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:'none',background:'#1A7F3718',color:'#1A7F37',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36}}>
+        {contact.phone && <button type="button" onClick={(e)=>{e.stopPropagation();setShowCallModal(true)}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:'none',background:'rgba(0,255,136,0.09)',color:'#00ff88',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36}}>
           {Icons.phone(14)} {isRTL?'اتصال':'Call'}
         </button>}
         <button type="button" title={isRTL?'اربط فيسبوك من التكاملات':'Connect Facebook in Integrations'} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.textMuted,fontSize:12,fontWeight:500,cursor:'default',fontFamily:'inherit',minHeight:36,opacity:.5}}>
@@ -2083,7 +2083,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
       {showCallModal && (
         <Modal onClose={() => setShowCallModal(false)} dir={dir} width={380}>
           <div style={{ textAlign:'center', padding:'16px 0' }}>
-            <div style={{ width:56, height:56, borderRadius:'50%', background:'#1A7F3718', color:'#1A7F37', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>{Icons.phone(24)}</div>
+            <div style={{ width:56, height:56, borderRadius:'50%', background:'rgba(0,255,136,0.09)', color:'#00ff88', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>{Icons.phone(24)}</div>
             <h3 style={{ fontSize:18, fontWeight:700, color:C.text, margin:'0 0 4px' }}>{contact.name}</h3>
             <p style={{ fontSize:16, color:C.textSec, fontFamily:'monospace', margin:'0 0 20px' }}>{contact.phone}</p>
             <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
@@ -2111,10 +2111,10 @@ const PAYMENT_METHODS = [
   { id:'asia_hawala', en:'Asia Hawala', ar:'آسيا حوالة', icon:'💱' },
 ]
 const PAYMENT_STATUSES = [
-  { id:'paid', en:'Paid', ar:'مدفوع', color:'#1A7F37', bg:'#DAFBE1' },
-  { id:'pending', en:'Pending', ar:'معلق', color:'#D29922', bg:'#FFF8C5' },
-  { id:'overdue', en:'Overdue', ar:'متأخر', color:'#CF222E', bg:'#FFEBE9' },
-  { id:'cancelled', en:'Cancelled', ar:'ملغى', color:'#8C959F', bg:'#F6F8FA' },
+  { id:'paid', en:'Paid', ar:'مدفوع', color:'#00ff88', bg:'rgba(0,255,136,0.1)' },
+  { id:'pending', en:'Pending', ar:'معلق', color:'#D29922', bg:'rgba(245,158,11,0.1)' },
+  { id:'overdue', en:'Overdue', ar:'متأخر', color:'#ef4444', bg:'rgba(239,68,68,0.1)' },
+  { id:'cancelled', en:'Cancelled', ar:'ملغى', color:'#64748b', bg:'rgba(255,255,255,0.04)' },
 ]
 
 function resolvePaymentStatus(p) {
@@ -2151,8 +2151,8 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
   }
 
   const statusTransitions = {
-    pending: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#1A7F37' }, { to:'overdue', label:isRTL?'متأخر':'Mark as Overdue', color:'#CF222E' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#8C959F' }],
-    overdue: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#1A7F37' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#8C959F' }],
+    pending: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#00ff88' }, { to:'overdue', label:isRTL?'متأخر':'Mark as Overdue', color:'#ef4444' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#64748b' }],
+    overdue: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#00ff88' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#64748b' }],
     paid: [{ to:'pending', label:isRTL?'إرجاع إلى معلق':'Mark as Pending', color:'#D29922' }],
     cancelled: [{ to:'pending', label:isRTL?'إعادة تفعيل':'Reactivate', color:'#D29922' }],
   }
@@ -2162,9 +2162,9 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
       {/* Summary */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
         {[
-          { label: isRTL?'إجمالي المدفوع':'Total Paid', value: totalPaid, color:'#1A7F37', bg:'#DAFBE1' },
-          { label: isRTL?'معلق + متأخر':'Pending + Overdue', value: totalPending, color:'#D29922', bg:'#FFF8C5' },
-          { label: isRTL?'متأخر':'Overdue', value: totalOverdue, color:'#CF222E', bg:'#FFEBE9' },
+          { label: isRTL?'إجمالي المدفوع':'Total Paid', value: totalPaid, color:'#00ff88', bg:'rgba(0,255,136,0.1)' },
+          { label: isRTL?'معلق + متأخر':'Pending + Overdue', value: totalPending, color:'#D29922', bg:'rgba(245,158,11,0.1)' },
+          { label: isRTL?'متأخر':'Overdue', value: totalOverdue, color:'#ef4444', bg:'rgba(239,68,68,0.1)' },
         ].map((s,i) => (
           <div key={i} style={{ padding:14, borderRadius:10, background:s.bg, textAlign:'center' }}>
             <div style={{ fontSize:10, fontWeight:600, color:s.color, marginBottom:4 }}>{s.label}</div>
@@ -2268,8 +2268,8 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
       {confirmDeletePayment && (
         <Modal onClose={() => setConfirmDeletePayment(null)} dir={dir} width={400}>
           <div style={{ textAlign:'center', padding:8 }}>
-            <div style={{ width:48, height:48, borderRadius:'50%', margin:'0 auto 12px', background:'#FFEBE9', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#CF222E" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            <div style={{ width:48, height:48, borderRadius:'50%', margin:'0 auto 12px', background:'rgba(239,68,68,0.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
             </div>
             <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 8px' }}>{isRTL ? 'حذف الدفعة؟' : 'Delete this payment?'}</h3>
             <p style={{ fontSize:13, color:C.textSec, margin:'0 0 16px' }}>{isRTL ? 'لا يمكن التراجع عن هذا' : 'This action cannot be undone'}</p>
@@ -2317,19 +2317,19 @@ function ComposeModal({ type, contact, dir, isRTL, onClose }) {
 // ═══════════════════════════════════════════════════════════════════════════
 const DEFAULT_PIPELINE = {
   id: 'default', name: 'Sales Pipeline', stages: [
-    { id: 'lead', name: 'Lead', color: '#8C959F' },
-    { id: 'qualified', name: 'Qualified', color: '#0969DA' },
+    { id: 'lead', name: 'Lead', color: '#64748b' },
+    { id: 'qualified', name: 'Qualified', color: '#00d4ff' },
     { id: 'proposal', name: 'Proposal', color: '#D29922' },
     { id: 'negotiation', name: 'Negotiation', color: '#8250DF' },
-    { id: 'won', name: 'Won', color: '#1A7F37' },
-    { id: 'lost', name: 'Lost', color: '#CF222E' },
+    { id: 'won', name: 'Won', color: '#00ff88' },
+    { id: 'lost', name: 'Lost', color: '#ef4444' },
   ]
 }
-const STAGE_PRESET_COLORS = ['#8C959F','#0969DA','#D29922','#8250DF','#1A7F37','#CF222E','#E16F24','#0D9488','#6366F1','#EC4899']
+const STAGE_PRESET_COLORS = ['#64748b','#00d4ff','#D29922','#8250DF','#00ff88','#ef4444','#E16F24','#0D9488','#6366F1','#EC4899']
 
 function PipelineBuilderModal({ t, dir, isRTL, pipeline, onSave, onClose }) {
   const [name, setName] = useState(pipeline?.name || '')
-  const [stages, setStages] = useState(pipeline?.stages || [{ id: `s${Date.now()}`, name: '', color: '#0969DA' }])
+  const [stages, setStages] = useState(pipeline?.stages || [{ id: `s${Date.now()}`, name: '', color: '#00d4ff' }])
   const [dragIdx, setDragIdx] = useState(null)
 
   const addStage = () => setStages(prev => [...prev, { id: `s${Date.now()}`, name: '', color: STAGE_PRESET_COLORS[prev.length % STAGE_PRESET_COLORS.length] }])
@@ -2404,7 +2404,7 @@ function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDea
   }
   const stageColor = (s) => {
     const stage = activePipeline.stages.find(st => st.id === s)
-    const c = stage?.color || '#8C959F'
+    const c = stage?.color || '#64748b'
     return { bg: `${c}18`, text: c, accent: c }
   }
 
@@ -2689,10 +2689,10 @@ function DealFormModal({ t, dir, contacts, deal, defaultContactId, stages, onSav
 
 const CHANNEL_META = {
   whatsapp:  { color: '#25D366', bg: '#E7FFF1', label: 'WhatsApp' },
-  email:     { color: '#0969DA', bg: '#DDF4FF', label: 'Email' },
+  email:     { color: '#00d4ff', bg: 'rgba(0,212,255,0.1)', label: 'Email' },
   facebook:  { color: '#1877F2', bg: '#E7F0FF', label: 'Facebook' },
   instagram: { color: '#E4405F', bg: '#FFE8ED', label: 'Instagram' },
-  sms:       { color: '#8250DF', bg: '#FBEFFF', label: 'SMS' },
+  sms:       { color: '#8250DF', bg: 'rgba(124,58,237,0.1)', label: 'SMS' },
 }
 
 const ChannelIcon = ({ channel, size = 18 }) => {
@@ -3189,17 +3189,17 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
 // ═══════════════════════════════════════════════════════════════════════════
 
 const TICKET_PRIORITY_COLORS = {
-  low:    { bg: '#DAFBE1', text: '#1A7F37', accent: '#1A7F37' },
-  medium: { bg: '#FFF8C5', text: '#7D4E00', accent: '#D29922' },
+  low:    { bg: 'rgba(0,255,136,0.1)', text: '#00ff88', accent: '#00ff88' },
+  medium: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b', accent: '#D29922' },
   high:   { bg: '#FFF1E5', text: '#BC4C00', accent: '#E16F24' },
-  urgent: { bg: '#FFEBE9', text: '#CF222E', accent: '#CF222E' },
+  urgent: { bg: 'rgba(239,68,68,0.1)', text: '#ef4444', accent: '#ef4444' },
 }
 const TICKET_STATUS_COLORS = {
-  open:        { bg: '#DDF4FF', text: '#0969DA' },
-  in_progress: { bg: '#FFF8C5', text: '#7D4E00' },
-  pending:     { bg: '#FBEFFF', text: '#8250DF' },
-  resolved:    { bg: '#DAFBE1', text: '#1A7F37' },
-  closed:      { bg: '#F6F8FA', text: '#57606A' },
+  open:        { bg: 'rgba(0,212,255,0.1)', text: '#00d4ff' },
+  in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' },
+  pending:     { bg: 'rgba(124,58,237,0.1)', text: '#8250DF' },
+  resolved:    { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' },
+  closed:      { bg: 'rgba(255,255,255,0.04)', text: '#64748b' },
 }
 const DEPARTMENTS = ['sales','support','technical','billing']
 const TEAM_MEMBERS = ['Ahmed Hassan', 'Sarah Kim', 'Maria Lopez', 'Admin User']

@@ -90,7 +90,7 @@ export function TreatmentPlanTab({ contact, onUpdate, lang, dir }) {
     setShowForm(false)
   }
 
-  const statusColors = { planned: { bg: '#DDF4FF', text: '#0969DA' }, in_progress: { bg: '#FFF8C5', text: '#7D4E00' }, completed: { bg: '#DAFBE1', text: '#1A7F37' } }
+  const statusColors = { planned: { bg: 'rgba(0,212,255,0.1)', text: '#00d4ff' }, in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' }, completed: { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' } }
 
   return (
     <div style={{ ...card, padding: 24 }}>

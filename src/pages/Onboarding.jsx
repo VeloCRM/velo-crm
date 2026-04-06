@@ -81,9 +81,9 @@ export default function OnboardingPage({ user, lang, onComplete }) {
   }
 
   const inputStyle = {
-    width: '100%', padding: '8px 12px', borderRadius: 6, border: `1px solid #D1D5DB`,
-    fontSize: 14, color: C.text, fontFamily: "'Inter',sans-serif", outline: 'none',
-    background: C.white, boxSizing: 'border-box', direction: dir, height: 36,
+    width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)',
+    fontSize: 14, color: '#e2e8f0', fontFamily: "'DM Sans','Inter',sans-serif", outline: 'none',
+    background: '#0f1729', boxSizing: 'border-box', direction: dir, height: 36,
     transition: 'all 150ms ease',
   }
 

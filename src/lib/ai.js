@@ -1,16 +1,74 @@
 /**
  * Velo CRM — AI Service (Claude API)
- * Uses the org's own Anthropic API key stored in the organizations table.
+ * Key resolution order:
+ *   1. Explicit apiKey param (org-level, from orgSettings or localStorage)
+ *   2. Agency-level key from Supabase agency_settings table (cached 5 min)
  */
 
+let _agencyKeyCache = { key: null, expiry: 0 }
+
+/**
+ * Fetch the agency-level Anthropic API key from Supabase.
+ * Cached in memory for 5 minutes to avoid repeated queries.
+ */
+export async function getAgencyApiKey() {
+  if (_agencyKeyCache.key && Date.now() < _agencyKeyCache.expiry) {
+    return _agencyKeyCache.key
+  }
+  try {
+    const { supabase } = await import('./supabase.js')
+    if (!supabase) return null
+    const { data } = await supabase
+      .from('agency_settings')
+      .select('value')
+      .eq('key', 'anthropic_api_key')
+      .single()
+    if (data?.value) {
+      _agencyKeyCache = { key: data.value, expiry: Date.now() + 5 * 60 * 1000 }
+      return data.value
+    }
+  } catch {
+    // Table may not exist yet or user has no access — fall through
+  }
+  return null
+}
+
+/** Clear the agency key cache (call after saving a new key) */
+export function clearAgencyKeyCache() {
+  _agencyKeyCache = { key: null, expiry: 0 }
+}
+
+/**
+ * Resolve the best available API key.
+ * @param {string} [explicitKey] - Key passed directly (org-level)
+ */
+export async function resolveApiKey(explicitKey) {
+  // 1. Explicit key (org-level from settings or prop)
+  if (explicitKey) return explicitKey
+
+  // 2. localStorage org-level key
+  try {
+    const stored = JSON.parse(localStorage.getItem('velo_api_keys') || '{}').anthropic
+    if (stored) return stored
+  } catch {}
+
+  // 3. Agency-level key from Supabase
+  const agencyKey = await getAgencyApiKey()
+  if (agencyKey) return agencyKey
+
+  return null
+}
+
 export async function callClaude({ apiKey, messages, system, maxTokens = 1024 }) {
-  if (!apiKey) throw new Error('No Anthropic API key configured. Go to Settings → AI to add your key.')
+  // Resolve key if not provided
+  const resolvedKey = apiKey || await resolveApiKey()
+  if (!resolvedKey) throw new Error('No Anthropic API key configured. Go to Settings → AI to add your key.')
 
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': apiKey,
+      'x-api-key': resolvedKey,
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
@@ -25,8 +83,7 @@ export async function callClaude({ apiKey, messages, system, maxTokens = 1024 })
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
     const rawMsg = err.error?.message || ''
-    // Sanitize error message to never leak the API key
-    const safeMsg = apiKey && rawMsg.includes(apiKey) ? `Claude API error: ${res.status}` : (rawMsg || `Claude API error: ${res.status}`)
+    const safeMsg = resolvedKey && rawMsg.includes(resolvedKey) ? `Claude API error: ${res.status}` : (rawMsg || `Claude API error: ${res.status}`)
     throw new Error(safeMsg)
   }
 
@@ -83,9 +140,8 @@ export async function askAssistant({ apiKey, question, context, history = [] }) 
 }
 
 export function calculateLeadScore(contact, deals, activities) {
-  let score = 30 // base score
+  let score = 30
 
-  // Deal value factor (0-25 points)
   const contactDeals = deals.filter(d => d.contactId === contact.id)
   const totalValue = contactDeals.reduce((s, d) => s + (d.value || 0), 0)
   if (totalValue > 50000) score += 25
@@ -93,23 +149,19 @@ export function calculateLeadScore(contact, deals, activities) {
   else if (totalValue > 5000) score += 12
   else if (totalValue > 0) score += 5
 
-  // Status factor (0-15 points)
   if (contact.status === 'active') score += 15
   else if (contact.status === 'lead') score += 8
 
-  // Category factor (0-10 points)
   if (contact.category === 'client') score += 10
   else if (contact.category === 'prospect') score += 6
   else if (contact.category === 'partner') score += 8
 
-  // Deal stage factor (0-15 points)
   const bestStage = contactDeals.reduce((best, d) => {
     const stages = { lead: 1, qualified: 2, proposal: 3, negotiation: 4, won: 5 }
     return Math.max(best, stages[d.stage] || 0)
   }, 0)
   score += bestStage * 3
 
-  // Recency factor (0-10 points)
   if (contact.createdAt) {
     const daysSinceCreated = (Date.now() - new Date(contact.createdAt).getTime()) / 86400000
     if (daysSinceCreated < 7) score += 10
@@ -117,7 +169,6 @@ export function calculateLeadScore(contact, deals, activities) {
     else if (daysSinceCreated < 90) score += 3
   }
 
-  // Tags bonus
   if ((contact.tags || []).some(t => ['enterprise', 'high-value', 'vip'].includes(t.toLowerCase()))) score += 5
 
   const clamped = Math.min(100, Math.max(0, score))

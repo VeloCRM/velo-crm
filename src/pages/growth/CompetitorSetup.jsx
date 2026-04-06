@@ -71,7 +71,7 @@ export default function CompetitorSetup({ orgId }) {
 
   const cardStyle = {
     background: '#111827', borderRadius: 10,
-    border: '1px solid rgba(255,255,255,0.06)',
+    border: '1px solid rgba(0,212,255,0.12)',
     boxShadow: '0 0 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
   }
 
@@ -120,7 +120,7 @@ export default function CompetitorSetup({ orgId }) {
 
       {/* ── Competitors List ──────────────────────────────────────────── */}
       <div style={{ ...cardStyle, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,212,255,0.12)' }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
             Tracked Competitors
             <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: '#475569' }}>
@@ -140,7 +140,7 @@ export default function CompetitorSetup({ orgId }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#0d1420', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <tr style={{ background: '#0d1420', borderBottom: '1px solid rgba(0,212,255,0.12)' }}>
                   {['Name', 'Industry', 'Instagram', 'Location', 'Google Maps', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                   ))}

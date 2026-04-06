@@ -111,7 +111,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
         background: isMobile?'transparent':'#111827',
         borderRadius: isMobile?0:(isRTL?'16px 0 0 16px':'16px 0 0 16px'),
         boxShadow: isMobile?'none':'-8px 0 32px rgba(0,0,0,.4)',
-        border: isMobile?'none':'1px solid rgba(255,255,255,0.06)',
+        border: isMobile?'none':'1px solid rgba(0,212,255,0.12)',
       }}>
         {/* Mobile logo */}
         {isMobile && (
@@ -122,7 +122,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
           </div>
         )}
 
-        <div style={isMobile ? { background:'#111827', borderRadius:8, padding:'28px 22px', boxShadow:'0 4px 24px rgba(0,0,0,.4)', border:'1px solid rgba(255,255,255,0.06)' } : {}}>
+        <div style={isMobile ? { background:'#111827', borderRadius:8, padding:'28px 22px', boxShadow:'0 4px 24px rgba(0,0,0,.4)', border:'1px solid rgba(0,212,255,0.12)' } : {}}>
           {/* Language toggle */}
           <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:20 }}>
             <button onClick={() => setLang(l => l==='en'?'ar':'en')} style={{ border:`1px solid ${C.border}`, background:'transparent', borderRadius:6, padding:'5px 12px', fontSize:12, color:C.textSec, cursor:'pointer', fontFamily:'inherit' }}>
