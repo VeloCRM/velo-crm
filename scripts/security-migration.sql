@@ -168,6 +168,60 @@ CREATE POLICY "contacts_org_isolation" ON contacts
   )
   WITH CHECK (user_id = auth.uid());
 
+-- Payments: super admin can see all
+DROP POLICY IF EXISTS "payments_org_isolation" ON payments;
+DROP POLICY IF EXISTS "Users can manage own payments" ON payments;
+CREATE POLICY "payments_org_isolation" ON payments
+  FOR ALL
+  USING (
+    user_id IN (SELECT id FROM profiles WHERE org_id = get_user_org_id())
+    OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_super_admin = true)
+  )
+  WITH CHECK (user_id = auth.uid());
+
+-- Deals: super admin can see all
+DROP POLICY IF EXISTS "deals_org_isolation" ON deals;
+CREATE POLICY "deals_org_isolation" ON deals
+  FOR ALL
+  USING (
+    user_id IN (SELECT id FROM profiles WHERE org_id = get_user_org_id())
+    OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_super_admin = true)
+  )
+  WITH CHECK (user_id = auth.uid());
+
+-- Tickets: super admin can see all
+DROP POLICY IF EXISTS "tickets_org_isolation" ON tickets;
+CREATE POLICY "tickets_org_isolation" ON tickets
+  FOR ALL
+  USING (
+    user_id IN (SELECT id FROM profiles WHERE org_id = get_user_org_id())
+    OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_super_admin = true)
+  )
+  WITH CHECK (user_id = auth.uid());
+
+-- Ticket Comments: super admin can see all
+DROP POLICY IF EXISTS "ticket_comments_org_isolation" ON ticket_comments;
+CREATE POLICY "ticket_comments_org_isolation" ON ticket_comments
+  FOR ALL
+  USING (
+    ticket_id IN (
+      SELECT id FROM tickets
+      WHERE user_id IN (SELECT id FROM profiles WHERE org_id = get_user_org_id())
+    )
+    OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_super_admin = true)
+  )
+  WITH CHECK (user_id = auth.uid());
+
+-- Audit Log: super admin can see all
+DROP POLICY IF EXISTS "audit_log_org_isolation" ON audit_log;
+CREATE POLICY "audit_log_org_isolation" ON audit_log
+  FOR ALL
+  USING (
+    user_id IN (SELECT id FROM profiles WHERE org_id = get_user_org_id())
+    OR EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_super_admin = true)
+  )
+  WITH CHECK (user_id = auth.uid());
+
 -- Add plan and status columns to organizations if not present
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan text DEFAULT 'free';
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS status text DEFAULT 'active';

@@ -1,4 +1,4 @@
-import { supabase, isSupabaseConfigured } from './supabase'
+import { supabase, supabaseAdmin, isSupabaseConfigured } from './supabase'
 
 // ─── Notes JSON helpers ────────────────────────────────────────────────────
 // Notes field stores JSON: { bio: "", timeline: [...], documents: [...] }
@@ -386,6 +386,41 @@ export async function fetchAllPayments() {
   return (data || []).map(mapPayment)
 }
 
+export async function fetchAllPaymentsAdmin() {
+  const client = supabaseAdmin || supabase
+  const [paymentsRes, profilesRes, orgsRes, contactsRes] = await Promise.all([
+    client.from('payments').select('*').order('created_at', { ascending: false }),
+    client.from('profiles').select('id, org_id'),
+    client.from('organizations').select('id, name'),
+    client.from('contacts').select('id, name, company'),
+  ])
+  if (paymentsRes.error) throw paymentsRes.error
+  const profileMap = Object.fromEntries((profilesRes.data || []).filter(p => p.org_id).map(p => [p.id, p.org_id]))
+  const orgMap = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]))
+  const contactMap = Object.fromEntries((contactsRes.data || []).map(c => [c.id, c.name]))
+  return (paymentsRes.data || []).map(row => ({
+    ...mapPayment(row),
+    contactName: contactMap[row.contact_id] || '',
+    orgId: profileMap[row.user_id] || null,
+    orgName: orgMap[profileMap[row.user_id]] || 'Unassigned',
+  }))
+}
+
+export async function fetchTeamMembers(orgId) {
+  if (!orgId) return []
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, email, role')
+    .eq('org_id', orgId)
+  if (error) throw error
+  return (data || []).map(p => ({
+    id: p.id,
+    name: p.full_name || p.email?.split('@')[0] || 'Team Member',
+    email: p.email,
+    role: p.role,
+  }))
+}
+
 export async function insertPayment(p) {
   const userId = (await supabase.auth.getUser()).data.user?.id
   const { data, error } = await supabase
@@ -498,4 +533,79 @@ export function hydrateReferences(contacts, deals, tickets) {
     company: contactMap[tk.contactId]?.company || tk.company || '',
   }))
   return { contacts, deals: hydratedDeals, tickets: hydratedTickets }
+}
+
+
+// ─── Organizations ─────────────────────────────────────────────────────────
+
+export async function fetchOrganizations() {
+  const client = supabaseAdmin || supabase
+  const { data, error } = await client.from('organizations').select('*').order('created_at', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
+// ─── Impersonation (Admin) ──────────────────────────────────────────────────
+
+export async function fetchOrg(orgId) {
+  const client = supabaseAdmin || supabase
+  const { data, error } = await client.from('organizations').select('*').eq('id', orgId).single()
+  if (error) throw error
+  return data
+}
+
+export async function fetchOrgUserIds(orgId) {
+  const client = supabaseAdmin || supabase
+  const { data, error } = await client.from('profiles').select('id').eq('org_id', orgId)
+  if (error) throw error
+  return (data || []).map(p => p.id)
+}
+
+export async function fetchContactsForOrg(orgId, userIds) {
+  const client = supabaseAdmin || supabase
+  let query = client.from('contacts').select('*').order('created_at', { ascending: false })
+  if (orgId) {
+    query = query.eq('org_id', orgId)
+  } else if (userIds?.length) {
+    query = query.in('user_id', userIds)
+  }
+  const { data, error } = await query
+  if (error) throw error
+  return (data || []).map(mapContact)
+}
+
+export async function fetchDealsForOrg(userIds) {
+  if (!userIds?.length) return []
+  const client = supabaseAdmin || supabase
+  const { data, error } = await client
+    .from('deals')
+    .select('*')
+    .in('user_id', userIds)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map(mapDeal)
+}
+
+export async function fetchTicketsForOrg(userIds) {
+  if (!userIds?.length) return []
+  const client = supabaseAdmin || supabase
+  const { data, error } = await client
+    .from('tickets')
+    .select('*, ticket_comments(*)')
+    .in('user_id', userIds)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map(mapTicket)
+}
+
+export async function fetchPaymentsForOrg(userIds) {
+  if (!userIds?.length) return []
+  const client = supabaseAdmin || supabase
+  const { data, error } = await client
+    .from('payments')
+    .select('*')
+    .in('user_id', userIds)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map(mapPayment)
 }

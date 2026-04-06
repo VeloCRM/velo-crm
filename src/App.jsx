@@ -23,6 +23,7 @@ const ProjectsPage = lazy(() => import('./pages/ProjectsPage'))
 const GoalsPage = lazy(() => import('./pages/GoalsPage'))
 const DocsPage = lazy(() => import('./pages/DocsPage'))
 const AgencyDashboard = lazy(() => import('./pages/AgencyDashboard'))
+const GrowthIntelligence = lazy(() => import('./pages/growth/GrowthIntelligence'))
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
 import NotificationCenter from './components/NotificationCenter'
@@ -161,6 +162,14 @@ export default function App() {
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
+  // Impersonation state — persisted in localStorage
+  const [impersonation, setImpersonation] = useState(() => {
+    try {
+      const stored = localStorage.getItem('velo_impersonating')
+      return stored ? JSON.parse(stored) : null
+    } catch { return null }
+  })
+
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
     check(); window.addEventListener('resize', check)
@@ -180,6 +189,7 @@ export default function App() {
   const [tasks, setTasks] = useState(SAMPLE_TASKS)
   const [tickets, setTickets] = useState([])
   const [allPayments, setAllPayments] = useState([])
+  const [teamMembers, setTeamMembers] = useState([])
   const [dragWidget, setDragWidget] = useState(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [notifications, setNotifications] = useState(() => {
@@ -219,10 +229,13 @@ export default function App() {
   }, [lang, dir])
   useEffect(() => { saveLayout(layout) }, [layout])
 
-  // Redirect / to /dashboard
+  // Redirect / to /dashboard (or /agency for super admin)
   useEffect(() => {
-    if (location.pathname === '/') navigate('/dashboard', { replace: true })
-  }, [location.pathname, navigate])
+    if (location.pathname === '/') {
+      if (user?.email === SUPER_ADMIN_EMAIL && !impersonation) navigate('/agency', { replace: true })
+      else navigate('/dashboard', { replace: true })
+    }
+  }, [location.pathname, navigate, user, impersonation])
 
   // Dark mode
   useEffect(() => {
@@ -279,10 +292,10 @@ export default function App() {
 
   // Fetch data from Supabase when user logs in
   const loadAllData = async () => {
+    const isSA = user?.email === SUPER_ADMIN_EMAIL
     if (!useDB) {
-      setContacts(SAMPLE_CONTACTS)
-      setDeals(SAMPLE_DEALS)
-      setTickets(SAMPLE_TICKETS)
+      if (isSA) { setContacts([]); setDeals([]); setTickets([]); setAllPayments([]) }
+      else { setContacts(SAMPLE_CONTACTS); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS) }
       return
     }
     setDataLoading(true)
@@ -295,6 +308,14 @@ export default function App() {
         if (profile?.org_id) {
           const { data: org } = await sb.from('organizations').select('*').eq('id', profile.org_id).single()
           if (org) setOrgSettings(org)
+          // Fetch team members for this org
+          try {
+            const members = await db.fetchTeamMembers(profile.org_id)
+            if (members.length > 0) setTeamMembers(members)
+          } catch (e) { console.warn('Team members fetch error:', e) }
+        } else if (isSA) {
+          // Super admin has no org — skip onboarding, go to agency dashboard
+          localStorage.setItem('velo_onboarding_done', 'true')
         } else if (!localStorage.getItem('velo_onboarding_done')) {
           // No org and never completed onboarding — trigger wizard
           setNeedsOnboarding(true)
@@ -303,11 +324,48 @@ export default function App() {
         }
       }
 
+      if (isSA) {
+        // Super admin without impersonation — don't fetch org data (would leak all orgs' data)
+        setContacts([])
+        setDeals([])
+        setTickets([])
+        setAllPayments([])
+      } else {
+        const [rawContacts, rawDeals, rawTickets, rawPayments] = await Promise.all([
+          db.fetchContacts(),
+          db.fetchDeals(),
+          db.fetchTickets(),
+          db.fetchAllPayments().catch(() => []),
+        ])
+        const hydrated = db.hydrateReferences(rawContacts, rawDeals, rawTickets)
+        setContacts(hydrated.contacts)
+        setDeals(hydrated.deals)
+        setTickets(hydrated.tickets)
+        setAllPayments(rawPayments)
+      }
+    } catch (err) {
+      console.error('Data load error:', err)
+      setDataError(err.message || 'Failed to load data')
+      if (!isSA) { setContacts(SAMPLE_CONTACTS); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS) }
+    } finally {
+      setDataLoading(false)
+    }
+  }
+
+  // Load data for a specific org (impersonation mode)
+  const loadDataForOrg = async (orgId) => {
+    if (!useDB) return
+    setDataLoading(true)
+    setDataError(null)
+    try {
+      const org = await db.fetchOrg(orgId)
+      if (org) setOrgSettings(org)
+      const userIds = await db.fetchOrgUserIds(orgId)
       const [rawContacts, rawDeals, rawTickets, rawPayments] = await Promise.all([
-        db.fetchContacts(),
-        db.fetchDeals(),
-        db.fetchTickets(),
-        db.fetchAllPayments().catch(() => []),
+        db.fetchContactsForOrg(orgId, userIds),
+        db.fetchDealsForOrg(userIds),
+        db.fetchTicketsForOrg(userIds),
+        db.fetchPaymentsForOrg(userIds),
       ])
       const hydrated = db.hydrateReferences(rawContacts, rawDeals, rawTickets)
       setContacts(hydrated.contacts)
@@ -315,18 +373,16 @@ export default function App() {
       setTickets(hydrated.tickets)
       setAllPayments(rawPayments)
     } catch (err) {
-      console.error('Data load error:', err)
-      setDataError(err.message || 'Failed to load data')
-      setContacts(SAMPLE_CONTACTS)
-      setDeals(SAMPLE_DEALS)
-      setTickets(SAMPLE_TICKETS)
+      console.error('Impersonation data load error:', err)
+      setDataError(err.message || 'Failed to load org data')
     } finally {
       setDataLoading(false)
     }
   }
 
   useEffect(() => {
-    if (user) loadAllData()
+    if (user && !impersonation) loadAllData()
+    else if (user && impersonation) loadDataForOrg(impersonation.orgId)
   }, [user])
 
   // settingsTab is now derived from URL: /settings/:tab
@@ -339,6 +395,9 @@ export default function App() {
     setTickets([])
     setOrgSettings({})
     setShowUserMenu(false)
+    setImpersonation(null)
+    localStorage.removeItem('velo_impersonating')
+    localStorage.removeItem('velo_admin_session')
     clearAllVeloData()
   }
 
@@ -356,6 +415,22 @@ export default function App() {
     return () => { clearInterval(interval); window.removeEventListener('click', onActivity); window.removeEventListener('keydown', onActivity) }
   }, [user])
 
+  // If navigating to agency while impersonating, exit impersonation
+  useEffect(() => {
+    if (page === 'agency' && impersonation) {
+      setImpersonation(null)
+      localStorage.removeItem('velo_impersonating')
+      localStorage.removeItem('velo_admin_session')
+      setOrgSettings({})
+      setContacts([])
+      setDeals([])
+      setTickets([])
+      setAllPayments([])
+      loadAllData()
+      navigate('/agency')
+    }
+  }, [page])
+
   // Show auth page if not logged in
   if (authLoading) {
     return (
@@ -372,12 +447,35 @@ export default function App() {
     return <AuthPage onAuth={(u) => setUser(u)} lang={lang} setLang={setLang} />
   }
 
-  if (needsOnboarding) {
-    return <Suspense fallback={<SkeletonGeneric />}><OnboardingPage user={user} lang={lang} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} /></Suspense>
-  }
-
   // Super Admin check
   const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL
+
+  // Impersonation handlers
+  const startImpersonation = async (org) => {
+    const imp = { orgId: org.id, orgName: org.name }
+    setImpersonation(imp)
+    localStorage.setItem('velo_impersonating', JSON.stringify(imp))
+    localStorage.setItem('velo_admin_session', JSON.stringify({ email: user.email, id: user.id }))
+    await loadDataForOrg(org.id)
+    navigate('/dashboard')
+  }
+
+  const exitImpersonation = () => {
+    setImpersonation(null)
+    localStorage.removeItem('velo_impersonating')
+    localStorage.removeItem('velo_admin_session')
+    setOrgSettings({})
+    setContacts([])
+    setDeals([])
+    setTickets([])
+    setAllPayments([])
+    loadAllData()
+    navigate('/agency')
+  }
+
+  if (needsOnboarding && !isSuperAdmin) {
+    return <Suspense fallback={<SkeletonGeneric />}><OnboardingPage user={user} lang={lang} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} /></Suspense>
+  }
 
   const toggleLang = () => setLang(l => l === 'en' ? 'ar' : 'en')
   const toggleWidget = (id) => setLayout(prev => ({ ...prev, visible: { ...prev.visible, [id]: !prev.visible[id] } }))
@@ -554,6 +652,7 @@ export default function App() {
       { id: 'social', icon: Icons.globe, label: isRTL ? 'التواصل' : 'Social' },
       { id: 'integrations', icon: Icons.integrations, label: t.integrations },
       { id: 'reports', icon: Icons.reports, label: t.reports },
+      { id: 'growth', icon: Icons.trendUp, label: isRTL ? 'النمو' : 'Growth' },
       { id: 'finance', icon: Icons.dollar, label: isRTL ? 'المالية' : 'Finance' },
     ]},
     { label: t.account, items: [
@@ -586,7 +685,7 @@ export default function App() {
             <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{orgSettings.name ? t.appName : t.appTagline}</div>
           </div>}
         </div>
-        <nav style={{ flex:1, overflowY:'auto', padding:'8px' }}>
+        <nav style={{ flex:1, overflowY:'auto', padding:'8px', minHeight:0 }}>
           {navGroups.map((group, gi) => (
             <div key={gi} style={{ marginBottom:4 }}>
               {!sidebarCollapsed && <div style={{ color:C.sidebarText, fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', padding:'12px 12px 4px' }}>{group.label}</div>}
@@ -689,7 +788,46 @@ export default function App() {
           </div>
         </header>
 
-        <div style={{ flex:1, overflow:'auto', padding: isMobile?16:32 }} className="fade-in mobile-content" key={location.pathname}>
+        {/* Impersonation Banner */}
+        {impersonation && (
+          <div style={{
+            background: 'linear-gradient(135deg, #DC2626, #EA580C)',
+            padding: '0 24px',
+            height: 44,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            color: '#fff',
+            fontSize: 14,
+            fontWeight: 600,
+            zIndex: 50,
+            flexShrink: 0,
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 18 }}>👁</span>
+              <span>{isRTL ? 'عرض كـ:' : 'Viewing as:'} {impersonation.orgName}</span>
+            </div>
+            <button onClick={exitImpersonation} style={{
+              border: '2px solid rgba(255,255,255,0.4)',
+              background: 'rgba(255,255,255,0.15)',
+              color: '#fff',
+              padding: '4px 16px',
+              borderRadius: 6,
+              cursor: 'pointer',
+              fontSize: 13,
+              fontWeight: 600,
+              fontFamily: 'inherit',
+              transition: 'all 150ms ease',
+            }}
+              onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.3)' }}
+              onMouseLeave={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.15)' }}
+            >
+              {isRTL ? '← العودة للوكالة' : '← Exit to Agency'}
+            </button>
+          </div>
+        )}
+
+        <div style={{ flex:1, overflow:'auto', padding: isMobile?16:32 }} className="page-transition mobile-content">
           {/* Error banner */}
           {dataError && (
             <div style={{ padding:'10px 16px', marginBottom:16, borderRadius:8, background:'#FFEBE9', border:'1px solid #CF222E22', fontSize:13, color:C.danger, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
@@ -707,16 +845,17 @@ export default function App() {
             <SkeletonGeneric />
           ) : (
             <>
-              {page === 'dashboard' && <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} />}
-              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} />}
-              {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} />}
-              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} urlConvId={pageSubId} navigate={navigate} />}
-              {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} urlTicketId={pageSubId} navigate={navigate} />}
+              {page === 'dashboard' && <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} urlTicketId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><CalendarPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
               {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} /></Suspense>}
-              {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} /></Suspense>}
+              {page === 'growth' && <Suspense fallback={<SkeletonGeneric />}><GrowthIntelligence orgId={orgSettings?.id} /></Suspense>}
+              {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin && !impersonation} orgPayments={impersonation ? allPayments : null} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
               {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} /></Suspense>}
@@ -724,15 +863,7 @@ export default function App() {
               {page === 'projects' && <Suspense fallback={<SkeletonGeneric />}><ProjectsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} showConfirm={showConfirm} /></Suspense>}
               {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
               {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
-              {page === 'agency' && isSuperAdmin && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={async (orgId) => {
-                if (isSupabaseConfigured()) {
-                  try {
-                    const { supabase: sb } = await import('./lib/supabase.js')
-                    const { data: org } = await sb.from('organizations').select('*').eq('id', orgId).single()
-                    if (org) { setOrgSettings(org); setPage('dashboard') }
-                  } catch (err) { console.error('Enter org error:', err) }
-                }
-              }} onSignOut={handleSignOut} /></Suspense>}
+              {page === 'agency' && isSuperAdmin && !impersonation && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
               {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} /></Suspense>}
             </>
           )}
@@ -801,6 +932,7 @@ export default function App() {
                   { id:'social', icon: Icons.globe, label: isRTL?'التواصل':'Social' },
                   { id:'integrations', icon: Icons.integrations, label: t.integrations },
                   { id:'reports', icon: Icons.reports, label: t.reports },
+                  { id:'growth', icon: Icons.trendUp, label: isRTL?'النمو':'Growth' },
                   { id:'finance', icon: Icons.dollar, label: isRTL?'المالية':'Finance' },
                   { id:'settings', icon: Icons.settings, label: t.settings },
                 ].map(item => (
@@ -875,7 +1007,131 @@ export default function App() {
 // ═══════════════════════════════════════════════════════════════════════════
 // DASHBOARD PAGE (unchanged from Day 1)
 // ═══════════════════════════════════════════════════════════════════════════
-function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments }) {
+// ─── Agency Empty State (shown when super admin is not impersonating) ────────
+function AgencyEmptyState({ isRTL, setPage }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
+      <div style={{ fontSize: 48, marginBottom: 20 }}>👈</div>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
+        {isRTL ? 'انتقل إلى لوحة الوكالة واختر مؤسسة لعرض بياناتها' : 'Go to Agency Dashboard and enter an organization to view their data'}
+      </h2>
+      <p style={{ fontSize: 14, color: C.textMuted, margin: '0 0 24px', maxWidth: 420 }}>
+        {isRTL ? 'اختر مؤسسة من لوحة الوكالة لعرض بياناتها.' : 'Select an organization from the Agency Dashboard to view their data.'}
+      </p>
+      <button onClick={() => setPage('agency')} style={makeBtn('primary', { gap: 8 })}>
+        {Icons.building(16)} {isRTL ? 'لوحة الوكالة' : 'Go to Agency Dashboard'}
+      </button>
+    </div>
+  )
+}
+
+// ─── Agency Dashboard View (super admin overview with MRR stats) ────────────
+const PLAN_PRICING = { free: 0, starter: 29, pro: 79, enterprise: 199 }
+
+function AgencyDashboardView({ t, lang, isRTL, dir, setPage }) {
+  const [orgs, setOrgs] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      try {
+        const data = await db.fetchOrganizations()
+        if (!cancelled) setOrgs(data)
+      } catch (e) { console.error('Agency dashboard load error:', e) }
+      if (!cancelled) setLoading(false)
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  const activeOrgs = orgs.filter(o => o.status === 'active' || !o.status)
+  const totalMRR = activeOrgs.reduce((sum, o) => sum + (PLAN_PRICING[o.plan] || 0), 0)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
+        <div>
+          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'نظرة عامة للوكالة' : 'Agency Overview'}</h1>
+          <p style={{ fontSize: 13, color: C.textSec, marginTop: 4 }}>{new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+        </div>
+        <button onClick={() => setPage('agency')} style={makeBtn('primary', { gap: 8 })}>
+          {Icons.building(16)} {isRTL ? 'إدارة المؤسسات' : 'Manage Organizations'}
+        </button>
+      </div>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 40, color: C.textMuted, fontSize: 14 }}>{isRTL ? 'جاري التحميل...' : 'Loading...'}</div>
+      ) : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
+            {[
+              { label: isRTL ? 'إجمالي المؤسسات' : 'Total Organizations', value: orgs.length, color: C.primary, bg: C.primaryBg },
+              { label: isRTL ? 'الاشتراكات النشطة' : 'Active Subscriptions', value: activeOrgs.length, color: C.success, bg: C.successBg },
+              { label: isRTL ? 'الإيرادات الشهرية' : 'Monthly Recurring Revenue', value: `$${totalMRR.toLocaleString()}`, color: C.purple, bg: C.purpleBg },
+              { label: isRTL ? 'متوسط الإيراد/مؤسسة' : 'Avg Revenue / Org', value: activeOrgs.length ? `$${Math.round(totalMRR / activeOrgs.length)}` : '$0', color: C.warning, bg: C.warningBg },
+            ].map((s, i) => (
+              <div key={i} style={{ ...card, padding: 20, textAlign: 'center' }}>
+                <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 500, marginBottom: 6 }}>{s.label}</div>
+                <div style={{ fontSize: 28, fontWeight: 700, color: s.color }}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
+            {/* Plan distribution */}
+            <div style={{ ...card, padding: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{isRTL ? 'توزيع الاشتراكات' : 'Subscription Distribution'}</h3>
+              {['enterprise', 'pro', 'starter', 'free'].map(plan => {
+                const count = activeOrgs.filter(o => o.plan === plan).length
+                const pct = activeOrgs.length ? (count / activeOrgs.length) * 100 : 0
+                const revenue = count * (PLAN_PRICING[plan] || 0)
+                const colors = { enterprise: C.success, pro: C.purple, starter: C.primary, free: C.textMuted }
+                return (
+                  <div key={plan} style={{ marginBottom: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 600, color: C.text, textTransform: 'capitalize' }}>{plan} <span style={{ fontWeight: 400, color: C.textMuted }}>(${PLAN_PRICING[plan]}/mo)</span></span>
+                      <span style={{ color: C.textSec }}>{count} orgs &middot; ${revenue}/mo</span>
+                    </div>
+                    <div style={{ height: 6, borderRadius: 4, background: C.bg }}>
+                      <div style={{ height: '100%', borderRadius: 4, background: colors[plan], width: `${pct}%`, minWidth: count > 0 ? 4 : 0, transition: 'width 300ms ease' }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Recent orgs */}
+            <div style={{ ...card, padding: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{isRTL ? 'أحدث المؤسسات' : 'Recent Organizations'}</h3>
+              {orgs.length === 0 ? (
+                <p style={{ fontSize: 13, color: C.textMuted, textAlign: 'center', padding: 16 }}>{isRTL ? 'لا توجد مؤسسات' : 'No organizations yet'}</p>
+              ) : orgs.slice(0, 6).map(org => (
+                <div key={org.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 8, background: C.primaryBg, color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700 }}>{(org.name || '?')[0].toUpperCase()}</div>
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{org.name}</div>
+                      <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'capitalize' }}>{org.plan || 'free'} &middot; {org.status || 'active'}</div>
+                    </div>
+                  </div>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.success }}>${PLAN_PRICING[org.plan] || 0}/mo</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments, isSuperAdmin, impersonation }) {
+  // Agency mode — show agency-level stats instead of regular dashboard
+  if (isSuperAdmin && !impersonation) {
+    return <AgencyDashboardView t={t} lang={lang} isRTL={isRTL} dir={dir} setPage={setPage} />
+  }
+
   const widgetRenderers = {
     stats: () => <StatsCards t={t} contacts={contacts} deals={deals} tickets={tickets} dir={dir} />,
     chart: () => <MonthlyChart t={t} isRTL={isRTL} />,
@@ -1185,7 +1441,7 @@ function FinanceSummaryWidget({ t, contacts, allPayments, dir, isRTL }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTACTS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate }) {
+function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate, isSuperAdmin, impersonation }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
@@ -1205,6 +1461,11 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
   const setSelectedContact = (id) => {
     if (id) navigate('/contacts/' + id)
     else navigate('/contacts')
+  }
+
+  // Super admin not impersonating — show agency message instead of contacts
+  if (isSuperAdmin && !impersonation) {
+    return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
   }
 
   const normalizePhoneSearch = (p) => (p || '').replace(/[\s\-()]/g, '').replace(/^\+964/, '0').replace(/^964/, '0').replace(/^0+/, '')
@@ -2059,7 +2320,8 @@ function PipelineBuilderModal({ t, dir, isRTL, pipeline, onSave, onClose }) {
   )
 }
 
-function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDeal, deleteDeal, setPage, toast, showConfirm }) {
+function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDeal, deleteDeal, setPage, toast, showConfirm, isSuperAdmin, impersonation }) {
+  if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
   const [pipelines, setPipelines] = useState(() => {
     try { const s = localStorage.getItem('velo_pipelines'); return s ? JSON.parse(s) : [DEFAULT_PIPELINE] } catch { return [DEFAULT_PIPELINE] }
   })
@@ -2398,7 +2660,8 @@ const FILTER_TABS = [
   { id: 'sms', key: 'sms' },
 ]
 
-function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate }) {
+function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate, teamMembers, isSuperAdmin, impersonation }) {
+  if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
   const [conversations, setConversations] = useState(SAMPLE_CONVERSATIONS)
   const [_activeConvId, _setActiveConvId] = useState(urlConvId || null)
 
@@ -2850,7 +3113,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
       </div>
       {/* Create Ticket from Conversation */}
       {showTicketForm && activeConv && (
-        <TicketFormModal t={t} dir={dir} contacts={contacts}
+        <TicketFormModal t={t} dir={dir} contacts={contacts} teamMembers={teamMembers}
           defaultContactId={activeConv.contactId} defaultContactName={activeConv.contactName}
           defaultConversationId={activeConv.id}
           defaultSubject={`${activeConv.contactName}: ${activeConv.lastMessage.substring(0,60)}`}
@@ -2924,7 +3187,8 @@ function TicketStatsWidget({ t, tickets, dir }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // TICKETS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, updateTicket, setPage, urlTicketId, navigate }) {
+function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, updateTicket, setPage, urlTicketId, navigate, teamMembers, isSuperAdmin, impersonation }) {
+  if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterPriority, setFilterPriority] = useState('all')
@@ -2954,7 +3218,7 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
   if (selectedTicket) {
     const tk = tickets.find(x => x.id === selectedTicket)
     if (!tk) { setSelectedTicket(null); return null }
-    return <TicketDetailPage t={t} dir={dir} isRTL={isRTL} lang={lang} ticket={tk} contacts={contacts} updateTicket={updateTicket} onBack={() => setSelectedTicket(null)} setPage={setPage} />
+    return <TicketDetailPage t={t} dir={dir} isRTL={isRTL} lang={lang} ticket={tk} contacts={contacts} updateTicket={updateTicket} onBack={() => setSelectedTicket(null)} setPage={setPage} teamMembers={teamMembers} />
   }
 
   return (
@@ -2987,7 +3251,7 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
         </select>
         <select value={filterAssignee} onChange={e=>setFilterAssignee(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
           <option value="all">{t.allAssignees}</option>
-          {TEAM_MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
+          {(teamMembers && teamMembers.length > 0 ? teamMembers.map(m => m.name) : TEAM_MEMBERS).map(m=><option key={m} value={m}>{m}</option>)}
         </select>
       </div>
 
@@ -3030,7 +3294,7 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
       </div>
 
       {showForm && (
-        <TicketFormModal t={t} dir={dir} contacts={contacts}
+        <TicketFormModal t={t} dir={dir} contacts={contacts} teamMembers={teamMembers}
           onSave={(tk) => { addTicket(tk); setShowForm(false) }}
           onClose={() => setShowForm(false)} />
       )}
@@ -3040,7 +3304,7 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
 
 
 // ── Ticket Detail Page ──────────────────────────────────────────────────────
-function TicketDetailPage({ t, dir, isRTL, lang, ticket, contacts, updateTicket, onBack, setPage }) {
+function TicketDetailPage({ t, dir, isRTL, lang, ticket, contacts, updateTicket, onBack, setPage, teamMembers }) {
   const [comment, setComment] = useState('')
   const pc = TICKET_PRIORITY_COLORS[ticket.priority]
   const sc = TICKET_STATUS_COLORS[ticket.status]
@@ -3091,7 +3355,7 @@ function TicketDetailPage({ t, dir, isRTL, lang, ticket, contacts, updateTicket,
               {TICKET_STATUSES.map(s=><option key={s} value={s}>{ticketStatusLabel(t,s)}</option>)}
             </select>
             <select value={ticket.assignee} onChange={e=>changeAssignee(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
-              {TEAM_MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
+              {(teamMembers && teamMembers.length > 0 ? teamMembers.map(m => m.name) : TEAM_MEMBERS).map(m=><option key={m} value={m}>{m}</option>)}
             </select>
           </div>
         </div>
@@ -3198,7 +3462,8 @@ function TicketDetailPage({ t, dir, isRTL, lang, ticket, contacts, updateTicket,
 
 
 // ── Ticket Form Modal ───────────────────────────────────────────────────────
-function TicketFormModal({ t, dir, contacts, defaultContactId, defaultContactName, defaultConversationId, defaultSubject, onSave, onClose }) {
+function TicketFormModal({ t, dir, contacts, defaultContactId, defaultContactName, defaultConversationId, defaultSubject, onSave, onClose, teamMembers }) {
+  const memberNames = teamMembers && teamMembers.length > 0 ? teamMembers.map(m => m.name) : TEAM_MEMBERS
   const [form, setForm] = useState({
     subject: defaultSubject || '',
     description: '',
@@ -3208,7 +3473,7 @@ function TicketFormModal({ t, dir, contacts, defaultContactId, defaultContactNam
     priority: 'medium',
     status: 'open',
     department: 'support',
-    assignee: TEAM_MEMBERS[0],
+    assignee: memberNames[0],
     conversationId: defaultConversationId || null,
   })
 
@@ -3266,7 +3531,7 @@ function TicketFormModal({ t, dir, contacts, defaultContactId, defaultContactNam
       </div>
       <FormField label={t.ticketAssignee} dir={dir}>
         <select value={form.assignee} onChange={e=>set('assignee',e.target.value)} style={selectStyle(dir)}>
-          {TEAM_MEMBERS.map(m=><option key={m} value={m}>{m}</option>)}
+          {memberNames.map(m=><option key={m} value={m}>{m}</option>)}
         </select>
       </FormField>
       <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>

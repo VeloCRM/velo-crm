@@ -212,7 +212,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
             color: '#fff', fontWeight: 700, fontSize: 15,
           }}>S</div>
           <span style={{ color: '#F9FAFB', fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>
-            SupCRM Agency
+            Velo Agency
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -319,7 +319,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
                     return (
                       <tr
                         key={org.id}
-                        onClick={() => onEnterOrg(org.id)}
+                        onClick={() => onEnterOrg(org)}
                         style={{
                           borderBottom: `1px solid ${C.borderLight}`,
                           background: idx % 2 === 0 ? C.white : '#FAFBFC',
@@ -378,7 +378,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
                         <td style={{ padding: '12px 14px' }} onClick={e => e.stopPropagation()}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
                             <button
-                              onClick={() => onEnterOrg(org.id)}
+                              onClick={() => onEnterOrg(org)}
                               style={makeBtn('primary', { height: 28, fontSize: 12, padding: '0 10px' })}
                             >Enter</button>
 
