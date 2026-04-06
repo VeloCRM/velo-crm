@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Modal, FormField, inputStyle, selectStyle } from '../components/shared'
 import { SAMPLE_APPOINTMENTS } from '../sampleData'
+import { isSupabaseConfigured } from '../lib/supabase'
 import EmptyState from '../components/EmptyState'
 
 const TYPE_COLORS = {
@@ -21,7 +22,10 @@ const REMINDERS = [
 
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 7) // 7am to 8pm
 
-function loadEvents() { try { return JSON.parse(localStorage.getItem('velo_calendar_events')||'null') || SAMPLE_APPOINTMENTS } catch { return SAMPLE_APPOINTMENTS } }
+function loadEvents() {
+  try { const stored = JSON.parse(localStorage.getItem('velo_calendar_events')||'null'); if (stored) return stored } catch {}
+  return isSupabaseConfigured() ? [] : SAMPLE_APPOINTMENTS
+}
 function saveEvents(e) { localStorage.setItem('velo_calendar_events', JSON.stringify(e)) }
 
 function toLocalDateStr(d) {

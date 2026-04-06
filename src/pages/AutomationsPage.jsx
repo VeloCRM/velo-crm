@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Modal, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 const SAMPLE_AUTOMATIONS = [
   { id: 'auto1', name: 'Welcome Message', trigger: 'new_contact', condition: 'All new contacts', action: 'send_whatsapp', actionDetail: 'Send WhatsApp welcome message', enabled: true, runs: 142, lastRun: '2 hours ago' },
@@ -27,7 +28,7 @@ const ACTIONS = [
 ]
 
 export default function AutomationsPage({ t, lang, dir, isRTL }) {
-  const [automations, setAutomations] = useState(SAMPLE_AUTOMATIONS)
+  const [automations, setAutomations] = useState(isSupabaseConfigured() ? [] : SAMPLE_AUTOMATIONS)
   const [showForm, setShowForm] = useState(false)
 
   const toggleAuto = (id) => setAutomations(prev => prev.map(a => a.id === id ? { ...a, enabled: !a.enabled } : a))

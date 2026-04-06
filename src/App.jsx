@@ -186,7 +186,7 @@ export default function App() {
   const [showCustomizer, setShowCustomizer] = useState(false)
   const [contacts, setContacts] = useState([])
   const [deals, setDeals] = useState([])
-  const [tasks, setTasks] = useState(SAMPLE_TASKS)
+  const [tasks, setTasks] = useState([])
   const [tickets, setTickets] = useState([])
   const [allPayments, setAllPayments] = useState([])
   const [teamMembers, setTeamMembers] = useState([])
@@ -294,8 +294,8 @@ export default function App() {
   const loadAllData = async () => {
     const isSA = user?.email === SUPER_ADMIN_EMAIL
     if (!useDB) {
-      if (isSA) { setContacts([]); setDeals([]); setTickets([]); setAllPayments([]) }
-      else { setContacts(SAMPLE_CONTACTS); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS) }
+      if (isSA) { setContacts([]); setDeals([]); setTickets([]); setTasks([]); setAllPayments([]) }
+      else { setContacts(SAMPLE_CONTACTS); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS); setTasks(SAMPLE_TASKS) }
       return
     }
     setDataLoading(true)
@@ -346,7 +346,7 @@ export default function App() {
     } catch (err) {
       console.error('Data load error:', err)
       setDataError(err.message || 'Failed to load data')
-      if (!isSA) { setContacts(SAMPLE_CONTACTS); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS) }
+      // On DB error, show empty state — don't pollute with sample data
     } finally {
       setDataLoading(false)
     }
@@ -1198,9 +1198,9 @@ function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, t
     recentContacts: () => <RecentContactsWidget t={t} contacts={contacts} dir={dir} setPage={setPage} />,
     pipeline: () => <PipelineSummaryWidget t={t} deals={deals} dir={dir} lang={lang} />,
     ticketStats: () => <TicketStatsWidget t={t} tickets={tickets} dir={dir} />,
-    activity: () => <ActivityWidget t={t} dir={dir} />,
-    inboxPreview: () => <InboxWidget t={t} dir={dir} />,
-    appointments: () => <AppointmentsWidget t={t} dir={dir} />,
+    activity: () => <ActivityWidget t={t} dir={dir} useDB={isSupabaseConfigured()} />,
+    inboxPreview: () => <InboxWidget t={t} dir={dir} useDB={isSupabaseConfigured()} />,
+    appointments: () => <AppointmentsWidget t={t} dir={dir} useDB={isSupabaseConfigured()} />,
     topLeads: () => <TopLeadsWidget t={t} contacts={contacts} deals={deals} dir={dir} isRTL={isRTL} />,
     pendingPayments: () => <PendingPaymentsWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
     financeSummary: () => <FinanceSummaryWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
@@ -1357,7 +1357,8 @@ function PipelineSummaryWidget({ t, deals, dir, lang }) {
   )
 }
 
-function ActivityWidget({ t, dir }) {
+function ActivityWidget({ t, dir, useDB }) {
+  const activities = useDB ? [] : SAMPLE_ACTIVITIES
   const iconMap={deal:Icons.dollar,contact:Icons.user,message:Icons.mail,task:Icons.check,automation:Icons.automations}
   return (
     <div style={{...card,padding:20,direction:dir}}>
@@ -1365,31 +1366,39 @@ function ActivityWidget({ t, dir }) {
         <h3 style={{fontSize:15,fontWeight:600,color:C.text,margin:0}}>{t.recentActivity}</h3>
         <span style={{fontSize:12,color:C.primary,cursor:'pointer',fontWeight:500}}>{t.seeAll}</span>
       </div>
+      {activities.length === 0 ? (
+        <div style={{textAlign:'center',padding:'20px 0',color:C.textMuted,fontSize:13}}>No recent activity</div>
+      ) : (
       <div style={{display:'flex',flexDirection:'column',gap:2}}>
-        {SAMPLE_ACTIVITIES.map((act,i)=>{
+        {activities.map((act,i)=>{
           const IconFn=iconMap[act.icon]||Icons.activity
           return (
-            <div key={act.id} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'10px 0',borderBottom:i<SAMPLE_ACTIVITIES.length-1?`1px solid ${C.border}`:'none'}}>
+            <div key={act.id} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'10px 0',borderBottom:i<activities.length-1?`1px solid ${C.border}`:'none'}}>
               <div style={{width:32,height:32,borderRadius:8,flexShrink:0,background:`${act.color}15`,color:act.color,display:'flex',alignItems:'center',justifyContent:'center'}}>{IconFn(16)}</div>
               <div style={{flex:1}}><div style={{fontSize:13,color:C.text,lineHeight:1.4}}>{act.text}</div><div style={{fontSize:11,color:C.textMuted,marginTop:2}}>{act.time}</div></div>
             </div>
           )
         })}
       </div>
+      )}
     </div>
   )
 }
 
-function InboxWidget({ t, dir }) {
+function InboxWidget({ t, dir, useDB }) {
+  const messages = useDB ? [] : SAMPLE_MESSAGES.slice(0,4)
   return (
     <div style={{...card,padding:20,direction:dir}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
         <h3 style={{fontSize:15,fontWeight:600,color:C.text,margin:0}}>{t.inboxPreview}</h3>
         <span style={{fontSize:12,color:C.primary,cursor:'pointer',fontWeight:500}}>{t.seeAll}</span>
       </div>
+      {messages.length === 0 ? (
+        <div style={{textAlign:'center',padding:'20px 0',color:C.textMuted,fontSize:13}}>No messages yet</div>
+      ) : (
       <div style={{display:'flex',flexDirection:'column',gap:2}}>
-        {SAMPLE_MESSAGES.slice(0,4).map((msg,i)=>(
-          <div key={msg.id} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'12px 0',borderBottom:i<3?`1px solid ${C.border}`:'none'}}>
+        {messages.map((msg,i)=>(
+          <div key={msg.id} style={{display:'flex',alignItems:'flex-start',gap:12,padding:'12px 0',borderBottom:i<messages.length-1?`1px solid ${C.border}`:'none'}}>
             <div style={{width:36,height:36,borderRadius:'50%',flexShrink:0,background:msg.read?C.bg:C.primaryBg,color:msg.read?C.textMuted:C.primary,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:600}}>{msg.from.charAt(0)}</div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',gap:8}}><span style={{fontSize:13,fontWeight:msg.read?500:700,color:C.text}}>{msg.from}</span><span style={{fontSize:11,color:C.textMuted,flexShrink:0}}>{msg.time}</span></div>
@@ -1400,11 +1409,13 @@ function InboxWidget({ t, dir }) {
           </div>
         ))}
       </div>
+      )}
     </div>
   )
 }
 
-function AppointmentsWidget({ t, dir }) {
+function AppointmentsWidget({ t, dir, useDB }) {
+  const appointments = useDB ? [] : SAMPLE_APPOINTMENTS.slice(0,4)
   const typeColors={call:{bg:C.primaryBg,color:C.primary},demo:{bg:C.purpleBg,color:C.purple},meeting:{bg:C.successBg,color:C.success}}
   return (
     <div style={{...card,padding:20,direction:dir}}>
@@ -1412,8 +1423,11 @@ function AppointmentsWidget({ t, dir }) {
         <h3 style={{fontSize:15,fontWeight:600,color:C.text,margin:0}}>{t.upcomingAppointments}</h3>
         <span style={{fontSize:12,color:C.primary,cursor:'pointer',fontWeight:500}}>{t.seeAll}</span>
       </div>
+      {appointments.length === 0 ? (
+        <div style={{textAlign:'center',padding:'20px 0',color:C.textMuted,fontSize:13}}>No upcoming appointments</div>
+      ) : (
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        {SAMPLE_APPOINTMENTS.slice(0,4).map(apt=>{
+        {appointments.map(apt=>{
           const tc=typeColors[apt.type]||typeColors.meeting
           return (
             <div key={apt.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderRadius:8,border:`1px solid ${C.border}`,background:C.white}}>
@@ -1425,6 +1439,7 @@ function AppointmentsWidget({ t, dir }) {
           )
         })}
       </div>
+      )}
     </div>
   )
 }
@@ -2721,7 +2736,7 @@ const FILTER_TABS = [
 
 function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate, teamMembers, isSuperAdmin, impersonation }) {
   if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
-  const [conversations, setConversations] = useState(SAMPLE_CONVERSATIONS)
+  const [conversations, setConversations] = useState(() => isSupabaseConfigured() ? [] : SAMPLE_CONVERSATIONS)
   const [_activeConvId, _setActiveConvId] = useState(urlConvId || null)
 
   useEffect(() => { _setActiveConvId(urlConvId || null) }, [urlConvId])

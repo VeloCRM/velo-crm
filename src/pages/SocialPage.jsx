@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Modal, FormField, inputStyle, selectStyle } from '../components/shared'
 import { stripHtml } from '../lib/sanitize'
+import { isSupabaseConfigured } from '../lib/supabase'
 
 const PLATFORMS = [
   { id:'facebook', name:'Facebook', color:'#1877F2', icon:'f', maxChars:63206 },
@@ -27,7 +28,10 @@ const SAMPLE_ANALYTICS = {
   ]
 }
 
-function loadPosts() { try { return JSON.parse(localStorage.getItem('velo_social_posts')||'null') || SAMPLE_POSTS } catch { return SAMPLE_POSTS } }
+function loadPosts() {
+  try { const stored = JSON.parse(localStorage.getItem('velo_social_posts')||'null'); if (stored) return stored } catch {}
+  return isSupabaseConfigured() ? [] : SAMPLE_POSTS
+}
 function savePosts(p) { localStorage.setItem('velo_social_posts', JSON.stringify(p)) }
 
 export default function SocialPage({ t, lang, dir, isRTL, orgSettings }) {
@@ -246,7 +250,7 @@ function CalendarTab({ lang, dir, isRTL }) {
 }
 
 function AnalyticsTab({ lang, dir, isRTL }) {
-  const d = SAMPLE_ANALYTICS
+  const d = isSupabaseConfigured() ? { reach:0, impressions:0, engagement:0, clicks:0, followers:0, posts:0 } : SAMPLE_ANALYTICS
   const metrics = [
     { label: isRTL?'الوصول':'Total Reach', value: d.reach.toLocaleString(), color:C.primary, bg:C.primaryBg },
     { label: isRTL?'الانطباعات':'Impressions', value: d.impressions.toLocaleString(), color:C.purple, bg:C.purpleBg },

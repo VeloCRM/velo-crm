@@ -251,7 +251,7 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
 }
 
 function TeamTab({ t, lang, dir, isRTL }) {
-  const [team, setTeam] = useState(SAMPLE_TEAM)
+  const [team, setTeam] = useState(() => isSupabaseConfigured() ? [] : SAMPLE_TEAM)
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('editor')
 
