@@ -3,10 +3,10 @@ import { signIn, signUp, resetPassword } from '../lib/auth'
 import { checkLoginAttempt, getLoginLockoutRemaining } from '../lib/sanitize'
 
 const C = {
-  sidebar: '#111827', primary: '#2563EB', primaryHov: '#1D4ED8',
-  text: '#111827', textSec: '#374151', textMuted: '#9CA3AF',
-  border: '#E5E7EB', bg: '#F9FAFB', white: '#FFFFFF',
-  danger: '#DC2626', success: '#16A34A',
+  sidebar: '#0d1420', primary: '#00d4ff', primaryHov: '#00b8e6',
+  text: '#e2e8f0', textSec: '#94a3b8', textMuted: '#475569',
+  border: 'rgba(255,255,255,0.08)', bg: '#0d1420', white: '#111827',
+  danger: '#ef4444', success: '#00ff88',
 }
 
 export default function AuthPage({ onAuth, lang, setLang }) {
@@ -77,7 +77,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
     setLoading(false)
   }
 
-  const inp = { width:'100%', padding:'0 14px', height:44, borderRadius:6, border:'1px solid #D1D5DB', fontSize:14, color:C.text, fontFamily:"'Inter',sans-serif", outline:'none', background:C.white, boxSizing:'border-box', direction:dir, transition:'border-color .2s' }
+  const inp = { width:'100%', padding:'0 14px', height:44, borderRadius:6, border:'1px solid rgba(255,255,255,0.08)', fontSize:14, color:'#e2e8f0', fontFamily:"'DM Sans','Inter',sans-serif", outline:'none', background:'#0f1729', boxSizing:'border-box', direction:dir, transition:'border-color .2s' }
 
   return (
     <div dir={dir} style={{ minHeight:'100vh', display:'flex', flexDirection: isMobile?'column':'row', fontFamily:"'Inter',-apple-system,sans-serif", background:`linear-gradient(135deg,${C.sidebar} 0%,#1F2937 100%)` }}>
@@ -108,9 +108,10 @@ export default function AuthPage({ onAuth, lang, setLang }) {
         width: isMobile?'100%':480, minWidth: isMobile?'unset':480, flex: isMobile?1:'none',
         display:'flex', flexDirection:'column', justifyContent:'center',
         padding: isMobile?'24px 20px':'48px 52px',
-        background: isMobile?'transparent':C.white,
+        background: isMobile?'transparent':'#111827',
         borderRadius: isMobile?0:(isRTL?'16px 0 0 16px':'16px 0 0 16px'),
-        boxShadow: isMobile?'none':'-8px 0 32px rgba(0,0,0,.1)',
+        boxShadow: isMobile?'none':'-8px 0 32px rgba(0,0,0,.4)',
+        border: isMobile?'none':'1px solid rgba(255,255,255,0.06)',
       }}>
         {/* Mobile logo */}
         {isMobile && (
@@ -121,7 +122,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
           </div>
         )}
 
-        <div style={isMobile ? { background:C.white, borderRadius:8, padding:'28px 22px', boxShadow:'0 4px 24px rgba(0,0,0,.15)' } : {}}>
+        <div style={isMobile ? { background:'#111827', borderRadius:8, padding:'28px 22px', boxShadow:'0 4px 24px rgba(0,0,0,.4)', border:'1px solid rgba(255,255,255,0.06)' } : {}}>
           {/* Language toggle */}
           <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:20 }}>
             <button onClick={() => setLang(l => l==='en'?'ar':'en')} style={{ border:`1px solid ${C.border}`, background:'transparent', borderRadius:6, padding:'5px 12px', fontSize:12, color:C.textSec, cursor:'pointer', fontFamily:'inherit' }}>
@@ -136,10 +137,10 @@ export default function AuthPage({ onAuth, lang, setLang }) {
             {mode==='forgot'?(lang==='ar'?'أدخل بريدك الإلكتروني':'Enter your email for a reset link'):(lang==='ar'?'أدخل بياناتك للمتابعة':'Enter your details to continue')}
           </p>
 
-          <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:16, background:'#EFF6FF', border:'1px solid #BFDBFE', fontSize:11, color:C.primary, lineHeight:1.5 }}>{txt.demoNote}</div>
+          <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:16, background:'rgba(0,212,255,0.06)', border:'1px solid rgba(0,212,255,0.12)', fontSize:11, color:'#00d4ff', lineHeight:1.5 }}>{txt.demoNote}</div>
 
           {error && (
-            <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:12, background:'#FEF2F2', border:'1px solid #FECACA', fontSize:12, color:C.danger, display:'flex', alignItems:'center', gap:8 }}>
+            <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:12, background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.15)', fontSize:12, color:'#ef4444', display:'flex', alignItems:'center', gap:8 }}>
               {lockoutSeconds > 0 && (
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0 }}>
                   <rect x="5" y="7" width="6" height="6" rx="1" stroke={C.danger} strokeWidth="1.5" fill="none"/>
@@ -150,7 +151,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
             </div>
           )}
           {lockoutSeconds > 0 && (
-            <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:12, background:'#FEF2F2', border:'1px solid #FECACA', fontSize:11, color:C.danger, textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
+            <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:12, background:'rgba(239,68,68,0.08)', border:'1px solid rgba(239,68,68,0.15)', fontSize:11, color:'#ef4444', textAlign:'center', display:'flex', alignItems:'center', justifyContent:'center', gap:6 }}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink:0 }}>
                 <circle cx="8" cy="8" r="6.5" stroke={C.danger} strokeWidth="1.2" fill="none"/>
                 <path d="M8 4.5v4l2.5 1.5" stroke={C.danger} strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
@@ -158,14 +159,14 @@ export default function AuthPage({ onAuth, lang, setLang }) {
               <span>{lang==='ar' ? `الوقت المتبقي: ${lockoutSeconds} ثانية` : `Time remaining: ${lockoutSeconds}s`}</span>
             </div>
           )}
-          {message && <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:12, background:'#F0FDF4', border:'1px solid #BBF7D0', fontSize:12, color:C.success }}>{message}</div>}
+          {message && <div style={{ padding:'8px 12px', borderRadius:6, marginBottom:12, background:'rgba(0,255,136,0.06)', border:'1px solid rgba(0,255,136,0.15)', fontSize:12, color:'#00ff88' }}>{message}</div>}
 
           <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
             {mode==='signup' && <div><label style={{ display:'block', fontSize:12, fontWeight:600, color:C.textSec, marginBottom:5 }}>{txt.fullName}</label><input value={fullName} onChange={e=>setFullName(e.target.value)} style={inp}/></div>}
             <div><label style={{ display:'block', fontSize:12, fontWeight:600, color:C.textSec, marginBottom:5 }}>{txt.email}</label><input value={email} onChange={e=>setEmail(e.target.value)} type="email" placeholder="you@company.com" style={inp}/></div>
             {mode!=='forgot' && <div><label style={{ display:'block', fontSize:12, fontWeight:600, color:C.textSec, marginBottom:5 }}>{txt.password}</label><input value={password} onChange={e=>setPassword(e.target.value)} type="password" placeholder="••••••••" style={inp}/></div>}
             {mode==='login' && <div style={{ textAlign:isRTL?'left':'right' }}><button type="button" onClick={()=>{setMode('forgot');setError('');setMessage('');setLockoutSeconds(0)}} style={{ border:'none', background:'transparent', color:C.primary, fontSize:12, cursor:'pointer', fontFamily:'inherit', fontWeight:500 }}>{txt.forgotPassword}</button></div>}
-            <button type="submit" disabled={loading || lockoutSeconds > 0} style={{ width:'100%', padding:'0 16px', height:44, borderRadius:6, border:'none', background:(loading || lockoutSeconds > 0)?C.textMuted:`linear-gradient(135deg,${C.primary},${C.primaryHov})`, color:'#fff', fontSize:15, fontWeight:500, cursor:(loading || lockoutSeconds > 0)?'not-allowed':'pointer', fontFamily:'inherit', boxShadow:'0 2px 8px rgba(37,99,235,.25)' }}>
+            <button type="submit" disabled={loading || lockoutSeconds > 0} style={{ width:'100%', padding:'0 16px', height:44, borderRadius:6, border:'none', background:(loading || lockoutSeconds > 0)?'#475569':'linear-gradient(135deg, #00d4ff, #0099cc)', color:(loading || lockoutSeconds > 0)?'#94a3b8':'#080c14', fontSize:15, fontWeight:600, cursor:(loading || lockoutSeconds > 0)?'not-allowed':'pointer', fontFamily:'inherit', boxShadow:'0 2px 12px rgba(0,212,255,.25)' }}>
               {loading?(lang==='ar'?'جارٍ التحميل...':'Loading...'):mode==='forgot'?txt.resetPassword:mode==='signup'?txt.signup:txt.login}
             </button>
           </form>

@@ -697,13 +697,13 @@ export default function App() {
         <div style={{ padding: sidebarCollapsed?'16px 8px':'16px 16px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${C.sidebarBorder}`, minHeight:56 }}>
           {isAgencyMode ? (
             <>
-              <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg, #7C3AED, #2563EB)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg, #00d4ff, #7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 0 12px rgba(0,212,255,0.25)' }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
               </div>
               {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
                 <div style={{color:C.sidebarActiveText,fontWeight:700,fontSize:15,letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:8}}>
                   {isRTL ? 'وكالة Velo' : 'Velo Agency'}
-                  <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'rgba(124,58,237,0.25)',color:'#A78BFA',letterSpacing:'0.05em',textTransform:'uppercase',lineHeight:'14px'}}>PRO</span>
+                  <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'rgba(0,212,255,0.15)',color:'#00d4ff',letterSpacing:'0.05em',textTransform:'uppercase',lineHeight:'14px',border:'1px solid rgba(0,212,255,0.2)'}}>PRO</span>
                 </div>
                 <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
               </div>}
@@ -728,16 +728,17 @@ export default function App() {
                   <button key={item.id} onClick={() => setPage(item.id)}
                     style={{ width:'100%', display:'flex', alignItems:'center', gap:8,
                       padding: sidebarCollapsed?'8px 0':'0 12px', height:36, justifyContent: sidebarCollapsed?'center':'flex-start',
-                      borderRadius:6, border:'none', background: active?C.sidebarActiveBg:'transparent',
-                      color: active?C.sidebarActiveText:C.sidebarText, cursor:'pointer', fontSize:14,
-                      fontWeight: active?500:400, transition:'all 150ms ease', fontFamily:'inherit',
+                      borderRadius:6, border:'none', background: active?'rgba(0,212,255,0.08)':'transparent',
+                      color: active?'#e2e8f0':'#475569', cursor:'pointer', fontSize:14,
+                      fontWeight: active?500:400, transition:'all 200ms ease', fontFamily:'inherit',
                       textAlign: isRTL?'right':'left', direction:dir,
-                      borderLeft: active && !isRTL ? `2px solid ${C.sidebarActive}` : '2px solid transparent',
-                      borderRight: active && isRTL ? `2px solid ${C.sidebarActive}` : '2px solid transparent',
+                      borderLeft: active && !isRTL ? '2px solid #00d4ff' : '2px solid transparent',
+                      borderRight: active && isRTL ? '2px solid #00d4ff' : '2px solid transparent',
+                      boxShadow: active ? 'inset 0 0 20px rgba(0,212,255,0.04)' : 'none',
                     }}
-                    onMouseEnter={e=>{if(!active) e.currentTarget.style.background=C.sidebarHover}}
-                    onMouseLeave={e=>{if(!active) e.currentTarget.style.background=active?C.sidebarActiveBg:'transparent'}}>
-                    <span style={{ display:'flex', alignItems:'center', color: active?C.sidebarActiveText:C.sidebarText, flexShrink:0, opacity: active?1:0.7 }}>{item.icon(16)}</span>
+                    onMouseEnter={e=>{if(!active){ e.currentTarget.style.background='rgba(0,212,255,0.04)'; e.currentTarget.style.color='#94a3b8' }}}
+                    onMouseLeave={e=>{if(!active){ e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#475569' }}}>
+                    <span style={{ display:'flex', alignItems:'center', color: active?'#00d4ff':'#475569', flexShrink:0, opacity: active?1:0.7, transition:'all 200ms ease' }}>{item.icon(16)}</span>
                     {!sidebarCollapsed && <><span style={{flex:1}}>{item.label}</span>{item.badge && <span style={{ background:C.danger, color:'#fff', fontSize:11, fontWeight:500, padding:'0 8px', borderRadius:10, height:20, display:'inline-flex', alignItems:'center' }}>{item.badge}</span>}</>}
                   </button>
                 )
@@ -754,8 +755,8 @@ export default function App() {
       </aside>
 
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
-      <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:C.bg }}>
-        <header className="mobile-header" style={{ height:52, minHeight:52, background:C.white, borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
+      <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#080c14' }}>
+        <header className="mobile-header" style={{ height:52, minHeight:52, background:'#0d1420', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
           {/* Mobile: Logo + company name in header */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>

@@ -68,8 +68,8 @@ export function FormField({ label, children, dir }) {
 }
 
 export const inputStyle = (dir) => ({
-  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: `1px solid #D1D5DB`,
-  fontSize: 14, color: C.text, fontFamily: 'inherit', outline: 'none', background: C.white,
+  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)',
+  fontSize: 14, color: '#e2e8f0', fontFamily: 'inherit', outline: 'none', background: '#0f1729',
   direction: dir, textAlign: dir === 'rtl' ? 'right' : 'left', boxSizing: 'border-box',
   transition: 'border-color 150ms ease, box-shadow 150ms ease',
 })

@@ -167,7 +167,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
             {/* Subscriptions table */}
             <div style={{ ...card, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead><tr style={{ background: '#F9FAFB', borderBottom: `1px solid ${C.border}` }}>
+                <thead><tr style={{ background: '#0d1420', borderBottom: `1px solid ${C.border}` }}>
                   {[isRTL ? 'المؤسسة' : 'Organization', isRTL ? 'الخطة' : 'Plan', isRTL ? 'الرسوم الشهرية' : 'Monthly Fee', isRTL ? 'الحالة' : 'Status'].map((h, i) => (
                     <th key={i} style={thStyle(isRTL)}>{h}</th>
                   ))}
@@ -203,7 +203,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
                 </tbody>
                 {orgs.length > 0 && (
                   <tfoot>
-                    <tr style={{ background: '#F9FAFB', borderTop: `2px solid ${C.border}` }}>
+                    <tr style={{ background: '#0d1420', borderTop: `2px solid ${C.border}` }}>
                       <td colSpan={2} style={{ padding: '12px 16px', fontWeight: 700, color: C.text, fontSize: 13 }}>{isRTL ? 'إجمالي الإيرادات الشهرية' : 'Total Monthly Revenue'}</td>
                       <td style={{ padding: '12px 16px', fontWeight: 700, color: C.success, fontSize: 16 }}>${totalMRR.toLocaleString()}/mo</td>
                       <td style={{ padding: '12px 16px', fontWeight: 600, color: C.textSec, fontSize: 12 }}>{activeOrgs.length} {isRTL ? 'نشط' : 'active'} / {orgs.length} {isRTL ? 'إجمالي' : 'total'}</td>

@@ -19,16 +19,16 @@ const INDUSTRY_OPTIONS = Object.entries(INDUSTRY_LABELS)
 const PLAN_OPTIONS = ['free', 'starter', 'pro', 'enterprise']
 
 const PLAN_BADGE = {
-  free:       { color: C.textMuted, bg: C.bg },
-  starter:    { color: C.primary,   bg: C.primaryBg },
-  pro:        { color: C.purple,    bg: C.purpleBg },
-  enterprise: { color: C.success,   bg: C.successBg },
+  free:       { color: '#64748b', bg: 'rgba(255,255,255,0.04)' },
+  starter:    { color: '#00d4ff', bg: 'rgba(0,212,255,0.08)' },
+  pro:        { color: '#7c3aed', bg: 'rgba(124,58,237,0.08)' },
+  enterprise: { color: '#00ff88', bg: 'rgba(0,255,136,0.08)' },
 }
 
 const STATUS_BADGE = {
-  active:    { color: '#166534', bg: '#F0FDF4', border: '#BBF7D0' },
-  suspended: { color: '#92400E', bg: '#FFFBEB', border: '#FDE68A' },
-  deleted:   { color: '#991B1B', bg: '#FEF2F2', border: '#FECACA' },
+  active:    { color: '#00ff88', bg: 'rgba(0,255,136,0.08)', border: 'rgba(0,255,136,0.2)' },
+  suspended: { color: '#f59e0b', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.2)' },
+  deleted:   { color: '#ef4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.2)' },
 }
 
 const SAMPLE_ORGS = [
@@ -65,7 +65,6 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
           .select('*')
           .order('created_at', { ascending: false })
         if (error) throw error
-        // Try to fetch contact counts per org
         const enriched = await Promise.all((data || []).map(async (org) => {
           try {
             const { count } = await supabase
@@ -140,7 +139,6 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
           .select()
           .single()
         if (error) throw error
-        // Create profile entry for invited admin email
         if (newOrg.admin_email.trim()) {
           await supabase.from('profiles').insert({
             email: newOrg.admin_email.trim(),
@@ -153,7 +151,6 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
         console.error('Failed to create org:', err)
       }
     } else {
-      // Demo mode — add locally
       const demo = {
         id: 'demo-' + Date.now(),
         name: newOrg.name.trim(),
@@ -189,35 +186,40 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
   const totalActive = orgs.filter(o => o.status === 'active').length
   const totalContacts = orgs.reduce((sum, o) => sum + (o.contact_count || 0), 0)
 
+  const dataFont = "'JetBrains Mono', 'SF Mono', monospace"
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bg, fontFamily: "'Inter', 'DM Sans', system-ui, sans-serif" }}>
+    <div className="velo-grid-bg" style={{ minHeight: '100vh', background: '#080c14', fontFamily: "'DM Sans', 'Inter', system-ui, sans-serif" }}>
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <div style={{
-        background: 'linear-gradient(135deg, #111827 0%, #1F2937 100%)',
+        background: '#0d1420',
         padding: '0 32px',
         height: 64,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.2)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.3)',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
             width: 34, height: 34, borderRadius: 8,
-            background: 'linear-gradient(135deg, #3B82F6, #8B5CF6)',
+            background: 'linear-gradient(135deg, #00d4ff, #7c3aed)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontWeight: 700, fontSize: 15,
-          }}>S</div>
-          <span style={{ color: '#F9FAFB', fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>
+            boxShadow: '0 0 16px rgba(0,212,255,0.3)',
+          }}>V</div>
+          <span style={{ color: '#e2e8f0', fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>
             Velo Agency
           </span>
+          <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(0,212,255,0.12)', color: '#00d4ff', letterSpacing: '0.06em', textTransform: 'uppercase', border: '1px solid rgba(0,212,255,0.2)' }}>PRO</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ color: '#9CA3AF', fontSize: 13 }}>{user?.email || 'alialjobory89@gmail.com'}</span>
-          <button onClick={onSignOut} style={makeBtn('secondary', { height: 32, fontSize: 13, color: '#D1D5DB', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' })}>
+          <span style={{ color: '#475569', fontSize: 13 }}>{user?.email || 'alialjobory89@gmail.com'}</span>
+          <button onClick={onSignOut} style={makeBtn('secondary', { height: 32, fontSize: 13 })}>
             Sign Out
           </button>
         </div>
@@ -229,8 +231,8 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
         {/* Title row */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: 0 }}>Agency Dashboard</h1>
-            <p style={{ fontSize: 13, color: C.textMuted, margin: '4px 0 0' }}>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Agency Dashboard</h1>
+            <p style={{ fontSize: 13, color: '#475569', margin: '4px 0 0' }}>
               Manage all organizations, plans, and access
             </p>
           </div>
@@ -243,28 +245,29 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
         {/* ── Stats Cards ──────────────────────────────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
           {[
-            { label: 'Total Organizations', value: totalOrgs, icon: Icons.building(20), color: C.primary, bg: C.primaryBg },
-            { label: 'Active', value: totalActive, icon: Icons.check(20), color: C.success, bg: C.successBg },
-            { label: 'Total Contacts', value: totalContacts.toLocaleString(), icon: Icons.users(20), color: C.purple, bg: C.purpleBg },
-            { label: 'Revenue (MRR)', value: '$—', icon: Icons.dollar(20), color: C.warning, bg: C.warningBg },
+            { label: 'Total Organizations', value: totalOrgs, icon: Icons.building(20), color: '#00d4ff', glowClass: 'velo-card-glow-cyan' },
+            { label: 'Active', value: totalActive, icon: Icons.check(20), color: '#00ff88', glowClass: 'velo-card-glow-green' },
+            { label: 'Total Contacts', value: totalContacts.toLocaleString(), icon: Icons.users(20), color: '#7c3aed', glowClass: 'velo-card-glow-purple' },
+            { label: 'Revenue (MRR)', value: '$\u2014', icon: Icons.dollar(20), color: '#f59e0b', glowClass: 'velo-card-glow-yellow' },
           ].map((s, i) => (
-            <div key={i} style={{ ...card, padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
+            <div key={i} className={`velo-card ${s.glowClass}`} style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
               <div style={{
-                width: 44, height: 44, borderRadius: 10, background: s.bg,
+                width: 44, height: 44, borderRadius: 10, background: `${s.color}12`,
                 display: 'flex', alignItems: 'center', justifyContent: 'center', color: s.color, flexShrink: 0,
+                border: `1px solid ${s.color}20`,
               }}>{s.icon}</div>
               <div>
-                <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 500, marginBottom: 2 }}>{s.label}</div>
-                <div style={{ fontSize: 22, fontWeight: 700, color: C.text }}>{s.value}</div>
+                <div style={{ fontSize: 12, color: '#475569', fontWeight: 500, marginBottom: 4 }}>{s.label}</div>
+                <div style={{ fontSize: 26, fontWeight: 700, color: s.color, fontFamily: dataFont, letterSpacing: '-0.02em' }}>{s.value}</div>
               </div>
             </div>
           ))}
         </div>
 
         {/* ── Filter Bar ───────────────────────────────────────────────── */}
-        <div style={{ ...card, padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div className="velo-card" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 180 }}>
-            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: C.textMuted }}>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#475569' }}>
               {Icons.search(15)}
             </span>
             <input
@@ -284,30 +287,30 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
             <option value="suspended">Suspended</option>
             <option value="deleted">Deleted</option>
           </select>
-          <span style={{ fontSize: 13, color: C.textMuted }}>
+          <span style={{ fontSize: 13, color: '#475569' }}>
             {filtered.length} organization{filtered.length !== 1 ? 's' : ''}
           </span>
         </div>
 
         {/* ── Organizations Table ──────────────────────────────────────── */}
-        <div style={{ ...card, overflow: 'hidden' }}>
+        <div className="velo-card" style={{ overflow: 'hidden' }}>
           {loading ? (
-            <div style={{ padding: 48, textAlign: 'center', color: C.textMuted, fontSize: 14 }}>
+            <div style={{ padding: 48, textAlign: 'center', color: '#475569', fontSize: 14 }}>
               Loading organizations...
             </div>
           ) : filtered.length === 0 ? (
-            <div style={{ padding: 48, textAlign: 'center', color: C.textMuted, fontSize: 14 }}>
+            <div style={{ padding: 48, textAlign: 'center', color: '#475569', fontSize: 14 }}>
               {search || statusFilter !== 'all' ? 'No organizations match your filters.' : 'No organizations yet. Add one to get started.'}
             </div>
           ) : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
-                  <tr style={{ background: '#F9FAFB', borderBottom: `1px solid ${C.border}` }}>
+                  <tr style={{ background: '#0d1420', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                     {['Org Name', 'Industry', 'Plan', 'Status', 'Contacts', 'Created', 'Actions'].map(h => (
                       <th key={h} style={{
-                        padding: '10px 14px', textAlign: 'left', fontSize: 12, fontWeight: 600,
-                        color: C.textLabel, textTransform: 'uppercase', letterSpacing: 0.4, whiteSpace: 'nowrap',
+                        padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600,
+                        color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap',
                       }}>{h}</th>
                     ))}
                   </tr>
@@ -321,22 +324,23 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
                         key={org.id}
                         onClick={() => onEnterOrg(org)}
                         style={{
-                          borderBottom: `1px solid ${C.borderLight}`,
-                          background: idx % 2 === 0 ? C.white : '#FAFBFC',
+                          borderBottom: '1px solid rgba(255,255,255,0.04)',
+                          background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
                           cursor: 'pointer',
-                          transition: 'background 120ms ease',
+                          transition: 'background 150ms ease',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = C.primaryBg}
-                        onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? C.white : '#FAFBFC'}
+                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,212,255,0.04)'}
+                        onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)'}
                       >
                         {/* Name */}
-                        <td style={{ padding: '12px 14px', fontWeight: 600, color: C.text, whiteSpace: 'nowrap' }}>
+                        <td style={{ padding: '12px 14px', fontWeight: 600, color: '#e2e8f0', whiteSpace: 'nowrap' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{
                               width: 30, height: 30, borderRadius: 6,
-                              background: `linear-gradient(135deg, ${pb.bg}, ${pb.color}22)`,
+                              background: `linear-gradient(135deg, ${pb.bg}, ${pb.color}15)`,
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
                               color: pb.color, fontSize: 13, fontWeight: 700, flexShrink: 0,
+                              border: `1px solid ${pb.color}25`,
                             }}>
                               {(org.name || '?')[0].toUpperCase()}
                             </div>
@@ -344,14 +348,15 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
                           </div>
                         </td>
                         {/* Industry */}
-                        <td style={{ padding: '12px 14px', color: C.textSec }}>
-                          {INDUSTRY_LABELS[org.industry] || org.industry || '—'}
+                        <td style={{ padding: '12px 14px', color: '#94a3b8' }}>
+                          {INDUSTRY_LABELS[org.industry] || org.industry || '\u2014'}
                         </td>
                         {/* Plan */}
                         <td style={{ padding: '12px 14px' }}>
                           <span style={{
                             display: 'inline-block', padding: '2px 10px', borderRadius: 99,
                             fontSize: 12, fontWeight: 600, color: pb.color, background: pb.bg,
+                            border: `1px solid ${pb.color}20`,
                           }}>
                             {(org.plan || 'free').charAt(0).toUpperCase() + (org.plan || 'free').slice(1)}
                           </span>
@@ -367,12 +372,12 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
                           </span>
                         </td>
                         {/* Contacts */}
-                        <td style={{ padding: '12px 14px', color: C.textSec, fontVariantNumeric: 'tabular-nums' }}>
-                          {org.contact_count != null ? org.contact_count.toLocaleString() : '—'}
+                        <td style={{ padding: '12px 14px', color: '#94a3b8', fontFamily: dataFont, fontSize: 13 }}>
+                          {org.contact_count != null ? org.contact_count.toLocaleString() : '\u2014'}
                         </td>
                         {/* Created */}
-                        <td style={{ padding: '12px 14px', color: C.textMuted, fontSize: 13, whiteSpace: 'nowrap' }}>
-                          {org.created_at ? new Date(org.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'}
+                        <td style={{ padding: '12px 14px', color: '#475569', fontSize: 13, whiteSpace: 'nowrap' }}>
+                          {org.created_at ? new Date(org.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '\u2014'}
                         </td>
                         {/* Actions */}
                         <td style={{ padding: '12px 14px' }} onClick={e => e.stopPropagation()}>
@@ -385,7 +390,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
                             {org.status === 'active' ? (
                               <button
                                 onClick={() => updateOrgStatus(org.id, 'suspended')}
-                                style={makeBtn('secondary', { height: 28, fontSize: 12, padding: '0 10px', color: C.warning })}
+                                style={makeBtn('secondary', { height: 28, fontSize: 12, padding: '0 10px', color: '#f59e0b' })}
                               >Suspend</button>
                             ) : org.status === 'suspended' ? (
                               <button
@@ -399,8 +404,8 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
                               onChange={e => updateOrgPlan(org.id, e.target.value)}
                               style={{
                                 height: 28, fontSize: 12, borderRadius: 6,
-                                border: `1px solid ${C.border}`, background: C.white,
-                                padding: '0 6px', color: C.textSec, cursor: 'pointer',
+                                border: '1px solid rgba(255,255,255,0.08)', background: '#0d1420',
+                                padding: '0 6px', color: '#94a3b8', cursor: 'pointer',
                                 fontFamily: 'inherit', outline: 'none',
                               }}
                             >
@@ -411,7 +416,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
 
                             <button
                               onClick={() => setConfirmDelete(org)}
-                              style={makeBtn('ghost', { height: 28, fontSize: 12, padding: '0 8px', color: C.danger })}
+                              style={makeBtn('ghost', { height: 28, fontSize: 12, padding: '0 8px', color: '#ef4444' })}
                               title="Delete organization"
                             >{Icons.trash(14)}</button>
                           </div>
@@ -429,8 +434,8 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
         {!isSupabaseConfigured() && (
           <div style={{
             marginTop: 16, padding: '10px 16px', borderRadius: 8,
-            background: C.warningBg, border: `1px solid ${C.warningBorder}`,
-            fontSize: 13, color: C.warningText, display: 'flex', alignItems: 'center', gap: 8,
+            background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)',
+            fontSize: 13, color: '#f59e0b', display: 'flex', alignItems: 'center', gap: 8,
           }}>
             {Icons.bolt(15)}
             Running in demo mode with sample data. Connect Supabase to manage real organizations.
@@ -443,7 +448,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
         <Modal onClose={() => setShowAddModal(false)} width={480}>
           <div style={{ padding: 24 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-              <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>Add Organization</h2>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Add Organization</h2>
               <button onClick={() => setShowAddModal(false)} style={makeBtn('ghost', { height: 28, width: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' })}>
                 {Icons.x(16)}
               </button>
@@ -514,16 +519,16 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
               <div style={{
                 width: 40, height: 40, borderRadius: 10,
-                background: C.dangerBg, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: C.danger,
+                background: 'rgba(239,68,68,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#ef4444', border: '1px solid rgba(239,68,68,0.15)',
               }}>{Icons.trash(20)}</div>
               <div>
-                <h2 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: 0 }}>Delete Organization</h2>
-                <p style={{ fontSize: 13, color: C.textMuted, margin: '2px 0 0' }}>This action cannot be undone.</p>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>Delete Organization</h2>
+                <p style={{ fontSize: 13, color: '#475569', margin: '2px 0 0' }}>This action cannot be undone.</p>
               </div>
             </div>
-            <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 20px', lineHeight: 1.5 }}>
-              Are you sure you want to permanently delete <strong>{confirmDelete.name}</strong> and all its associated data?
+            <p style={{ fontSize: 14, color: '#94a3b8', margin: '0 0 20px', lineHeight: 1.5 }}>
+              Are you sure you want to permanently delete <strong style={{ color: '#e2e8f0' }}>{confirmDelete.name}</strong> and all its associated data?
             </p>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <button onClick={() => setConfirmDelete(null)} style={makeBtn('secondary')}>Cancel</button>

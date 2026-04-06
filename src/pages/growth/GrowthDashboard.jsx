@@ -124,7 +124,7 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', padding: '48px 16px' }}>
         <div style={{ ...card, maxWidth: 480, width: '100%', padding: 32, textAlign: 'center' }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, #EFF6FF, #F5F3FF)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px' }}>
+          <div style={{ width: 64, height: 64, borderRadius: 16, background: 'linear-gradient(135deg, rgba(0,212,255,0.1), rgba(124,58,237,0.1))', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', border: '1px solid rgba(0,212,255,0.15)' }}>
             <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
@@ -138,7 +138,7 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
           <p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 24px' }}>
             Add your Anthropic API key in <strong>Settings → API Keys</strong> to get started.
           </p>
-          <div style={{ padding: '12px 16px', borderRadius: 8, background: C.primaryBg, fontSize: 12, color: C.primary, lineHeight: 1.5 }}>
+          <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,212,255,0.06)', fontSize: 12, color: '#00d4ff', lineHeight: 1.5, border: '1px solid rgba(0,212,255,0.1)' }}>
             Get your API key from <strong>console.anthropic.com</strong>
           </div>
         </div>
@@ -199,7 +199,7 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
         {/* Empty state with suggestions */}
         {messages.length === 0 && (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', flex: 1, textAlign: 'center', padding: '24px 0' }}>
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${C.primaryBg}, ${C.purpleBg})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+            <div style={{ width: 56, height: 56, borderRadius: 16, background: 'linear-gradient(135deg, rgba(0,212,255,0.08), rgba(124,58,237,0.08))', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, border: '1px solid rgba(0,212,255,0.1)' }}>
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={C.primary} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
               </svg>
@@ -217,13 +217,13 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
               ].map((q, i) => (
                 <button key={i} onClick={() => send(q)} style={{
                   padding: '8px 14px', borderRadius: 8,
-                  border: `1px solid ${C.border}`, background: C.white,
-                  color: C.textSec, fontSize: 12, cursor: 'pointer',
+                  border: '1px solid rgba(255,255,255,0.06)', background: '#111827',
+                  color: '#94a3b8', fontSize: 12, cursor: 'pointer',
                   fontFamily: 'inherit', transition: 'all 150ms ease',
                   lineHeight: 1.4,
                 }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.primary; e.currentTarget.style.background = C.primaryBg }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = C.white }}>
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(0,212,255,0.3)'; e.currentTarget.style.background = 'rgba(0,212,255,0.06)' }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'; e.currentTarget.style.background = '#111827' }}>
                   {q}
                 </button>
               ))}
@@ -241,9 +241,9 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
             )}
             <div style={{
               maxWidth: '75%', padding: '10px 14px', borderRadius: 12,
-              background: msg.role === 'user' ? C.primary : C.white,
-              color: msg.role === 'user' ? '#fff' : C.text,
-              border: msg.role === 'user' ? 'none' : `1px solid ${C.border}`,
+              background: msg.role === 'user' ? 'linear-gradient(135deg, #00d4ff, #0099cc)' : '#0d1420',
+              color: msg.role === 'user' ? '#080c14' : '#e2e8f0',
+              border: msg.role === 'user' ? 'none' : '1px solid rgba(255,255,255,0.06)',
               fontSize: 13, lineHeight: 1.6, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
             }}>
               {msg.content}
@@ -257,7 +257,7 @@ export default function GrowthDashboard({ orgId, onGoToSocials }) {
             <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${C.primary}, ${C.purple})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg>
             </div>
-            <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: C.white, border: `1px solid ${C.border}`, borderRadius: 12 }}>
+            <div style={{ display: 'flex', gap: 4, padding: '10px 14px', background: '#0d1420', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 12 }}>
               {[0, 1, 2].map(i => (
                 <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: C.primary, opacity: 0.4, animation: `growthPulse 0.6s ease ${i * 0.15}s infinite alternate` }} />
               ))}

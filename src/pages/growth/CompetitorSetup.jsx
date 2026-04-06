@@ -60,172 +60,118 @@ export default function CompetitorSetup({ orgId }) {
     else setCompetitors(prev => prev.filter(c => c.id !== id))
   }
 
+  const inputStyle = {
+    width: '100%', padding: '8px 12px', borderRadius: 8,
+    border: '1px solid rgba(255,255,255,0.08)', background: '#0f1729',
+    color: '#e2e8f0', fontSize: 13, fontFamily: 'inherit', outline: 'none',
+    transition: 'border-color 150ms ease',
+  }
+
+  const labelStyle = { display: 'block', fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 4 }
+
+  const cardStyle = {
+    background: '#111827', borderRadius: 10,
+    border: '1px solid rgba(255,255,255,0.06)',
+    boxShadow: '0 0 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
+  }
+
   // ── Render ───────────────────────────────────────────────────────────
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* ── Add Form ──────────────────────────────────────────────────── */}
-      <form
-        onSubmit={handleAdd}
-        className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6"
-      >
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
-          🎯 Add Competitor
+      <form onSubmit={handleAdd} style={{ ...cardStyle, padding: 24 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', marginBottom: 16 }}>
+          Add Competitor
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 16 }}>
           <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Name *
-            </label>
-            <input
-              value={form.name}
-              onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
-              placeholder="e.g. BrightSmile Dental"
-              required
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+            <label style={labelStyle}>Name *</label>
+            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. BrightSmile Dental" required style={inputStyle} />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Industry
-            </label>
-            <input
-              value={form.industry}
-              onChange={e => setForm(p => ({ ...p, industry: e.target.value }))}
-              placeholder="e.g. Dental, Real Estate"
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+            <label style={labelStyle}>Industry</label>
+            <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))} placeholder="e.g. Dental, Real Estate" style={inputStyle} />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Instagram Handle
-            </label>
-            <input
-              value={form.instagram_handle}
-              onChange={e => setForm(p => ({ ...p, instagram_handle: e.target.value }))}
-              placeholder="@handle"
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+            <label style={labelStyle}>Instagram Handle</label>
+            <input value={form.instagram_handle} onChange={e => setForm(p => ({ ...p, instagram_handle: e.target.value }))} placeholder="@handle" style={inputStyle} />
           </div>
-
           <div>
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Google Maps URL
-            </label>
-            <input
-              value={form.google_maps_url}
-              onChange={e => setForm(p => ({ ...p, google_maps_url: e.target.value }))}
-              placeholder="https://maps.google.com/..."
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+            <label style={labelStyle}>Google Maps URL</label>
+            <input value={form.google_maps_url} onChange={e => setForm(p => ({ ...p, google_maps_url: e.target.value }))} placeholder="https://maps.google.com/..." style={inputStyle} />
           </div>
-
-          <div className="md:col-span-2">
-            <label className="block text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">
-              Location
-            </label>
-            <input
-              value={form.location}
-              onChange={e => setForm(p => ({ ...p, location: e.target.value }))}
-              placeholder="e.g. Baghdad, Erbil"
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
-            />
+          <div style={{ gridColumn: '1 / -1' }}>
+            <label style={labelStyle}>Location</label>
+            <input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} placeholder="e.g. Baghdad, Erbil" style={inputStyle} />
           </div>
         </div>
 
-        <button
-          type="submit"
-          disabled={saving || !form.name.trim()}
-          className="px-5 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
-        >
+        <button type="submit" disabled={saving || !form.name.trim()} style={{
+          padding: '8px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
+          background: saving || !form.name.trim() ? '#475569' : 'linear-gradient(135deg, #00d4ff, #0099cc)',
+          color: saving || !form.name.trim() ? '#94a3b8' : '#080c14',
+          cursor: saving || !form.name.trim() ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit', transition: 'all 150ms ease',
+        }}>
           {saving ? 'Adding...' : '+ Add Competitor'}
         </button>
       </form>
 
       {/* ── Competitors List ──────────────────────────────────────────── */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+      <div style={{ ...cardStyle, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
             Tracked Competitors
-            <span className="ml-2 text-sm font-normal text-gray-400">
+            <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: '#475569' }}>
               ({competitors.length})
             </span>
           </h2>
         </div>
 
         {loading ? (
-          <div className="p-12 text-center text-gray-400 text-sm">Loading...</div>
+          <div style={{ padding: 48, textAlign: 'center', color: '#475569', fontSize: 13 }}>Loading...</div>
         ) : competitors.length === 0 ? (
-          <div className="p-12 text-center">
-            <p className="text-gray-400 text-sm">No competitors added yet.</p>
-            <p className="text-gray-400 text-xs mt-1">
-              Add your first competitor above to start tracking.
-            </p>
+          <div style={{ padding: 48, textAlign: 'center' }}>
+            <p style={{ color: '#475569', fontSize: 13 }}>No competitors added yet.</p>
+            <p style={{ color: '#475569', fontSize: 11, marginTop: 4 }}>Add your first competitor above to start tracking.</p>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50 dark:bg-gray-750 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                <th className="px-6 py-3">Name</th>
-                <th className="px-6 py-3">Industry</th>
-                <th className="px-6 py-3">Instagram</th>
-                <th className="px-6 py-3">Location</th>
-                <th className="px-6 py-3">Google Maps</th>
-                <th className="px-6 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-              {competitors.map(comp => (
-                <tr
-                  key={comp.id}
-                  className="hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors"
-                >
-                  <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">
-                    {comp.name}
-                  </td>
-                  <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                    {comp.industry || '—'}
-                  </td>
-                  <td className="px-6 py-4">
-                    {comp.instagram_handle ? (
-                      <span className="text-pink-600 dark:text-pink-400">
-                        @{comp.instagram_handle.replace(/^@/, '')}
-                      </span>
-                    ) : (
-                      <span className="text-gray-300 dark:text-gray-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-gray-500 dark:text-gray-400">
-                    {comp.location || '—'}
-                  </td>
-                  <td className="px-6 py-4">
-                    {comp.google_maps_url ? (
-                      <a
-                        href={comp.google_maps_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-blue-600 hover:underline text-xs"
-                      >
-                        View Map ↗
-                      </a>
-                    ) : (
-                      <span className="text-gray-300 dark:text-gray-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => handleDelete(comp.id)}
-                      className="text-red-500 hover:text-red-700 text-xs font-medium transition-colors"
-                    >
-                      Delete
-                    </button>
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#0d1420', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                  {['Name', 'Industry', 'Instagram', 'Location', 'Google Maps', 'Actions'].map(h => (
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {competitors.map((comp, idx) => (
+                  <tr key={comp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 150ms ease' }}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,212,255,0.03)'}
+                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <td style={{ padding: '12px 16px', fontWeight: 600, color: '#e2e8f0' }}>{comp.name}</td>
+                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{comp.industry || '\u2014'}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {comp.instagram_handle
+                        ? <span style={{ color: '#e879a8' }}>@{comp.instagram_handle.replace(/^@/, '')}</span>
+                        : <span style={{ color: '#475569' }}>\u2014</span>}
+                    </td>
+                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{comp.location || '\u2014'}</td>
+                    <td style={{ padding: '12px 16px' }}>
+                      {comp.google_maps_url
+                        ? <a href={comp.google_maps_url} target="_blank" rel="noopener noreferrer" style={{ color: '#00d4ff', fontSize: 12, textDecoration: 'none' }}>View Map ↗</a>
+                        : <span style={{ color: '#475569' }}>\u2014</span>}
+                    </td>
+                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
+                      <button onClick={() => handleDelete(comp.id)} style={{ border: 'none', background: 'transparent', color: '#ef4444', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
     </div>
