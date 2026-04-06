@@ -633,7 +633,23 @@ export default function App() {
   }
 
   // Nav items
-  const navGroups = [
+  const isAgencyMode = isSuperAdmin && !impersonation
+
+  const navGroups = isAgencyMode ? [
+    { label: isRTL ? 'إدارة الوكالة' : 'Agency Management', items: [
+      { id: 'dashboard', icon: Icons.dashboard, label: isRTL ? 'لوحة التحكم' : 'Dashboard' },
+      { id: 'agency', icon: Icons.building, label: isRTL ? 'المؤسسات' : 'Organizations' },
+      { id: 'growth', icon: Icons.trendUp, label: isRTL ? 'ذكاء النمو' : 'Growth Intelligence' },
+    ]},
+    { label: isRTL ? 'المالية' : 'Financial', items: [
+      { id: 'finance', icon: Icons.dollar, label: isRTL ? 'الاشتراكات و MRR' : 'Subscriptions & MRR' },
+      { id: 'billing', icon: Icons.file, label: isRTL ? 'الفواتير' : 'Billing' },
+    ]},
+    { label: isRTL ? 'المنصة' : 'Platform', items: [
+      { id: 'settings', icon: Icons.settings, label: isRTL ? 'الإعدادات' : 'Settings' },
+      { id: 'agency-profile', icon: Icons.user, label: isRTL ? 'ملف الوكالة' : 'Agency Profile' },
+    ]},
+  ] : [
     { label: t.workspace, items: [
       { id: 'dashboard', icon: Icons.dashboard, label: t.dashboard },
       { id: 'contacts', icon: Icons.contacts, label: orgSettings.industry === 'dental' ? (isRTL ? 'المرضى' : 'Patients') : t.contacts },
@@ -679,11 +695,28 @@ export default function App() {
         overflow:'hidden', position:'relative', zIndex:10,
       }}>
         <div style={{ padding: sidebarCollapsed?'16px 8px':'16px 16px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${C.sidebarBorder}`, minHeight:56 }}>
-          <div style={{ width:32, height:32, borderRadius:8, background:`linear-gradient(135deg,${orgSettings.primary_color || C.primary},${C.purple})`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:14, flexShrink:0 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
-          {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
-            <div style={{color:C.sidebarActiveText,fontWeight:600,fontSize:15,letterSpacing:'-0.01em'}}>{orgSettings.name || t.appName}</div>
-            <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{orgSettings.name ? t.appName : t.appTagline}</div>
-          </div>}
+          {isAgencyMode ? (
+            <>
+              <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg, #7C3AED, #2563EB)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
+              </div>
+              {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
+                <div style={{color:C.sidebarActiveText,fontWeight:700,fontSize:15,letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:8}}>
+                  {isRTL ? 'وكالة Velo' : 'Velo Agency'}
+                  <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'rgba(124,58,237,0.25)',color:'#A78BFA',letterSpacing:'0.05em',textTransform:'uppercase',lineHeight:'14px'}}>PRO</span>
+                </div>
+                <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
+              </div>}
+            </>
+          ) : (
+            <>
+              <div style={{ width:32, height:32, borderRadius:8, background:`linear-gradient(135deg,${orgSettings.primary_color || C.primary},${C.purple})`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:14, flexShrink:0 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
+              {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
+                <div style={{color:C.sidebarActiveText,fontWeight:600,fontSize:15,letterSpacing:'-0.01em'}}>{orgSettings.name || t.appName}</div>
+                <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{orgSettings.name ? t.appName : t.appTagline}</div>
+              </div>}
+            </>
+          )}
         </div>
         <nav style={{ flex:1, overflowY:'auto', padding:'8px', minHeight:0 }}>
           {navGroups.map((group, gi) => (
@@ -864,6 +897,8 @@ export default function App() {
               {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
               {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
               {page === 'agency' && isSuperAdmin && !impersonation && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
+              {page === 'billing' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الفواتير' : 'Billing'} description={isRTL ? 'إدارة الفواتير والمدفوعات قريباً' : 'Billing management coming soon.'} icon={Icons.file} />}
+              {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
               {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} /></Suspense>}
             </>
           )}
@@ -900,13 +935,19 @@ export default function App() {
       {isMobile && (
         <>
           <div className="mobile-bottom-nav">
-            {[
+            {(isAgencyMode ? [
+              { id:'dashboard', icon: Icons.dashboard, label: isRTL?'لوحة التحكم':'Dashboard' },
+              { id:'agency', icon: Icons.building, label: isRTL?'المؤسسات':'Orgs' },
+              { id:'finance', icon: Icons.dollar, label: 'MRR' },
+              { id:'growth', icon: Icons.trendUp, label: isRTL?'النمو':'Growth' },
+              { id:'_more', icon: (s) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>, label: isRTL?'المزيد':'More' },
+            ] : [
               { id:'dashboard', icon: Icons.dashboard, label: t.dashboard },
               { id:'contacts', icon: Icons.contacts, label: t.contacts },
               { id:'inbox', icon: Icons.inbox, label: t.inbox },
               { id:'pipeline', icon: Icons.pipeline, label: t.pipeline },
               { id:'_more', icon: (s) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>, label: isRTL?'المزيد':'More' },
-            ].map(item => {
+            ]).map(item => {
               const active = item.id === '_more' ? mobileMoreOpen : page === item.id
               return (
                 <button key={item.id} onClick={() => item.id === '_more' ? setMobileMoreOpen(v=>!v) : (setPage(item.id), setMobileMoreOpen(false))}
@@ -924,7 +965,11 @@ export default function App() {
               <div className="mobile-drawer-overlay" onClick={() => setMobileMoreOpen(false)} />
               <div className="mobile-drawer">
                 <div style={{ width:40, height:4, borderRadius:2, background:'#30363D', margin:'0 auto 16px' }} />
-                {[
+                {(isAgencyMode ? [
+                  { id:'billing', icon: Icons.file, label: isRTL?'الفواتير':'Billing' },
+                  { id:'settings', icon: Icons.settings, label: isRTL?'الإعدادات':'Settings' },
+                  { id:'agency-profile', icon: Icons.user, label: isRTL?'ملف الوكالة':'Agency Profile' },
+                ] : [
                   { id:'tickets', icon: Icons.ticket, label: t.tickets },
                   { id:'calendar', icon: Icons.calendar, label: t.calendar },
                   { id:'automations', icon: Icons.automations, label: t.automations },
@@ -935,7 +980,7 @@ export default function App() {
                   { id:'growth', icon: Icons.trendUp, label: isRTL?'النمو':'Growth' },
                   { id:'finance', icon: Icons.dollar, label: isRTL?'المالية':'Finance' },
                   { id:'settings', icon: Icons.settings, label: t.settings },
-                ].map(item => (
+                ]).map(item => (
                   <button key={item.id} onClick={() => { setPage(item.id); setMobileMoreOpen(false) }}
                     style={{ width:'100%', display:'flex', alignItems:'center', gap:12, padding:'12px 16px', border:'none', background: page===item.id?'rgba(47,129,247,0.12)':'transparent', color: page===item.id?'#E6EDF3':'#7D8590', cursor:'pointer', fontFamily:'inherit', borderRadius:8, fontSize:14, fontWeight: page===item.id?600:500, minHeight:44 }}>
                     <span style={{ display:'flex', color: page===item.id?'#2F81F7':'#7D8590' }}>{item.icon(20)}</span>
@@ -1007,6 +1052,19 @@ export default function App() {
 // ═══════════════════════════════════════════════════════════════════════════
 // DASHBOARD PAGE (unchanged from Day 1)
 // ═══════════════════════════════════════════════════════════════════════════
+// ─── Agency Placeholder (for upcoming agency pages) ─────────────────────────
+function AgencyPlaceholder({ title, description, icon }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
+      <div style={{ width: 56, height: 56, borderRadius: 16, background: C.purpleBg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+        <span style={{ color: C.purple, display: 'flex' }}>{icon(28)}</span>
+      </div>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>{title}</h2>
+      <p style={{ fontSize: 14, color: C.textMuted, margin: 0, maxWidth: 400 }}>{description}</p>
+    </div>
+  )
+}
+
 // ─── Agency Empty State (shown when super admin is not impersonating) ────────
 function AgencyEmptyState({ isRTL, setPage }) {
   return (
