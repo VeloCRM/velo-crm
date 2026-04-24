@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import tailwindcss from '@tailwindcss/vite'
 
 // Fix Rolldown ASI bug: insert semicolons before createRoot calls
 function fixASI() {
@@ -17,5 +18,5 @@ function fixASI() {
 
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), fixASI()],
+  plugins: [react(), tailwindcss(), fixASI()],
 })

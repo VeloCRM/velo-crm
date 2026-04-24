@@ -1,12 +1,112 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&display=swap');
 @import './styles/theme.css';
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+/* ─── Velo Design System v1.0 — Semantic CSS variables ────────────────────
+   Defined per design-system.md §3.5. All values are space-separated RGB
+   triplets so Tailwind's `rgb(var(--velo-*) / <alpha-value>)` syntax works.
+   Prefixed with --velo-* to avoid collision with legacy vars in theme.css.
+   Theme switch: toggle class="dark" on <html>.                          */
+
+:root {
+  /* Surfaces */
+  --velo-surface-canvas:  250 248 245;   /* ink-50 — warm paper */
+  --velo-surface-raised:  255 255 255;   /* white — cards, panels */
+  --velo-surface-sunken:  244 241 236;   /* ink-100 — table headers, inset */
+  --velo-surface-overlay:  20  18  15;   /* warm near-black; use at /50 for backdrop */
+
+  /* Text */
+  --velo-text-primary:     21  20  15;   /* ink-900 */
+  --velo-text-secondary:   61  58  51;   /* ink-700 */
+  --velo-text-tertiary:   122 116 104;   /* ink-500 */
+  --velo-text-inverse:    250 248 245;   /* ink-50 */
+  --velo-text-brand:        0 163 114;   /* mint-700 (accessible mint) */
+  --velo-text-on-accent:   21  20  15;   /* ink-900 on mint solid */
+
+  /* Borders */
+  --velo-border-subtle:   233 228 220;   /* ink-200 */
+  --velo-border-default:  209 203 191;   /* ink-300 */
+  --velo-border-strong:   122 116 104;   /* ink-500 */
+  --velo-border-brand:      0 255 178;   /* mint-500 */
+
+  /* Accent */
+  --velo-accent-solid:        0 255 178; /* mint-500 */
+  --velo-accent-solid-hover:  0 214 149; /* mint-500 darkened */
+  --velo-accent-muted:      214 255 238; /* mint-100 */
+  --velo-accent-subtle:     235 248 240; /* mint-500 @ 6% pre-blended over canvas */
+  --velo-accent-fg:           0 163 114; /* mint-700 */
+
+  /* Status */
+  --velo-status-success-bg:     236 253 243;
+  --velo-status-success-border:  21 128  61;
+  --velo-status-success-fg:      22 101  52;
+
+  --velo-status-warning-bg:     255 247 230;
+  --velo-status-warning-border: 200 132  28;
+  --velo-status-warning-fg:     146  89  14;
+
+  --velo-status-danger-bg:      253 237 236;
+  --velo-status-danger-border:  192  57  43;
+  --velo-status-danger-fg:      142  42  32;
+
+  --velo-status-info-bg:        238 242 248;
+  --velo-status-info-border:     61  90 138;
+  --velo-status-info-fg:         38  57 107;
+}
+
+[data-theme="dark"] {
+  /* Surfaces */
+  --velo-surface-canvas:   20  18  14;   /* warm near-black */
+  --velo-surface-raised:   31  28  23;
+  --velo-surface-sunken:   14  12   9;
+  --velo-surface-overlay:   8   6   4;   /* used at /66 for backdrop */
+
+  /* Text */
+  --velo-text-primary:    236 231 223;
+  --velo-text-secondary:  184 178 167;
+  --velo-text-tertiary:   122 116 104;
+  --velo-text-inverse:     21  20  15;
+  --velo-text-brand:      111 255 210;   /* mint-300 — accessible on dark */
+  --velo-text-on-accent:   21  20  15;   /* ink-900 still readable on mint solid */
+
+  /* Borders */
+  --velo-border-subtle:    42  39  34;
+  --velo-border-default:   58  54  48;
+  --velo-border-strong:    92  88  80;
+  --velo-border-brand:      0 255 178;
+
+  /* Accent (muted/subtle pre-blended over surface.raised for consistency) */
+  --velo-accent-solid:        0 255 178;
+  --velo-accent-solid-hover:  63 255 196;
+  --velo-accent-muted:       27  55  41; /* mint-500 @ 12% over raised */
+  --velo-accent-subtle:      29  42  32; /* mint-500 @ 6% over raised */
+  --velo-accent-fg:         111 255 210; /* mint-300 */
+
+  /* Status (bg tones pre-blended over raised for readable tint in dark) */
+  --velo-status-success-bg:      28  51  32;
+  --velo-status-success-border:  21 128  61;
+  --velo-status-success-fg:      51 179  99;  /* lifted +12% L for dark legibility */
+
+  --velo-status-warning-bg:      51  36  18;
+  --velo-status-warning-border: 200 132  28;
+  --velo-status-warning-fg:     224 159  50;
+
+  --velo-status-danger-bg:       51  26  22;
+  --velo-status-danger-border:  192  57  43;
+  --velo-status-danger-fg:      224  89  75;
+
+  --velo-status-info-bg:         24  30  41;
+  --velo-status-info-border:     61  90 138;
+  --velo-status-info-fg:        122 152 196;
+}
 
 *, *::before, *::after { box-sizing: border-box; }
 
 body {
   margin: 0;
   padding: 0;
-  font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
@@ -25,12 +125,50 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'DM Sans', 'Inter', sans-serif;
+  font-family: 'Syne', sans-serif;
   line-height: 1.2;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.03em;
   color: var(--text-primary);
 }
 
 input, textarea, select, button {
-  font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
+
+/* ─── Animations ──────────────────────────────────────────────────── */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,255,178,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(0,255,178,0); }
+}
+
+.animate-slide-up { animation: fadeSlideUp 0.4s ease forwards; }
+.animate-fade     { animation: fadeIn 0.3s ease forwards; }
+.animate-scale    { animation: scaleIn 0.2s ease forwards; }
+.stagger-1 { animation-delay: 0.05s; opacity: 0; }
+.stagger-2 { animation-delay: 0.10s; opacity: 0; }
+.stagger-3 { animation-delay: 0.15s; opacity: 0; }
+.stagger-4 { animation-delay: 0.20s; opacity: 0; }
