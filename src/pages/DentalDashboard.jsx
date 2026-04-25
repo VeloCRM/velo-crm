@@ -20,30 +20,33 @@ const Icons = {
   message: (s = 16) => Ico(s, <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />),
 }
 
-const CARD = {
-  background: '#101422',
-  border: '1px solid rgba(255,255,255,0.065)',
-  borderRadius: 14,
-  padding: '24px',
-  boxShadow: 'none',
-  transition: 'all 0.18s ease',
-}
+const CARD = 'bg-surface-raised border border-stroke-subtle rounded-lg shadow-1 p-6'
 
 const TYPE_COLORS = {
-  checkup: '#4DA6FF',
-  cleaning: '#00FFB2',
-  filling: '#FFB347',
-  extraction: '#FF6B6B',
-  root_canal: '#A78BFA',
-  whitening: '#A78BFA',
-  other: '#7B7F9E',
+  cleaning:   'text-clinic-sage',
+  checkup:    'text-clinic-azure',
+  filling:    'text-clinic-amber',
+  extraction: 'text-clinic-rose',
+  root_canal: 'text-clinic-violet',
+  whitening:  'text-clinic-violet',
+  other:      'text-content-tertiary',
 }
+
 const STATUS_STYLE = {
-  pending: { bg: 'rgba(255,255,255,0.05)', color: '#7B7F9E' },
-  confirmed: { bg: 'rgba(77,166,255,0.12)', color: '#4DA6FF' },
-  completed: { bg: 'rgba(0,255,178,0.1)', color: '#00FFB2' },
-  cancelled: { bg: 'rgba(255,107,107,0.1)', color: '#FF6B6B' },
+  pending:   'bg-status-warning-bg text-status-warning-fg',
+  confirmed: 'bg-accent-subtle text-accent-fg',
+  completed: 'bg-status-success-bg text-status-success-fg',
+  cancelled: 'bg-status-danger-bg text-status-danger-fg',
 }
+
+const AVATAR_ROTATION = [
+  'bg-clinic-rose/15 text-clinic-rose border-clinic-rose/30',
+  'bg-clinic-azure/15 text-clinic-azure border-clinic-azure/30',
+  'bg-clinic-amber/15 text-clinic-amber border-clinic-amber/30',
+  'bg-clinic-violet/15 text-clinic-violet border-clinic-violet/30',
+  'bg-clinic-sage/15 text-clinic-sage border-clinic-sage/30',
+  'bg-clinic-coral/15 text-clinic-coral border-clinic-coral/30',
+]
 
 export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage }) {
   const [dbData, setDbData] = useState({
@@ -99,7 +102,6 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
             : Promise.resolve({ count: 0, error: null }),
           supabase.from('payments').select('amount,status,contact_id,id').in('status', ['pending', 'overdue']),
           supabase.from('deals').select('*', { count: 'exact', head: true }).not('stage', 'in', '("won","lost")'),
-          // Total patients (no date filter) — headline number for the clinic
           orgId
             ? supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('org_id', orgId)
             : supabase.from('contacts').select('*', { count: 'exact', head: true })
@@ -117,7 +119,6 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
     return () => { mounted = false }
   }, [refreshTrigger, contacts])
 
-  // Fetch doctors
   useEffect(() => {
     let mounted = true
     const fetchDoctors = async () => {
@@ -147,211 +148,149 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
   const fmt$ = n => Number(n || 0).toLocaleString() + ' IQD'
 
   const STAT_CONFIGS = [
-    { label: 'TOTAL PATIENTS', value: dbData.totalPatients.toLocaleString(), color: '#E8EAF5', gradient: 'linear-gradient(90deg, #E8EAF5, #A78BFA)', cls: 'animate-slide-up stagger-1' },
-    { label: "TODAY'S APPOINTMENTS", value: dbData.appointmentsCount, color: '#4DA6FF', gradient: 'linear-gradient(90deg, #4DA6FF, #00FFB2)', cls: 'animate-slide-up stagger-2' },
-    { label: 'PATIENTS THIS MONTH', value: dbData.patientsThisMonth, color: '#00FFB2', gradient: 'linear-gradient(90deg, #00FFB2, #4DA6FF)', cls: 'animate-slide-up stagger-3' },
-    { label: 'PENDING PAYMENTS', value: fmt$(dbData.pendingSum), color: '#FFB347', gradient: 'linear-gradient(90deg, #FFB347, #FF6B6B)', cls: 'animate-slide-up stagger-4' },
-    { label: 'TREATMENT PLANS', value: dbData.activePlans, color: '#A78BFA', gradient: 'linear-gradient(90deg, #A78BFA, #4DA6FF)', cls: 'animate-slide-up stagger-5' },
+    { label: 'TOTAL PATIENTS',       value: dbData.totalPatients.toLocaleString() },
+    { label: "TODAY'S APPOINTMENTS", value: dbData.appointmentsCount },
+    { label: 'PATIENTS THIS MONTH',  value: dbData.patientsThisMonth },
+    { label: 'PENDING PAYMENTS',     value: Number(dbData.pendingSum || 0).toLocaleString(), suffix: 'IQD' },
+    { label: 'TREATMENT PLANS',      value: dbData.activePlans },
   ]
 
-  const avatarColors = ['#4DA6FF', '#00FFB2', '#FFB347', '#A78BFA', '#FF6B6B', '#A78BFA']
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, direction: dir, background: '#07080E', minHeight: '100%', padding: 24, boxSizing: 'border-box' }}>
+    <div dir={dir} className="flex flex-col gap-6 bg-surface-canvas min-h-full p-6 box-border font-sans text-content-primary">
 
-      {/* ── Header ─────────��─────────────────────────────────────── */}
-      <div className="animate-fade">
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: '#E8EAF5', margin: 0, fontFamily: "'Syne', sans-serif", letterSpacing: '-0.03em' }}>Dental Dashboard</h1>
-        <p style={{ fontSize: 14, color: '#7B7F9E', marginTop: 6, marginBottom: 0 }}>
+      {/* ── Header ──────────────────────────────────────────────── */}
+      <div className="animate-fade pb-2">
+        <h1 className="font-display text-h2 font-bold !text-content-primary m-0">Dental Dashboard</h1>
+        <p className="text-body-sm text-content-tertiary mt-1.5 m-0">
           {new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
         </p>
       </div>
 
-      {/* ── Stat cards ───────────────────────────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16 }}>
+      {/* ── KPI grid ────────────────────────────────────────────── */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-4">
         {STAT_CONFIGS.map((s, i) => (
-          <div key={i} className={s.cls} style={{
-            ...CARD,
-            position: 'relative',
-            overflow: 'hidden',
-            borderTop: `2px solid ${s.color}`,
-            borderColor: 'rgba(255,255,255,0.07)',
-          }}
-            onMouseEnter={e => {
-              e.currentTarget.style.transform = 'translateY(-2px)'
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.14)'
-              e.currentTarget.style.borderTopColor = s.color
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.transform = 'translateY(0)'
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.07)'
-              e.currentTarget.style.borderTopColor = s.color
-            }}>
-            {/* Top accent gradient line (layered over the 2px border-top) */}
-            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: s.gradient }} />
-            {/* Radial glow in top-right corner — 100px per spec, ~12% alpha */}
-            <div style={{ position: 'absolute', top: -30, right: -30, width: 100, height: 100, borderRadius: '50%', background: `radial-gradient(circle, ${s.color}1f 0%, transparent 70%)`, pointerEvents: 'none' }} />
-            {/* Accent icon chip top-right — inside the card, under the glow */}
-            <div style={{ position: 'absolute', top: 16, right: 16, width: 28, height: 28, borderRadius: 7, background: `${s.color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-              <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, opacity: 0.9, boxShadow: `0 0 8px ${s.color}80` }} />
+          <div key={i} className={`${CARD} animate-slide-up ${i < 4 ? `stagger-${i+1}` : ''}`}>
+            <div className="text-caption uppercase text-content-tertiary mb-3">{s.label}</div>
+            <div className="font-display font-bold text-content-primary text-[30px] leading-none tracking-[-0.02em] tabular-nums lining-nums">
+              <span>{s.value}</span>
+              {s.suffix && (
+                <span className="font-sans font-medium text-body-sm text-content-secondary ms-2 align-baseline tracking-normal">{s.suffix}</span>
+              )}
             </div>
-            <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.07em', color: '#7B7F9E', fontWeight: 600, marginBottom: 12, fontFamily: "'DM Sans', sans-serif" }}>{s.label}</div>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 30, fontWeight: 800, color: s.color, lineHeight: 1, letterSpacing: '-0.02em' }}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* ── Today's Doctors ──────────────────────────────────────── */}
+      {/* ── Today's Doctors ─────────────────────────────────────── */}
       {doctors.length > 0 && (
-        <div style={{ ...CARD }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#E8EAF5', margin: 0, fontFamily: "'Syne', sans-serif" }}>Today's Doctors</h2>
-            <span onClick={() => setPage('appointments')} style={{ fontSize: 12, color: '#00FFB2', cursor: 'pointer', fontWeight: 600 }}>Manage →</span>
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-h3 !text-content-primary m-0">Today's Doctors</h2>
+            <span onClick={() => setPage('appointments')} className="text-body-sm text-accent-fg hover:text-accent-solid-hover font-semibold cursor-pointer transition-colors duration-fast ease-standard">Manage →</span>
           </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <div className="flex flex-wrap gap-3">
             {doctors.map(doc => {
               const docApts = dbData.appointmentsList.filter(a => a.doctor_id === doc.id)
               return (
-                <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, background: '#0C0E1A', border: `1px solid ${doc.color || '#00FFB2'}22`, flex: 1, minWidth: 160 }}>
-                  <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${doc.color || '#00FFB2'}12`, border: `2px solid ${doc.color || '#00FFB2'}40`, color: doc.color || '#00FFB2', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 }}>
+                <div key={doc.id} className="flex items-center gap-3 ps-4 pe-4 py-3 rounded-2xl bg-surface-raised border border-stroke-subtle shadow-1 flex-1 min-w-[180px]">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-shrink-0 text-content-on-accent" style={{ backgroundColor: doc.color }}>
                     {(doc.full_name || 'D').charAt(0)}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: '#E8EAF5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc.full_name || 'Dr. Unknown'}</div>
-                    {doc.specialization && <div style={{ fontSize: 11, color: doc.color || '#7B7F9E', fontWeight: 500, marginTop: 2 }}>{doc.specialization}</div>}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-body-sm font-semibold text-content-primary truncate">{doc.full_name || 'Dr. Unknown'}</div>
+                    {doc.specialization && <div className="text-caption text-content-tertiary mt-0.5 truncate">{doc.specialization}</div>}
                   </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: doc.color || '#00FFB2', fontFamily: "'Syne',sans-serif" }}>{docApts.length}</div>
-                    <div style={{ fontSize: 10, color: '#3A3D55' }}>today</div>
+                  <div className="text-end flex-shrink-0">
+                    <div className="font-display font-bold text-h3 text-content-secondary tabular-nums lining-nums leading-none">{docApts.length}</div>
+                    <div className="text-caption text-content-tertiary">today</div>
                   </div>
                 </div>
               )
             })}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* ��─ Quick actions ────��───────────────────────────────────��── */}
-      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+      {/* ── Quick Actions ───────────────────────────────────────── */}
+      <div className="flex flex-wrap gap-3">
         {[
-          // "contacts/new" is recognised by ContactsPage as an open-the-form intent.
-          { icon: Icons.plus, label: 'New Patient', onClick: () => setPage('contacts/new'), accent: '#4DA6FF' },
-          { icon: Icons.calendar, label: 'New Appointment', onClick: () => setShowModal(true), accent: '#00FFB2' },
-          // Treatment plans live inside each patient profile (DentalTabs
-          // TreatmentPlanTab). Route to the patient list so the user can
-          // pick the patient whose plan they're creating.
-          { icon: Icons.file, label: 'Treatment Plan', onClick: () => setPage('contacts'), accent: '#A78BFA' },
-          { icon: Icons.dollar, label: 'Record Payment', onClick: () => setPage('finance'), accent: '#FFB347' },
+          { icon: Icons.plus,     label: 'New Patient',      onClick: () => setPage('contacts/new'), variant: 'outline' },
+          { icon: Icons.calendar, label: 'New Appointment',  onClick: () => setShowModal(true),       variant: 'primary' },
+          { icon: Icons.file,     label: 'Treatment Plan',   onClick: () => setPage('contacts'),      variant: 'outline' },
+          { icon: Icons.dollar,   label: 'Record Payment',   onClick: () => setPage('finance'),       variant: 'outline' },
         ].map((btn, i) => (
-          <button key={i} onClick={btn.onClick} style={{
-            flex: 1, minWidth: 130, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-            gap: 8, padding: 16, backgroundColor: '#101422', border: '1px solid rgba(255,255,255,0.065)',
-            borderRadius: 14, color: '#7B7F9E', cursor: 'pointer', fontSize: 13, fontWeight: 600,
-            fontFamily: "'DM Sans', sans-serif", transition: 'all 0.18s ease',
-          }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = `${btn.accent}10`
-              e.currentTarget.style.borderColor = `${btn.accent}40`
-              e.currentTarget.style.color = btn.accent
-              e.currentTarget.style.transform = 'translateY(-2px)'
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = '#101422'
-              e.currentTarget.style.borderColor = 'rgba(255,255,255,0.065)'
-              e.currentTarget.style.color = '#7B7F9E'
-              e.currentTarget.style.transform = 'translateY(0)'
-            }}>
-            {btn.icon(20)}{btn.label}
+          <button
+            key={i}
+            onClick={btn.onClick}
+            className={
+              btn.variant === 'primary'
+                ? "flex-1 min-w-[130px] flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body-sm font-semibold transition-colors duration-fast ease-standard cursor-pointer border-none shadow-1 hover:shadow-glow-mint"
+                : "flex-1 min-w-[130px] flex flex-col items-center justify-center gap-2 p-4 rounded-2xl bg-surface-raised border border-stroke-subtle text-content-secondary hover:text-content-primary hover:shadow-2 hover:border-stroke text-body-sm font-semibold transition-[color,box-shadow,border-color] duration-fast ease-standard cursor-pointer"
+            }
+          >
+            {btn.icon(20)}
+            <span>{btn.label}</span>
           </button>
         ))}
       </div>
 
-      {/* ── Two-column layout ──────────────���──────────────────────── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,3fr) minmax(0,2fr)', gap: 24 }}>
+      {/* ── Two-column: Timeline + Recent Patients ──────────────── */}
+      <div className="grid grid-cols-[minmax(0,3fr)_minmax(0,2fr)] gap-6">
 
         {/* Today's Timeline */}
-        <div style={{ ...CARD }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#E8EAF5', margin: 0, fontFamily: "'Syne', sans-serif" }}>Today's Timeline</h2>
-            <button className="velo-btn-primary" onClick={() => setShowModal(true)} style={{
-              display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px',
-              background: '#00FFB2', border: 'none', borderRadius: 8, color: '#07080E', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-              transition: 'all 0.18s ease', fontFamily: "'DM Sans', sans-serif",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'translateY(-1px)' }}
-              onMouseLeave={e => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'translateY(0)' }}>
-              {Icons.plus(14)} Add
-            </button>
+        <section>
+          <div className="mb-6">
+            <h2 className="font-display text-h3 !text-content-primary m-0">Today's Timeline</h2>
           </div>
 
           {dbData.appointmentsList.length === 0 ? (
-            <div style={{ padding: '40px 0', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-              <div style={{ color: '#3A3D55', opacity: 0.6 }}>{Icons.calendar(40)}</div>
-              <div style={{ fontSize: 14, color: '#3A3D55' }}>No appointments today</div>
-              <button onClick={() => setShowModal(true)} style={{
-                padding: '8px 20px', background: 'rgba(0,255,178,0.09)', border: '1px solid rgba(0,255,178,0.25)',
-                borderRadius: 8, color: '#00FFB2', fontSize: 13, fontWeight: 600,
-                cursor: 'pointer', transition: 'all 0.18s ease',
-              }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,255,178,0.15)' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'rgba(0,255,178,0.09)' }}>
+            <div className="py-10 flex flex-col items-center gap-4 text-center">
+              <div className="text-content-tertiary opacity-60">{Icons.calendar(40)}</div>
+              <div className="text-body-sm text-content-tertiary">No appointments today</div>
+              <button onClick={() => setShowModal(true)} className="ps-5 pe-5 py-2 rounded-md bg-surface-raised border border-stroke text-content-primary hover:bg-surface-sunken text-body-sm font-semibold transition-colors duration-fast ease-standard cursor-pointer">
                 + Add Appointment
               </button>
             </div>
           ) : (
-            <div style={{ position: 'relative' }}>
+            <div className="relative">
               {dbData.appointmentsList.length > 1 && (
-                <div style={{ position: 'absolute', left: 52, top: 24, bottom: 24, width: 2, background: 'rgba(255,255,255,0.07)' }} />
+                <div className="absolute start-[60px] top-3 bottom-3 w-px bg-stroke-subtle" aria-hidden="true" />
               )}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-                {dbData.appointmentsList.map((apt, i) => {
+              <div className="flex flex-col gap-3">
+                {dbData.appointmentsList.map((apt) => {
                   const contact = contacts.find(c => c.id === apt.contact_id)
-                  const tColor = TYPE_COLORS[apt.type] || '#7B7F9E'
-                  const ss = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
+                  const tColorClass = TYPE_COLORS[apt.type] || 'text-content-tertiary'
+                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
                   const doc = doctors.find(d => d.id === apt.doctor_id)
-                  const docColor = doc?.color || tColor
-                  // "Active" = confirmed or in-progress. Per spec: mint time,
-                  // blue border-left accent, faint blue wash over the card.
-                  const isActive = apt.status === 'confirmed' || apt.status === 'in_progress'
-                  const timeColor = isActive ? '#00FFB2' : '#7B7F9E'
-                  const cardBg = isActive ? 'rgba(77,166,255,0.05)' : '#0C0E1A'
-                  const borderLeftColor = isActive ? '#4DA6FF' : docColor
+                  const docColor = doc?.color
                   return (
-                    <div key={apt.id} className="animate-slide-up" style={{ animationDelay: `${i * 0.06}s`, opacity: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
-                      <div style={{ width: 48, textAlign: 'right', fontFamily: "'Syne',sans-serif", fontSize: 11.5, fontWeight: 700, color: timeColor, flexShrink: 0, letterSpacing: '-0.01em' }}>
+                    <div key={apt.id} className="animate-slide-up flex items-center gap-3 relative">
+                      <div className="w-12 text-end font-display font-semibold text-caption text-content-secondary flex-shrink-0 tabular-nums lining-nums">
                         {apt.appointment_time?.slice(0, 5)}
                       </div>
-                      <div style={{ width: 7, height: 7, borderRadius: '50%', background: docColor, border: '2px solid #07080E', flexShrink: 0, boxShadow: `0 0 6px ${docColor}`, zIndex: 1 }} />
-                      <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: cardBg, borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)', borderLeft: `3px solid ${borderLeftColor}`, transition: 'all 0.18s ease' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = isActive ? 'rgba(77,166,255,0.09)' : 'rgba(255,255,255,0.04)' }}
-                        onMouseLeave={e => { e.currentTarget.style.background = cardBg }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <span style={{ fontSize: 14, fontWeight: 600, color: '#E8EAF5' }}>{contact?.name || apt.patient_name || 'Unknown'}</span>
-                            <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 6, background: ss.bg, color: ss.color, fontSize: 11, fontWeight: 600 }}>{apt.status}</span>
+                      <div className="w-2 h-2 rounded-full flex-shrink-0 z-10 ring-2 ring-surface-canvas" style={{ backgroundColor: docColor || 'rgb(var(--velo-text-tertiary))' }} />
+                      <div className="flex-1 min-w-0 flex items-center gap-3 ps-4 pe-3 py-3 bg-surface-raised rounded-xl border border-stroke-subtle border-s-[3px] shadow-1 transition-shadow duration-fast ease-standard hover:shadow-2" style={{ borderInlineStartColor: docColor }}>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-body-sm font-semibold text-content-primary">{contact?.name || apt.patient_name || 'Unknown'}</span>
+                            <span className={`inline-flex items-center ps-2 pe-2 h-[22px] rounded-full text-caption font-semibold ${ssClass}`}>{apt.status}</span>
                           </div>
-                          {apt.type && <div style={{ fontSize: 12, color: tColor, marginTop: 4, fontWeight: 500 }}>{apt.type.replace(/_/g, ' ')}</div>}
-                          {apt.notes && <div style={{ fontSize: 12, color: '#3A3D55', marginTop: 2 }}>{apt.notes}</div>}
+                          {apt.type && <div className={`text-body-sm ${tColorClass} mt-1 font-medium`}>{apt.type.replace(/_/g, ' ')}</div>}
+                          {apt.notes && <div className="text-caption text-content-tertiary mt-0.5">{apt.notes}</div>}
                         </div>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div className="flex gap-1 flex-shrink-0">
                           {apt.status === 'pending' && (
                             <>
-                              <button onClick={() => handleAction(apt.id, 'confirmed')} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(0,255,178,0.25)', background: 'rgba(0,255,178,0.09)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#00FFB2', transition: 'all 0.18s ease' }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.2)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,255,178,0.09)'}>
+                              <button onClick={() => handleAction(apt.id, 'confirmed')} className="w-8 h-8 rounded-md border border-stroke-subtle bg-transparent text-content-tertiary hover:border-status-success-border hover:text-status-success-fg hover:bg-status-success-bg cursor-pointer flex items-center justify-center transition-colors duration-fast ease-standard">
                                 {Icons.check(14)}
                               </button>
-                              <button onClick={() => handleAction(apt.id, 'cancelled')} style={{ width: 28, height: 28, borderRadius: 7, border: '1px solid rgba(255,107,107,0.25)', background: 'rgba(255,107,107,0.09)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF6B6B', transition: 'all 0.18s ease' }}
-                                onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,107,107,0.2)'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,107,107,0.09)'}>
+                              <button onClick={() => handleAction(apt.id, 'cancelled')} className="w-8 h-8 rounded-md border border-stroke-subtle bg-transparent text-content-tertiary hover:border-status-danger-border hover:text-status-danger-fg hover:bg-status-danger-bg cursor-pointer flex items-center justify-center transition-colors duration-fast ease-standard">
                                 {Icons.x(14)}
                               </button>
                             </>
                           )}
                           {apt.status === 'confirmed' && (
-                            <button onClick={() => handleAction(apt.id, 'completed')} style={{ padding: '4px 10px', borderRadius: 7, border: '1px solid rgba(0,255,178,0.25)', background: 'rgba(0,255,178,0.09)', cursor: 'pointer', fontSize: 11, fontWeight: 600, color: '#00FFB2', transition: 'all 0.18s ease', fontFamily: "'DM Sans',sans-serif" }}
-                              onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.2)'}
-                              onMouseLeave={e => e.currentTarget.style.background = 'rgba(0,255,178,0.09)'}>
+                            <button onClick={() => handleAction(apt.id, 'completed')} className="ps-3 pe-3 h-8 rounded-md border border-stroke-subtle bg-transparent text-content-tertiary hover:border-accent hover:text-accent-fg hover:bg-accent-subtle cursor-pointer text-caption font-semibold transition-colors duration-fast ease-standard">
                               Complete
                             </button>
                           )}
@@ -363,66 +302,66 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
               </div>
             </div>
           )}
-        </div>
+        </section>
 
         {/* Recent Patients */}
-        <div style={{ ...CARD }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#E8EAF5', margin: 0, fontFamily: "'Syne', sans-serif" }}>Recent Patients</h2>
-            <span onClick={() => setPage('contacts')} style={{ fontSize: 12, color: '#00FFB2', cursor: 'pointer', fontWeight: 600 }}>View All →</span>
+        <section className={CARD}>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-h3 !text-content-primary m-0">Recent Patients</h2>
+            <span onClick={() => setPage('contacts')} className="text-body-sm text-accent-fg hover:text-accent-solid-hover font-semibold cursor-pointer transition-colors duration-fast ease-standard">View All →</span>
           </div>
           {dbData.recentPatients.length === 0 ? (
-            <div style={{ padding: '32px 0', textAlign: 'center', color: '#3A3D55', fontSize: 14 }}>No recent patients</div>
+            <div className="py-8 text-center text-content-tertiary text-body-sm">No recent patients</div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="flex flex-col gap-1">
               {dbData.recentPatients.map((p, i) => (
-                <div key={p.id} className="animate-slide-up" onClick={() => setPage('contacts/' + p.id)} style={{ animationDelay: `${i * 0.05}s`, opacity: 0, display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', borderRadius: 10, transition: 'all 0.18s ease', cursor: 'pointer' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <div style={{ width: 36, height: 36, borderRadius: '50%', background: `${avatarColors[i % avatarColors.length]}15`, color: avatarColors[i % avatarColors.length], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, flexShrink: 0, border: `1px solid ${avatarColors[i % avatarColors.length]}30` }}>
+                <button key={p.id} onClick={() => setPage('contacts/' + p.id)} className="animate-slide-up flex items-center gap-3 ps-3 pe-3 py-2.5 rounded-lg cursor-pointer transition-colors duration-fast ease-standard hover:bg-surface-canvas bg-transparent border-none w-full text-start">
+                  <div className={`w-10 h-10 rounded-full border flex items-center justify-center text-body-sm font-bold flex-shrink-0 ${AVATAR_ROTATION[i % AVATAR_ROTATION.length]}`}>
                     {(p.name || 'P').charAt(0)}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: '#E8EAF5', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{p.name}</div>
-                    <div style={{ fontSize: 11, color: '#3A3D55', marginTop: 2 }}>{p.phone || p.email || 'No contact'}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-body-sm font-semibold text-content-primary truncate">{p.name}</div>
+                    <div className="text-caption text-content-tertiary mt-0.5 truncate">{p.phone || p.email || 'No contact'}</div>
                   </div>
-                  <div style={{ fontSize: 11, color: '#3A3D55', flexShrink: 0 }}>
+                  <div className="text-caption text-content-tertiary flex-shrink-0 tabular-nums lining-nums">
                     {p.created_at ? new Date(p.created_at).toLocaleDateString() : ''}
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
-        </div>
+        </section>
       </div>
 
-      {/* ── Pending Payments ──────────────────────────────────────── */}
+      {/* ── Pending Payments ────────────────────────────────────── */}
       {dbData.pendingPaymentsList.length > 0 && (
-        <div style={{ ...CARD }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <h2 style={{ fontSize: 15, fontWeight: 700, color: '#E8EAF5', margin: 0, fontFamily: "'Syne', sans-serif" }}>Pending Payments</h2>
-            <span onClick={() => setPage('finance')} style={{ fontSize: 12, color: '#00FFB2', cursor: 'pointer', fontWeight: 600 }}>View All →</span>
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-h3 !text-content-primary m-0">Pending Payments</h2>
+            <span onClick={() => setPage('finance')} className="text-body-sm text-accent-fg hover:text-accent-solid-hover font-semibold cursor-pointer transition-colors duration-fast ease-standard">View All →</span>
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {dbData.pendingPaymentsList.slice(0, 5).map((p, i) => {
+          <div className="flex flex-col gap-2">
+            {dbData.pendingPaymentsList.slice(0, 5).map((p) => {
               const contact = contacts.find(c => c.id === p.contact_id)
+              const dotClass = p.status === 'overdue' ? 'bg-danger-500' : 'bg-warning-500'
               return (
-                <div key={p.id} className="animate-slide-up" style={{ animationDelay: `${i * 0.05}s`, opacity: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderRadius: 10, transition: 'all 0.18s ease' }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: p.status === 'overdue' ? '#FF6B6B' : '#FFB347', flexShrink: 0 }} />
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#E8EAF5' }}>{contact?.name || p.patient_name || 'Unknown'}</div>
-                      <div style={{ fontSize: 11, color: '#3A3D55', marginTop: 2 }}>{p.status}</div>
+                <div key={p.id} className="animate-slide-up flex items-center justify-between gap-3 ps-4 pe-4 py-3 rounded-lg bg-surface-raised border border-stroke-subtle shadow-1">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} />
+                    <div className="min-w-0">
+                      <div className="text-body-sm font-semibold text-content-primary truncate">{contact?.name || p.patient_name || 'Unknown'}</div>
+                      <div className="text-caption text-content-tertiary mt-0.5 lowercase">{p.status}</div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: '#FFB347', fontFamily: "'Syne',sans-serif" }}>{fmt$(p.amount)}</div>
+                  <div className="font-display font-bold text-body-lg text-content-primary tabular-nums lining-nums flex items-baseline gap-2 flex-shrink-0">
+                    <span>{Number(p.amount).toLocaleString()}</span>
+                    <span className="font-sans font-medium text-body-sm text-content-secondary">IQD</span>
+                  </div>
                 </div>
               )
             })}
           </div>
-        </div>
+        </section>
       )}
 
       {showModal && (
