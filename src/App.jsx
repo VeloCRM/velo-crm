@@ -23,6 +23,7 @@ const ProjectsPage = lazy(() => import('./pages/ProjectsPage'))
 const GoalsPage = lazy(() => import('./pages/GoalsPage'))
 const DocsPage = lazy(() => import('./pages/DocsPage'))
 const AgencyDashboard = lazy(() => import('./pages/AgencyDashboard'))
+const DentalDashboard = lazy(() => import('./pages/DentalDashboard'))
 const GrowthIntelligence = lazy(() => import('./pages/growth/GrowthIntelligence'))
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
@@ -158,7 +159,7 @@ export default function App() {
   const [notifOpen, setNotifOpen] = useState(false)
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
-  const [orgSettings, setOrgSettings] = useState({})
+  const [orgSettings, setOrgSettings] = useState(() => isSupabaseConfigured() ? {} : { industry: 'dental' })
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
@@ -879,7 +880,12 @@ export default function App() {
             <SkeletonGeneric />
           ) : (
             <>
-              {page === 'dashboard' && <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'dashboard' && (orgSettings === null || orgSettings === undefined
+                ? <SkeletonDashboard />
+                : orgSettings?.industry === 'dental'
+                  ? <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} setPage={setPage} /></Suspense>
+                  : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />
+              )}
               {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}

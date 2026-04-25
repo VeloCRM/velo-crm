@@ -664,6 +664,53 @@ export const SAMPLE_TICKETS = [
   },
 ]
 
+// ─── Dental clinic (demo mode for industry='dental') ─────────────────────────
+
+export const SAMPLE_DENTAL_DOCTORS = [
+  { id: 'doc1', full_name: 'Dr. Ahmed Al-Karim', specialization: 'Cosmetic Dentistry', color: '#4DA6FF', role: 'doctor' },
+  { id: 'doc2', full_name: 'Dr. Lana Hawrami',   specialization: 'Orthodontics',       color: '#A78BFA', role: 'doctor' },
+  { id: 'doc3', full_name: 'Dr. Yusuf Barzani',  specialization: 'Implantology',       color: '#9D6F4F', role: 'doctor' },
+]
+
+export const SAMPLE_DENTAL_PATIENTS = [
+  { id: 'p1',  name: 'Layla Hassan',      phone: '+964 770 555 0142', email: 'layla.h@gmail.com',   created_at: '2026-04-26T08:00:00Z' },
+  { id: 'p2',  name: 'Mohammed Aziz',     phone: '+964 750 555 0287', email: 'm.aziz@outlook.com',  created_at: '2026-04-25T14:30:00Z' },
+  { id: 'p3',  name: 'Zainab Al-Hashimi', phone: '+964 771 555 0934', email: 'zainab.h@gmail.com',  created_at: '2026-04-24T10:15:00Z' },
+  { id: 'p4',  name: 'Sirwan Karzan',     phone: '+964 770 555 0521', email: null,                  created_at: '2026-04-23T11:45:00Z' },
+  { id: 'p5',  name: 'Noor Abdullah',     phone: '+964 750 555 0673', email: 'noor.a@yahoo.com',    created_at: '2026-04-22T09:00:00Z' },
+  { id: 'p6',  name: 'Hawre Salih',       phone: '+964 751 555 0408', email: null,                  created_at: '2026-04-20T16:20:00Z' },
+  { id: 'p7',  name: 'Reem Al-Bayati',    phone: '+964 770 555 0795', email: 'reem.b@gmail.com',    created_at: '2026-04-18T13:00:00Z' },
+  { id: 'p8',  name: 'Karwan Hama',       phone: '+964 750 555 0119', email: 'k.hama@gmail.com',    created_at: '2026-04-15T11:30:00Z' },
+  { id: 'p9',  name: 'Dilan Mahmoud',     phone: '+964 771 555 0264', email: 'dilan.m@outlook.com', created_at: '2026-04-10T15:45:00Z' },
+  { id: 'p10', name: 'Yara Saadi',        phone: '+964 750 555 0832', email: null,                  created_at: '2026-04-05T08:30:00Z' },
+]
+
+// appointment_date is stamped at runtime so it always matches today.
+// Pre-ordered chronologically to mirror Supabase's order('appointment_time', asc).
+export const SAMPLE_DENTAL_APPOINTMENTS_TODAY = [
+  { id: 'apt1', contact_id: 'p1', doctor_id: 'doc1', patient_name: 'Layla Hassan',      appointment_time: '09:00', type: 'cleaning',   status: 'completed', notes: 'Routine cleaning + polish' },
+  { id: 'apt2', contact_id: 'p2', doctor_id: 'doc2', patient_name: 'Mohammed Aziz',     appointment_time: '10:30', type: 'checkup',    status: 'completed', notes: 'Braces adjustment' },
+  { id: 'apt6', contact_id: 'p6', doctor_id: 'doc3', patient_name: 'Hawre Salih',       appointment_time: '11:00', type: 'extraction', status: 'cancelled', notes: 'Patient rescheduled' },
+  { id: 'apt4', contact_id: 'p4', doctor_id: 'doc3', patient_name: 'Sirwan Karzan',     appointment_time: '14:00', type: 'root_canal', status: 'pending',   notes: 'Upper-left molar — second visit' },
+  { id: 'apt5', contact_id: 'p5', doctor_id: 'doc2', patient_name: 'Noor Abdullah',     appointment_time: '15:30', type: 'filling',    status: 'pending',   notes: 'Lower-right composite' },
+  { id: 'apt3', contact_id: 'p3', doctor_id: 'doc1', patient_name: 'Zainab Al-Hashimi', appointment_time: '16:45', type: 'whitening',  status: 'confirmed', notes: 'In-office whitening session' },
+]
+
+// Amounts in IQD
+export const SAMPLE_DENTAL_PAYMENTS = [
+  { id: 'pay1', contact_id: 'p1', amount: 350000,  status: 'pending', patient_name: 'Layla Hassan' },
+  { id: 'pay2', contact_id: 'p3', amount: 1200000, status: 'pending', patient_name: 'Zainab Al-Hashimi' },
+  { id: 'pay3', contact_id: 'p7', amount: 850000,  status: 'overdue', patient_name: 'Reem Al-Bayati' },
+  { id: 'pay4', contact_id: 'p9', amount: 425000,  status: 'overdue', patient_name: 'Dilan Mahmoud' },
+]
+
+// Headline counts surfaced on the stat cards
+export const SAMPLE_DENTAL_STATS = {
+  totalPatients: 247,
+  patientsThisMonth: 31,
+  activePlans: 5,
+}
+
 export const SAMPLE_ACTIVITIES = [
   {
     id: 'act1',
