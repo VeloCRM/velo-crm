@@ -672,6 +672,13 @@ export const SAMPLE_DENTAL_DOCTORS = [
   { id: 'doc3', full_name: 'Dr. Yusuf Barzani',  specialization: 'Implantology',       color: '#9D6F4F', role: 'doctor' },
 ]
 
+// 2 chairs — Saif Dental's reality. Color is neutral ink (chairs are infrastructure;
+// doctor color carries identity). is_active mirrors production schema.
+export const SAMPLE_DENTAL_CHAIRS = [
+  { id: 'chair-1', org_id: 'demo-org', name: 'Operatory A', color: '#A8A095', is_active: true },
+  { id: 'chair-2', org_id: 'demo-org', name: 'Operatory B', color: '#A8A095', is_active: true },
+]
+
 export const SAMPLE_DENTAL_PATIENTS = [
   { id: 'p1',  name: 'Layla Hassan',      phone: '+964 770 555 0142', email: 'layla.h@gmail.com',   created_at: '2026-04-26T08:00:00Z' },
   { id: 'p2',  name: 'Mohammed Aziz',     phone: '+964 750 555 0287', email: 'm.aziz@outlook.com',  created_at: '2026-04-25T14:30:00Z' },
@@ -687,13 +694,15 @@ export const SAMPLE_DENTAL_PATIENTS = [
 
 // appointment_date is stamped at runtime so it always matches today.
 // Pre-ordered chronologically to mirror Supabase's order('appointment_time', asc).
+// Augmented with chair_id + duration_minutes for AppointmentsPage day/week views;
+// DentalDashboard ignores both fields, so this remains non-breaking for the dashboard.
 export const SAMPLE_DENTAL_APPOINTMENTS_TODAY = [
-  { id: 'apt1', contact_id: 'p1', doctor_id: 'doc1', patient_name: 'Layla Hassan',      appointment_time: '09:00', type: 'cleaning',   status: 'completed', notes: 'Routine cleaning + polish' },
-  { id: 'apt2', contact_id: 'p2', doctor_id: 'doc2', patient_name: 'Mohammed Aziz',     appointment_time: '10:30', type: 'checkup',    status: 'completed', notes: 'Braces adjustment' },
-  { id: 'apt6', contact_id: 'p6', doctor_id: 'doc3', patient_name: 'Hawre Salih',       appointment_time: '11:00', type: 'extraction', status: 'cancelled', notes: 'Patient rescheduled' },
-  { id: 'apt4', contact_id: 'p4', doctor_id: 'doc3', patient_name: 'Sirwan Karzan',     appointment_time: '14:00', type: 'root_canal', status: 'pending',   notes: 'Upper-left molar — second visit' },
-  { id: 'apt5', contact_id: 'p5', doctor_id: 'doc2', patient_name: 'Noor Abdullah',     appointment_time: '15:30', type: 'filling',    status: 'pending',   notes: 'Lower-right composite' },
-  { id: 'apt3', contact_id: 'p3', doctor_id: 'doc1', patient_name: 'Zainab Al-Hashimi', appointment_time: '16:45', type: 'whitening',  status: 'confirmed', notes: 'In-office whitening session' },
+  { id: 'apt1', contact_id: 'p1', doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '09:00', duration_minutes: 30, type: 'cleaning',   status: 'completed', patient_name: 'Layla Hassan',      notes: 'Routine cleaning + polish' },
+  { id: 'apt2', contact_id: 'p2', doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '10:30', duration_minutes: 30, type: 'checkup',    status: 'completed', patient_name: 'Mohammed Aziz',     notes: 'Braces adjustment' },
+  { id: 'apt6', contact_id: 'p6', doctor_id: 'doc3', chair_id: 'chair-2', appointment_time: '11:00', duration_minutes: 45, type: 'extraction', status: 'cancelled', patient_name: 'Hawre Salih',       notes: 'Patient rescheduled' },
+  { id: 'apt4', contact_id: 'p4', doctor_id: 'doc3', chair_id: 'chair-1', appointment_time: '14:00', duration_minutes: 90, type: 'root_canal', status: 'pending',   patient_name: 'Sirwan Karzan',     notes: 'Upper-left molar — second visit' },
+  { id: 'apt5', contact_id: 'p5', doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '15:30', duration_minutes: 45, type: 'filling',    status: 'pending',   patient_name: 'Noor Abdullah',     notes: 'Lower-right composite' },
+  { id: 'apt3', contact_id: 'p3', doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '16:45', duration_minutes: 60, type: 'whitening',  status: 'confirmed', patient_name: 'Zainab Al-Hashimi', notes: 'In-office whitening session' },
 ]
 
 // Amounts in IQD
@@ -709,6 +718,136 @@ export const SAMPLE_DENTAL_STATS = {
   totalPatients: 247,
   patientsThisMonth: 31,
   activePlans: 5,
+}
+
+// ─── Dental week generator (used by AppointmentsPage demo branch) ───────────
+
+// Iraqi week starts Saturday. Map JS day (0=Sun..6=Sat) → Iraqi index (0=Sat..6=Fri).
+const _IRAQI_DAY_IDX = [1, 2, 3, 4, 5, 6, 0]
+function _iraqiWeekStart(d) {
+  const date = new Date(d)
+  date.setDate(date.getDate() - _IRAQI_DAY_IDX[date.getDay()])
+  date.setHours(0, 0, 0, 0)
+  return date
+}
+function _iraqiDayIndex(d) { return _IRAQI_DAY_IDX[d.getDay()] }
+
+const _patientById = Object.fromEntries(SAMPLE_DENTAL_PATIENTS.map(p => [p.id, p]))
+
+// Non-today template — rows keyed by iraqi day offset (Sat=0..Fri=6).
+// At runtime, rows whose offset matches today's iraqi day are filtered out;
+// today's slice always comes from SAMPLE_DENTAL_APPOINTMENTS_TODAY (single source of truth).
+// Friday (offset 6) intentionally has no rows — Iraqi weekend, clinic closed.
+const _DENTAL_WEEK_TEMPLATE = [
+  // Sat (offset 0) — 5 apts, weekend-light
+  { id: 'wapt-sat-1', dayOffset: 0, contact_id: 'p7',  doctor_id: 'doc2', chair_id: 'chair-1', appointment_time: '09:00', duration_minutes: 30, type: 'checkup',    notes: 'Brackets adjustment, monthly' },
+  { id: 'wapt-sat-2', dayOffset: 0, contact_id: 'p1',  doctor_id: 'doc1', chair_id: 'chair-2', appointment_time: '10:00', duration_minutes: 30, type: 'cleaning',   notes: 'Routine cleaning' },
+  { id: 'wapt-sat-3', dayOffset: 0, contact_id: 'p9',  doctor_id: 'doc2', chair_id: 'chair-1', appointment_time: '11:30', duration_minutes: 30, type: 'checkup',    notes: 'Ortho follow-up — month 4 of 12' },
+  { id: 'wapt-sat-4', dayOffset: 0, contact_id: 'p4',  doctor_id: 'doc3', chair_id: 'chair-2', appointment_time: '14:30', duration_minutes: 90, type: 'root_canal', notes: 'Pulp removal — session 1' },
+  { id: 'wapt-sat-5', dayOffset: 0, contact_id: 'p2',  doctor_id: 'doc2', chair_id: 'chair-1', appointment_time: '16:00', duration_minutes: 30, type: 'checkup',    notes: 'Ortho follow-up' },
+  // Sun (offset 1) — 6 apts (skipped if today is Sun, replaced by TODAY's 6)
+  { id: 'wapt-sun-1', dayOffset: 1, contact_id: 'p10', doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '09:00', duration_minutes: 30, type: 'cleaning',     notes: 'Pre-procedure cleaning' },
+  { id: 'wapt-sun-2', dayOffset: 1, contact_id: 'p7',  doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '10:30', duration_minutes: 30, type: 'checkup',      notes: 'Ortho weekly follow-up' },
+  { id: 'wapt-sun-3', dayOffset: 1, contact_id: 'p3',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '11:30', duration_minutes: 60, type: 'whitening',    notes: 'Whitening — session 1' },
+  { id: 'wapt-sun-4', dayOffset: 1, contact_id: 'p8',  doctor_id: 'doc3', chair_id: 'chair-2', appointment_time: '14:00', duration_minutes: 60, type: 'crown',        notes: 'Crown placement' },
+  { id: 'wapt-sun-5', dayOffset: 1, contact_id: 'p9',  doctor_id: 'doc2', chair_id: 'chair-1', appointment_time: '15:00', duration_minutes: 30, type: 'checkup',      notes: 'Ortho follow-up' },
+  { id: 'wapt-sun-6', dayOffset: 1, contact_id: 'p1',  doctor_id: 'doc1', chair_id: 'chair-2', appointment_time: '16:30', duration_minutes: 30, type: 'checkup',      notes: 'Cosmetic review' },
+  // Mon (offset 2) — 5 apts
+  { id: 'wapt-mon-1', dayOffset: 2, contact_id: 'p1',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '09:00', duration_minutes: 60, type: 'whitening',    notes: 'Whitening — session 2' },
+  { id: 'wapt-mon-2', dayOffset: 2, contact_id: 'p2',  doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '10:00', duration_minutes: 30, type: 'checkup',      notes: 'Brackets check' },
+  { id: 'wapt-mon-3', dayOffset: 2, contact_id: 'p10', doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '11:00', duration_minutes: 45, type: 'filling',      notes: 'Anterior composite' },
+  { id: 'wapt-mon-4', dayOffset: 2, contact_id: 'p4',  doctor_id: 'doc3', chair_id: 'chair-2', appointment_time: '14:30', duration_minutes: 60, type: 'root_canal',   notes: 'Root canal session 2 — sealing' },
+  { id: 'wapt-mon-5', dayOffset: 2, contact_id: 'p7',  doctor_id: 'doc2', chair_id: 'chair-1', appointment_time: '16:00', duration_minutes: 30, type: 'checkup',      notes: 'Ortho follow-up' },
+  // Tue (offset 3) — 6 apts (heavy, Ahmed busy)
+  { id: 'wapt-tue-1', dayOffset: 3, contact_id: 'p3',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '09:00', duration_minutes: 60, type: 'whitening',    notes: 'Whitening — session 1' },
+  { id: 'wapt-tue-2', dayOffset: 3, contact_id: 'p2',  doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '09:30', duration_minutes: 30, type: 'checkup',      notes: 'Brackets adjustment' },
+  { id: 'wapt-tue-3', dayOffset: 3, contact_id: 'p8',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '10:30', duration_minutes: 30, type: 'consultation', notes: 'Smile design consult' },
+  { id: 'wapt-tue-4', dayOffset: 3, contact_id: 'p9',  doctor_id: 'doc1', chair_id: 'chair-2', appointment_time: '11:30', duration_minutes: 30, type: 'consultation', notes: 'Cosmetic consult' },
+  { id: 'wapt-tue-5', dayOffset: 3, contact_id: 'p10', doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '14:00', duration_minutes: 60, type: 'crown',        notes: 'Crown fitting' },
+  { id: 'wapt-tue-6', dayOffset: 3, contact_id: 'p5',  doctor_id: 'doc3', chair_id: 'chair-2', appointment_time: '15:30', duration_minutes: 45, type: 'extraction',   notes: 'Wisdom tooth removal' },
+  // Wed (offset 4) — 6 apts (heavy)
+  { id: 'wapt-wed-1', dayOffset: 4, contact_id: 'p10', doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '09:00', duration_minutes: 30, type: 'cleaning',     notes: 'Pre-veneer cleaning' },
+  { id: 'wapt-wed-2', dayOffset: 4, contact_id: 'p7',  doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '10:00', duration_minutes: 30, type: 'checkup',      notes: 'Ortho weekly' },
+  { id: 'wapt-wed-3', dayOffset: 4, contact_id: 'p3',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '11:00', duration_minutes: 90, type: 'crown',        notes: 'Veneer prep' },
+  { id: 'wapt-wed-4', dayOffset: 4, contact_id: 'p8',  doctor_id: 'doc3', chair_id: 'chair-2', appointment_time: '14:00', duration_minutes: 60, type: 'crown',        notes: 'Crown cement' },
+  { id: 'wapt-wed-5', dayOffset: 4, contact_id: 'p1',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '15:30', duration_minutes: 60, type: 'whitening',    notes: 'Whitening — session 3' },
+  { id: 'wapt-wed-6', dayOffset: 4, contact_id: 'p9',  doctor_id: 'doc1', chair_id: 'chair-2', appointment_time: '16:30', duration_minutes: 30, type: 'consultation', notes: 'Cosmetic consult' },
+  // Thu (offset 5) — 4 apts (lighter, pre-weekend)
+  { id: 'wapt-thu-1', dayOffset: 5, contact_id: 'p1',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '09:00', duration_minutes: 60, type: 'crown',   notes: 'Veneer placement' },
+  { id: 'wapt-thu-2', dayOffset: 5, contact_id: 'p2',  doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '11:00', duration_minutes: 30, type: 'checkup', notes: 'Brackets check' },
+  { id: 'wapt-thu-3', dayOffset: 5, contact_id: 'p3',  doctor_id: 'doc1', chair_id: 'chair-1', appointment_time: '14:30', duration_minutes: 30, type: 'checkup', notes: 'Final cosmetic review' },
+  { id: 'wapt-thu-4', dayOffset: 5, contact_id: 'p7',  doctor_id: 'doc2', chair_id: 'chair-2', appointment_time: '16:00', duration_minutes: 30, type: 'checkup', notes: 'Ortho weekly' },
+  // Fri (offset 6) — empty: Iraqi weekend, clinic closed.
+]
+
+// Module-level cache keyed by iraqi week-start ISO. Same week → same array reference,
+// helps React reconciliation across day↔week toggles. Recomputes on week boundary.
+const _weekCache = new Map()
+
+// Returns ~32 appointments across the current Iraqi week (Sat→Fri), date-stamped relative
+// to today. Status auto-skewed: past days → completed, today → as templated by
+// SAMPLE_DENTAL_APPOINTMENTS_TODAY, tomorrow → confirmed, further future → pending.
+// Today's slice mirrors SAMPLE_DENTAL_APPOINTMENTS_TODAY exactly (so DentalDashboard and
+// AppointmentsPage agree on today's roster).
+export function getSampleDentalAppointmentsWeek() {
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const ws = _iraqiWeekStart(today)
+  const wsKey = ws.toISOString().slice(0, 10)
+  if (_weekCache.has(wsKey)) return _weekCache.get(wsKey)
+
+  const todayIdx = _iraqiDayIndex(today)
+  const dateStrFor = (offset) => {
+    const d = new Date(ws); d.setDate(d.getDate() + offset)
+    return d.toISOString().slice(0, 10)
+  }
+
+  // Today's slice — augment SAMPLE_DENTAL_APPOINTMENTS_TODAY with date stamp + joined contacts.
+  const todayStr = dateStrFor(todayIdx)
+  const todayRows = SAMPLE_DENTAL_APPOINTMENTS_TODAY.map(a => {
+    const p = _patientById[a.contact_id]
+    return {
+      ...a,
+      org_id: 'demo-org',
+      appointment_date: todayStr,
+      title: a.title || a.type,
+      price: a.price || 0,
+      currency: a.currency || 'IQD',
+      contacts: p ? { id: p.id, name: p.name, phone: p.phone } : null,
+    }
+  })
+
+  // Other days — template, skip rows whose offset matches today (today comes from TODAY).
+  const otherRows = _DENTAL_WEEK_TEMPLATE
+    .filter(tpl => tpl.dayOffset !== todayIdx)
+    .map(tpl => {
+      let status
+      if (tpl.dayOffset < todayIdx) status = 'completed'
+      else if (tpl.dayOffset === todayIdx + 1) status = 'confirmed'
+      else status = 'pending'
+      const p = _patientById[tpl.contact_id]
+      return {
+        id: tpl.id,
+        org_id: 'demo-org',
+        contact_id: tpl.contact_id,
+        doctor_id: tpl.doctor_id,
+        chair_id: tpl.chair_id,
+        appointment_date: dateStrFor(tpl.dayOffset),
+        appointment_time: tpl.appointment_time,
+        duration_minutes: tpl.duration_minutes,
+        type: tpl.type,
+        title: tpl.type,
+        status,
+        notes: tpl.notes || '',
+        patient_name: p?.name || '',
+        price: 0,
+        currency: 'IQD',
+        contacts: p ? { id: p.id, name: p.name, phone: p.phone } : null,
+      }
+    })
+
+  const result = [...todayRows, ...otherRows]
+  _weekCache.set(wsKey, result)
+  return result
 }
 
 export const SAMPLE_ACTIVITIES = [
