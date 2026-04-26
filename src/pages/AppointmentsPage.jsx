@@ -591,7 +591,7 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
                       {heightPx > 36 && (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                           <div style={{ width: 6, height: 6, borderRadius: '50%', background: docColor, flexShrink: 0, boxShadow: `0 0 5px ${docColor}` }} />
-                          <span style={{ fontSize: 10, color: docColor, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc?.name || ''}</span>
+                          <span style={{ fontSize: 10, color: docColor, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc?.full_name || ''}</span>
                         </div>
                       )}
                       {heightPx > 54 && (
@@ -930,7 +930,7 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
           <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,179,71,0.1)', border: '1px solid rgba(255,179,71,0.3)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 16 }}>!</span>
             <span style={{ fontSize: 13, color: '#FFB347', fontWeight: 600 }}>
-              {conflictDoctor?.name || L.doctor} {L.conflict}
+              {conflictDoctor?.full_name || L.doctor} {L.conflict}
             </span>
           </div>
         )}
