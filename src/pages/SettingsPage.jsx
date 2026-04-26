@@ -1195,7 +1195,7 @@ function AgencyAITab({ lang, dir, toast }) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// CLINIC TAB — Manage Doctors, Chairs, Working Hours
+// CLINIC TAB — Manage Doctors, Working Hours
 // ═══════════════════════════════════════════════════════════════════════════
 const DOC_COLORS = ['#4DA6FF','#00FFB2','#a855f7','#f59e0b','#ef4444','#6366f1','#ec4899','#14b8a6','#ff6b6b','#1dd1a1']
 const SPECIALTIES = ['General Dentistry','Orthodontics','Cosmetic Dentistry','Periodontics','Endodontics','Oral Surgery','Pediatric Dentistry','Prosthodontics']
@@ -1205,12 +1205,9 @@ const WEEK_DAYS_AR = ['السبت','الاحد','الاثنين','الثلاثا
 function ClinicTab({ lang, dir, isRTL, toast }) {
   const [orgId, setOrgId] = useState(null)
   const [doctors, setDoctors] = useState([])
-  const [chairs, setChairs] = useState([])
   const [loading, setLoading] = useState(true)
   const [editDoc, setEditDoc] = useState(null)
-  const [editChair, setEditChair] = useState(null)
   const [showDocForm, setShowDocForm] = useState(false)
-  const [showChairForm, setShowChairForm] = useState(false)
   const [workingHours, setWorkingHours] = useState(() => {
     try { return JSON.parse(localStorage.getItem('velo_clinic_hours') || 'null') } catch { return null }
   })
@@ -1232,12 +1229,9 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
 
   const fetchAll = async (oid) => {
     setLoading(true)
-    const [{ data: docs }, { data: chs }] = await Promise.all([
-      supabase.from('doctors').select('*').eq('org_id', oid).order('created_at'),
-      supabase.from('chairs').select('*').eq('org_id', oid).order('name'),
-    ])
+    const { data: docs } = await supabase
+      .from('doctors').select('*').eq('org_id', oid).order('created_at')
     setDoctors(docs || [])
-    setChairs(chs || [])
     setLoading(false)
   }
 
@@ -1258,26 +1252,6 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
     const { error } = await supabase.from('doctors').delete().eq('id', id)
     if (error) return toast?.('Error: ' + error.message, 'error')
     toast?.('Doctor deleted', 'success')
-    await fetchAll(orgId)
-  }
-
-  const saveChair = async (form) => {
-    if (editChair?.id) {
-      const { error } = await supabase.from('chairs').update(form).eq('id', editChair.id)
-      if (error) return toast?.('Error: ' + error.message, 'error')
-    } else {
-      const { error } = await supabase.from('chairs').insert({ ...form, org_id: orgId })
-      if (error) return toast?.('Error: ' + error.message, 'error')
-    }
-    toast?.(editChair?.id ? 'Chair updated' : 'Chair added', 'success')
-    setShowChairForm(false); setEditChair(null)
-    await fetchAll(orgId)
-  }
-
-  const deleteChair = async (id) => {
-    const { error } = await supabase.from('chairs').delete().eq('id', id)
-    if (error) return toast?.('Error: ' + error.message, 'error')
-    toast?.('Chair deleted', 'success')
     await fetchAll(orgId)
   }
 
@@ -1330,39 +1304,6 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
         )}
 
         {showDocForm && <DoctorForm doc={editDoc} onSave={saveDoctor} onCancel={() => { setShowDocForm(false); setEditDoc(null) }} dir={dir} isRTL={isRTL} />}
-      </div>
-
-      {/* Chairs */}
-      <div style={{ ...card, padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'الكراسي' : 'Chairs / Rooms'}</h3>
-            <p style={{ fontSize: 13, color: C.textSec, margin: '4px 0 0' }}>{isRTL ? 'ادارة كراسي وغرف العيادة' : 'Manage treatment chairs and rooms'}</p>
-          </div>
-          <button onClick={() => { setEditChair(null); setShowChairForm(true) }} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.plus(14)} {isRTL ? 'اضافة كرسي' : 'Add Chair'}</button>
-        </div>
-
-        {chairs.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13, border: '1px dashed var(--border-subtle)', borderRadius: 10 }}>
-            {isRTL ? 'لا توجد كراسي. اضف كرسيك الاول.' : 'No chairs yet. Add your first chair.'}
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
-            {chairs.map(ch => (
-              <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--bg-void)' }}>
-                <div style={{ width: 14, height: 14, borderRadius: 4, background: ch.color, flexShrink: 0 }} />
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: C.text }}>{ch.name}</span>
-                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 8, background: ch.is_active ? 'rgba(0,255,178,0.1)' : 'rgba(255,107,107,0.1)', color: ch.is_active ? '#00FFB2' : '#FF6B6B' }}>
-                  {ch.is_active ? 'ON' : 'OFF'}
-                </span>
-                <button onClick={() => { setEditChair(ch); setShowChairForm(true) }} style={{ ...makeBtn('ghost'), padding: 4, height: 26 }}>{Icons.edit(13)}</button>
-                <button onClick={() => deleteChair(ch.id)} style={{ ...makeBtn('ghost'), padding: 4, height: 26, color: '#FF6B6B' }}>{Icons.trash(13)}</button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {showChairForm && <ChairForm ch={editChair} onSave={saveChair} onCancel={() => { setShowChairForm(false); setEditChair(null) }} dir={dir} isRTL={isRTL} />}
       </div>
 
       {/* Working Hours */}
@@ -1455,41 +1396,3 @@ function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
   )
 }
 
-function ChairForm({ ch, onSave, onCancel, dir, isRTL }) {
-  const [form, setForm] = useState({
-    name: ch?.name || '',
-    color: ch?.color || '#00FFB2',
-    is_active: ch?.is_active ?? true,
-  })
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  return (
-    <div style={{ marginTop: 16, padding: 20, borderRadius: 12, border: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <FormField label={isRTL ? 'الاسم' : 'Name'} dir={dir}>
-          <input value={form.name} onChange={e => set('name', e.target.value)} style={inputStyle(dir)} placeholder="Chair 1, Room A..." />
-        </FormField>
-        <FormField label={isRTL ? 'اللون' : 'Color'} dir={dir}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 4 }}>
-            {DOC_COLORS.map(c => (
-              <div key={c} onClick={() => set('color', c)}
-                style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer', border: form.color === c ? '3px solid #fff' : '3px solid transparent', boxShadow: form.color === c ? `0 0 0 2px ${c}` : 'none', transition: 'all 0.15s' }} />
-            ))}
-          </div>
-        </FormField>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 12 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: C.text, fontWeight: 500 }}>
-          <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} style={{ accentColor: '#00FFB2' }} />
-          {isRTL ? 'نشط' : 'Active'}
-        </label>
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={onCancel} style={makeBtn('secondary')}>{isRTL ? 'الغاء' : 'Cancel'}</button>
-        <button onClick={() => { if (form.name.trim()) onSave(form) }} disabled={!form.name.trim()} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: form.name.trim() ? 1 : 0.5 }}>
-          {ch?.id ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'اضافة' : 'Add')}
-        </button>
-      </div>
-    </div>
-  )
-}
