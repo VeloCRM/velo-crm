@@ -1,9 +1,16 @@
 // Velo CRM — Input Sanitization & Validation
 
 // ─── HTML Stripping ──────────────────────────────────────────
+// Loop until stable so nested tags like `<<script>script>` can't slip through.
 export function stripHtml(str) {
   if (typeof str !== 'string') return ''
-  return str.replace(/<[^>]*>/g, '').replace(/&[^;]+;/g, ' ').trim()
+  let out = str
+  for (let i = 0; i < 5; i++) {
+    const next = out.replace(/<[^>]*>/g, '')
+    if (next === out) break
+    out = next
+  }
+  return out.replace(/&[^;]+;/g, ' ').trim()
 }
 
 // ─── Text sanitization with max length ───────────────────────
@@ -11,25 +18,53 @@ export function sanitizeText(str, maxLength = 500) {
   return stripHtml(str).slice(0, maxLength)
 }
 
-export function sanitizeName(str) { return sanitizeText(str, 100) }
-export function sanitizeEmail(str) { return stripHtml(str).toLowerCase().trim().slice(0, 254) }
-export function sanitizeNotes(str) { return sanitizeText(str, 5000) }
+// Length limits per product spec:
+export const LIMITS = {
+  name: 100,
+  email: 255,
+  phone: 20,
+  notes: 5000,
+  search: 200,
+  pathParam: 64,
+}
+
+export function sanitizeName(str) { return sanitizeText(str, LIMITS.name) }
+export function sanitizeEmail(str) { return stripHtml(str).toLowerCase().trim().slice(0, LIMITS.email) }
+export function sanitizePhone(str) { return sanitizeText(str, LIMITS.phone) }
+export function sanitizeNotes(str) { return sanitizeText(str, LIMITS.notes) }
+export function sanitizeSearch(str) { return sanitizeText(str, LIMITS.search) }
+
+// URL path params: only letters, digits, and hyphens. Used for IDs in the URL.
+export function sanitizePathParam(str) {
+  if (typeof str !== 'string') return ''
+  return str.replace(/[^A-Za-z0-9-]/g, '').slice(0, LIMITS.pathParam)
+}
 
 // ─── Validation ──────────────────────────────────────────────
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 export function isValidEmail(email) {
-  return EMAIL_RE.test(email) && email.length <= 254
+  return typeof email === 'string' && EMAIL_RE.test(email) && email.length <= LIMITS.email
+}
+export function isValidEmailOrEmpty(email) {
+  if (!email) return true
+  return isValidEmail(email)
 }
 
 const PHONE_CHARS = /^[0-9+\-() .ext]+$/i
 export function isValidPhone(phone) {
   if (!phone) return true // optional field
-  return PHONE_CHARS.test(phone) && phone.length <= 30
+  return PHONE_CHARS.test(phone) && phone.length <= LIMITS.phone
 }
 
-export function isPositiveNumber(val) {
+export function isFiniteNumber(val) {
   const n = Number(val)
-  return !isNaN(n) && n >= 0 && isFinite(n)
+  return !isNaN(n) && isFinite(n)
+}
+export function isPositiveNumber(val) {
+  return isFiniteNumber(val) && Number(val) >= 0
+}
+export function toSafeNumber(val, fallback = 0) {
+  return isFiniteNumber(val) ? Number(val) : fallback
 }
 
 export function isValidDate(dateStr) {
@@ -55,7 +90,7 @@ export function sanitizeContact(c) {
     ...c,
     name: sanitizeName(c.name || ''),
     email: sanitizeEmail(c.email || ''),
-    phone: sanitizeText(c.phone || '', 30),
+    phone: sanitizePhone(c.phone || ''),
     company: sanitizeText(c.company || '', 100),
     city: sanitizeText(c.city || '', 100),
     notes: sanitizeNotes(c.notes || ''),
@@ -63,13 +98,27 @@ export function sanitizeContact(c) {
   }
 }
 
+// Full validation before DB write. Returns { ok, error } where error is a
+// short, user-facing reason suitable for a toast.
+export function validateContactForSave(c, { isRTL = false } = {}) {
+  const name = (c?.name || '').trim()
+  if (!name) return { ok: false, error: isRTL ? 'الاسم مطلوب' : 'Name is required' }
+  if (!isValidEmailOrEmpty(c?.email || '')) {
+    return { ok: false, error: isRTL ? 'البريد الإلكتروني غير صالح' : 'Invalid email format' }
+  }
+  if (!isValidPhone(c?.phone || '')) {
+    return { ok: false, error: isRTL ? 'رقم الهاتف غير صالح' : 'Invalid phone number' }
+  }
+  return { ok: true }
+}
+
 // ─── Deal sanitization ──────────────────────────────────────
 export function sanitizeDeal(d) {
   return {
     ...d,
     name: sanitizeText(d.name || d.title || '', 200),
-    value: Math.max(0, Number(d.value) || 0),
-    probability: Math.min(100, Math.max(0, Number(d.probability) || 0)),
+    value: Math.max(0, toSafeNumber(d.value, 0)),
+    probability: Math.min(100, Math.max(0, toSafeNumber(d.probability, 0))),
     notes: sanitizeNotes(d.notes || ''),
   }
 }
@@ -83,7 +132,7 @@ export function sanitizeTicket(t) {
   }
 }
 
-// ─── Rate limiter ────────────────────────────────────────────
+// ─── Rate limiter (in-memory, used for login attempts) ──────
 const rateLimits = {}
 export function checkRateLimit(key, maxAttempts = 10, windowMs = 60000) {
   const now = Date.now()
@@ -106,6 +155,32 @@ export function getLoginLockoutRemaining() {
   const oldest = attempts[0]
   const remaining = 300000 - (now - oldest)
   return remaining > 0 ? Math.ceil(remaining / 1000) : 0
+}
+
+// ─── Supabase request throttle (UX guard — NOT a security control) ──
+// Trivially bypassed by clearing localStorage or opening devtools. Its only
+// job is to protect the UI from runaway loops / typeahead storms hammering
+// the DB. Real rate limiting must live server-side.
+const SB_RATE_KEY = 'velo_sb_req_ts'
+const SB_RATE_MAX = 100      // requests
+const SB_RATE_WINDOW = 60000 // per minute
+export function checkSupabaseRateLimit() {
+  try {
+    const now = Date.now()
+    let arr = []
+    try { arr = JSON.parse(localStorage.getItem(SB_RATE_KEY) || '[]') } catch { arr = [] }
+    if (!Array.isArray(arr)) arr = []
+    arr = arr.filter(ts => now - ts < SB_RATE_WINDOW)
+    if (arr.length >= SB_RATE_MAX) {
+      localStorage.setItem(SB_RATE_KEY, JSON.stringify(arr))
+      return false
+    }
+    arr.push(now)
+    localStorage.setItem(SB_RATE_KEY, JSON.stringify(arr))
+    return true
+  } catch {
+    return true // never block on storage failure
+  }
 }
 
 // ─── API Key masking ─────────────────────────────────────────
@@ -139,4 +214,14 @@ export function clearAllVeloData() {
     }
     keys.forEach(k => localStorage.removeItem(k))
   } catch {}
+}
+
+// ─── Promise Timeout ─────────────────────────────────────────
+export function withTimeout(promise, ms = 10000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Request timed out after ' + ms + 'ms')), ms)
+    )
+  ]);
 }

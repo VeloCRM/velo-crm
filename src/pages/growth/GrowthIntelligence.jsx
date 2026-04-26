@@ -37,9 +37,9 @@ export default function GrowthIntelligence({ orgId, isSuperAdmin }) {
               minWidth: 160, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
               border: 'none', cursor: 'pointer', fontFamily: 'inherit',
               transition: 'all 200ms ease',
-              background: activeTab === tab.id ? 'rgba(0,212,255,0.08)' : 'transparent',
-              color: activeTab === tab.id ? '#00d4ff' : '#94a3b8',
-              borderBottom: activeTab === tab.id ? '2px solid #00d4ff' : '2px solid transparent',
+              background: activeTab === tab.id ? 'rgba(0,255,178,0.08)' : 'transparent',
+              color: activeTab === tab.id ? '#00FFB2' : '#94a3b8',
+              borderBottom: activeTab === tab.id ? '2px solid #00FFB2' : '2px solid transparent',
               marginBottom: -1,
             }}
           >

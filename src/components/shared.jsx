@@ -61,17 +61,18 @@ export function Modal({ children, onClose, dir, width = 520 }) {
 export function FormField({ label, children, dir }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: C.textLabel, marginBottom: 6, direction: dir }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--text-muted)', marginBottom: 8, direction: dir }}>{label}</label>
       {children}
     </div>
   )
 }
 
 export const inputStyle = (dir) => ({
-  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)',
-  fontSize: 14, color: '#e2e8f0', fontFamily: 'inherit', outline: 'none', background: '#0f1729',
+  width: '100%', padding: '0 12px', height: 42, borderRadius: 10, border: '1px solid var(--border-subtle)',
+  fontSize: 14, color: 'var(--text-primary)', fontFamily: 'inherit', outline: 'none', background: 'var(--bg-void)',
   direction: dir, textAlign: dir === 'rtl' ? 'right' : 'left', boxSizing: 'border-box',
-  transition: 'border-color 150ms ease, box-shadow 150ms ease',
+  transition: 'border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1), box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+  boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.5)',
 })
 
 export const selectStyle = (dir) => ({ ...inputStyle(dir), appearance: 'auto' })

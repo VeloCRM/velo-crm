@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Modal, FormField, inputStyle, selectStyle } from '../components/shared'
-import { isPositiveNumber, sanitizeText } from '../lib/sanitize'
+import { isPositiveNumber, sanitizeText, withTimeout } from '../lib/sanitize'
 import { fetchAllPayments, fetchOrganizations } from '../lib/database'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 
@@ -57,16 +57,17 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
       try {
         if (isSuperAdmin) {
           // Agency view — fetch organizations for subscription revenue
-          const data = await fetchOrganizations()
+          const data = await withTimeout(fetchOrganizations(), 10000)
           if (!cancelled) setOrgs(data)
         } else if (orgPayments) {
           if (!cancelled) setPayments(orgPayments)
         } else if (isSupabaseConfigured()) {
-          const data = await fetchAllPayments()
+          const data = await withTimeout(fetchAllPayments(), 10000)
           if (!cancelled) setPayments(data)
         }
       } catch (err) {
         console.error('Finance load error:', err)
+        toast(err.message || 'Timeout loading financial data')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -167,7 +168,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
             {/* Subscriptions table */}
             <div style={{ ...card, overflow: 'hidden' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-                <thead><tr style={{ background: '#0d1420', borderBottom: `1px solid ${C.border}` }}>
+                <thead><tr style={{ background: '#0C0E1A', borderBottom: `1px solid ${C.border}` }}>
                   {[isRTL ? 'المؤسسة' : 'Organization', isRTL ? 'الخطة' : 'Plan', isRTL ? 'الرسوم الشهرية' : 'Monthly Fee', isRTL ? 'الحالة' : 'Status'].map((h, i) => (
                     <th key={i} style={thStyle(isRTL)}>{h}</th>
                   ))}
@@ -203,7 +204,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
                 </tbody>
                 {orgs.length > 0 && (
                   <tfoot>
-                    <tr style={{ background: '#0d1420', borderTop: `2px solid ${C.border}` }}>
+                    <tr style={{ background: '#0C0E1A', borderTop: `2px solid ${C.border}` }}>
                       <td colSpan={2} style={{ padding: '12px 16px', fontWeight: 700, color: C.text, fontSize: 13 }}>{isRTL ? 'إجمالي الإيرادات الشهرية' : 'Total Monthly Revenue'}</td>
                       <td style={{ padding: '12px 16px', fontWeight: 700, color: C.success, fontSize: 16 }}>${totalMRR.toLocaleString()}/mo</td>
                       <td style={{ padding: '12px 16px', fontWeight: 600, color: C.textSec, fontSize: 12 }}>{activeOrgs.length} {isRTL ? 'نشط' : 'active'} / {orgs.length} {isRTL ? 'إجمالي' : 'total'}</td>
@@ -409,7 +410,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
             {tab === 'expenses' && (
               <div>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
-                  <button type="button" onClick={() => setShowExpenseForm(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مصروف' : 'Add Expense'}</button>
+                  <button type="button" onClick={() => setShowExpenseForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مصروف' : 'Add Expense'}</button>
                 </div>
                 <div style={{ ...card, overflow: 'hidden' }}>
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
@@ -453,7 +454,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
                       <FormField label={isRTL ? 'اسم الإيصال' : 'Receipt filename'} dir={dir}><input value={expenseForm.receipt} onChange={e => setExpenseForm(p => ({ ...p, receipt: e.target.value }))} placeholder="receipt.pdf" style={inputStyle(dir)} /></FormField>
                       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
                         <button type="button" onClick={() => setShowExpenseForm(false)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-                        <button type="submit" style={makeBtn('primary')}>{isRTL ? 'إضافة' : 'Add'}</button>
+                        <button type="submit" className="velo-btn-primary" style={makeBtn('primary')}>{isRTL ? 'إضافة' : 'Add'}</button>
                       </div>
                     </form>
                   </Modal>

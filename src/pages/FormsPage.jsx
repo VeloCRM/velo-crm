@@ -57,7 +57,7 @@ export default function FormsPage({ t, lang, dir, isRTL, urlFormId, navigate }) 
           <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0, fontFamily:'DM Sans,Inter,sans-serif' }}>{isRTL?'النماذج':'Forms'}</h1>
           <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>{forms.length} {isRTL?'نموذج':'forms'}</p>
         </div>
-        <button type="button" onClick={() => navToForm('new')} style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
+        <button type="button" onClick={() => navToForm('new')} className="velo-btn-primary" style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
       </div>
 
       {forms.length === 0 ? (
@@ -65,7 +65,7 @@ export default function FormsPage({ t, lang, dir, isRTL, urlFormId, navigate }) 
           <div style={{ fontSize:48, marginBottom:16 }}>📋</div>
           <h3 style={{ fontSize:18, fontWeight:700, color:C.text, margin:'0 0 8px', fontFamily:'DM Sans,Inter,sans-serif' }}>{isRTL?'لا توجد نماذج بعد':'No forms yet'}</h3>
           <p style={{ fontSize:13, color:C.textMuted, margin:'0 0 24px' }}>{isRTL?'أنشئ نموذجاً لجمع بيانات العملاء':'Create a form to collect customer data'}</p>
-          <button type="button" onClick={() => navToForm('new')} style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
+          <button type="button" onClick={() => navToForm('new')} className="velo-btn-primary" style={makeBtn('primary',{gap:6})}>{Icons.plus(14)} {isRTL?'نموذج جديد':'New Form'}</button>
         </div>
       ) : (
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(300px, 1fr))', gap:16 }}>
@@ -128,7 +128,7 @@ function FormBuilder({ form, lang, dir, isRTL, onSave, onCancel }) {
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button type="button" onClick={()=>onSave({...form, id:form?.id, title, description, successMsg, fields, status:'draft', submissions:form?.submissions||[]})} style={makeBtn('secondary')}>{isRTL?'حفظ كمسودة':'Save Draft'}</button>
-          <button type="button" onClick={()=>onSave({...form, id:form?.id, title, description, successMsg, fields, status:'published', submissions:form?.submissions||[]})} style={makeBtn('primary')}>{isRTL?'نشر':'Publish'}</button>
+          <button type="button" onClick={()=>onSave({...form, id:form?.id, title, description, successMsg, fields, status:'published', submissions:form?.submissions||[]})} className="velo-btn-primary" style={makeBtn('primary')}>{isRTL?'نشر':'Publish'}</button>
         </div>
       </div>
 

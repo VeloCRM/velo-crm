@@ -2,21 +2,11 @@ import { useState } from 'react'
 import { C } from '../design'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
-const INDUSTRIES = [
-  { id: 'general', icon: '🏢', en: 'General Business', ar: 'أعمال عامة' },
-  { id: 'dental', icon: '🦷', en: 'Dental Clinic', ar: 'عيادة أسنان' },
-  { id: 'real_estate', icon: '🏠', en: 'Real Estate', ar: 'عقارات' },
-  { id: 'beauty', icon: '💅', en: 'Beauty & Spa', ar: 'تجميل وسبا' },
-  { id: 'legal', icon: '⚖️', en: 'Legal Services', ar: 'خدمات قانونية' },
-  { id: 'restaurant', icon: '🍽️', en: 'Restaurant', ar: 'مطعم' },
-]
-
 const COLORS = ['#2563EB', '#7C3AED', '#16A34A', '#DC2626', '#D97706', '#E16F24', '#0D9488', '#6366F1']
 
 export default function OnboardingPage({ user, lang, onComplete }) {
   const [step, setStep] = useState(1)
   const [orgName, setOrgName] = useState('')
-  const [industry, setIndustry] = useState('general')
   const [color, setColor] = useState('#2563EB')
   const [invites, setInvites] = useState([''])
   const [loading, setLoading] = useState(false)
@@ -27,10 +17,8 @@ export default function OnboardingPage({ user, lang, onComplete }) {
   const txt = {
     step1Title: isRTL ? 'أنشئ مؤسستك' : 'Create Your Organization',
     step1Sub: isRTL ? 'ابدأ بتسمية فريقك' : 'Start by naming your team',
-    step2Title: isRTL ? 'اختر مجال عملك' : 'Choose Your Industry',
-    step2Sub: isRTL ? 'سنخصص Velo لمجالك' : "We'll customize Velo for your field",
-    step3Title: isRTL ? 'ادعُ فريقك' : 'Invite Your Team',
-    step3Sub: isRTL ? 'أضف أعضاء الفريق (اختياري)' : 'Add team members (optional)',
+    step2Title: isRTL ? 'ادعُ فريقك' : 'Invite Your Team',
+    step2Sub: isRTL ? 'أضف أعضاء الفريق (اختياري)' : 'Add team members (optional)',
     orgLabel: isRTL ? 'اسم المؤسسة' : 'Organization Name',
     orgPlaceholder: isRTL ? 'مثال: شركة فيلو' : 'e.g. Velo Inc.',
     brandColor: isRTL ? 'لون العلامة التجارية' : 'Brand Color',
@@ -42,48 +30,63 @@ export default function OnboardingPage({ user, lang, onComplete }) {
     skip: isRTL ? 'تخطي' : 'Skip',
   }
 
-  const handleFinish = async (skipInvite = false) => {
-    const name = orgName.trim() || (isRTL ? 'شركتي' : 'My Company')
-    setLoading(true)
-    setError('')
+  const handleNext = async () => {
+    if (step === 1) {
+      const name = orgName.trim() || (isRTL ? 'شركتي' : 'My Company')
+      setLoading(true)
+      setError('')
 
-    if (isSupabaseConfigured()) {
-      try {
-        const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'org-' + Date.now()
-        const { data: org, error: orgErr } = await supabase.from('organizations').insert({
-          name, slug, primary_color: color, industry, plan: 'free',
-        }).select().single()
-        if (orgErr) throw orgErr
+      if (isSupabaseConfigured()) {
+        try {
+          const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'org-' + Date.now()
+          const { data: org, error: orgErr } = await supabase.from('organizations').insert({
+            name, slug, primary_color: color, industry: 'Dental', plan: 'free',
+          }).select().single()
+          
+          if (orgErr) throw orgErr
 
-        await supabase.from('profiles').update({ org_id: org.id, role: 'admin' }).eq('id', user.id)
+          await supabase.from('profiles').update({ org_id: org.id, role: 'admin' }).eq('id', user.id)
 
-        await supabase.from('departments').insert([
-          { org_id: org.id, name: isRTL ? 'المبيعات' : 'Sales', color: '#2563EB' },
-          { org_id: org.id, name: isRTL ? 'الدعم' : 'Support', color: '#16A34A' },
-          { org_id: org.id, name: isRTL ? 'التقنية' : 'Technical', color: '#7C3AED' },
-        ])
+          await supabase.from('departments').insert([
+            { org_id: org.id, name: isRTL ? 'المبيعات' : 'Sales', color: '#2563EB' },
+            { org_id: org.id, name: isRTL ? 'الدعم' : 'Support', color: '#16A34A' },
+            { org_id: org.id, name: isRTL ? 'التقنية' : 'Technical', color: '#7C3AED' },
+          ])
 
-        onComplete(org)
-      } catch (err) {
-        console.error('Onboarding error:', err)
-        // On failure, enter app in demo mode instead of blocking
-        onComplete({ id: 'demo-org', name, industry, primary_color: color })
+          localStorage.setItem('velo_tmp_org', JSON.stringify(org))
+          setStep(2)
+        } catch (err) {
+          console.error('Onboarding org create error:', err)
+          setError(err.message || 'Failed to create organization. Check your connection.')
+        }
+      } else {
+        localStorage.setItem('velo_tmp_org', JSON.stringify({ id: 'demo-org', name, industry: 'Dental', primary_color: color }))
+        setStep(2)
       }
+      setLoading(false)
+    }
+  }
+
+  const handleFinish = async () => {
+    setLoading(true)
+    const stored = localStorage.getItem('velo_tmp_org')
+    if (stored) {
+      onComplete(JSON.parse(stored))
+      localStorage.removeItem('velo_tmp_org')
     } else {
-      onComplete({ id: 'demo-org', name, industry, primary_color: color })
+      onComplete({ id: 'demo-org', name: orgName || 'My Company', industry: 'Dental', primary_color: color })
     }
     setLoading(false)
   }
 
   const handleSkip = () => {
-    const name = orgName.trim() || (isRTL ? 'شركتي' : 'My Company')
-    onComplete({ id: 'demo-org', name, industry, primary_color: color })
+    handleFinish()
   }
 
   const inputStyle = {
     width: '100%', padding: '8px 12px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)',
     fontSize: 14, color: '#e2e8f0', fontFamily: "'DM Sans','Inter',sans-serif", outline: 'none',
-    background: '#0f1729', boxSizing: 'border-box', direction: dir, height: 36,
+    background: '#0C0E1A', boxSizing: 'border-box', direction: dir, height: 36,
     transition: 'all 150ms ease',
   }
 
@@ -93,9 +96,9 @@ export default function OnboardingPage({ user, lang, onComplete }) {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ width: 48, height: 48, borderRadius: 8, background: `linear-gradient(135deg, ${color}, #7C3AED)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 800, fontSize: 24, margin: '0 auto 12px' }}>V</div>
-          <div style={{ fontSize: 12, color: C.textMuted }}>{isRTL ? `الخطوة ${step} من 3` : `Step ${step} of 3`}</div>
+          <div style={{ fontSize: 12, color: C.textMuted }}>{isRTL ? `الخطوة ${step} من 2` : `Step ${step} of 2`}</div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
-            {[1, 2, 3].map(s => <div key={s} style={{ width: 40, height: 4, borderRadius: 2, background: s <= step ? color : C.border, transition: 'all 150ms ease' }} />)}
+            {[1, 2].map(s => <div key={s} style={{ width: 40, height: 4, borderRadius: 2, background: s <= step ? color : C.border, transition: 'all 150ms ease' }} />)}
           </div>
         </div>
 
@@ -125,33 +128,11 @@ export default function OnboardingPage({ user, lang, onComplete }) {
             </div>
           )}
 
-          {/* Step 2: Industry */}
+          {/* Step 2: Invite */}
           {step === 2 && (
             <div>
               <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{txt.step2Title}</h2>
               <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 24px' }}>{txt.step2Sub}</p>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {INDUSTRIES.map(ind => (
-                  <button key={ind.id} onClick={() => setIndustry(ind.id)} style={{
-                    display: 'flex', alignItems: 'center', gap: 16, padding: '12px 16px', borderRadius: 8,
-                    border: industry === ind.id ? `2px solid ${color}` : `1px solid ${C.border}`,
-                    background: industry === ind.id ? `${color}08` : C.white,
-                    cursor: 'pointer', fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'all 150ms ease',
-                  }}>
-                    <span style={{ fontSize: 24 }}>{ind.icon}</span>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{isRTL ? ind.ar : ind.en}</span>
-                    {industry === ind.id && <span style={{ marginLeft: 'auto', marginRight: isRTL ? 'auto' : 0, color, fontWeight: 700 }}>✓</span>}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Step 3: Invite */}
-          {step === 3 && (
-            <div>
-              <h2 style={{ fontSize: 22, fontWeight: 700, color: C.text, margin: '0 0 4px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{txt.step3Title}</h2>
-              <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 24px' }}>{txt.step3Sub}</p>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {invites.map((email, i) => (
                   <input key={i} value={email} onChange={e => { const n = [...invites]; n[i] = e.target.value; setInvites(n) }} placeholder={txt.emailPlaceholder} style={inputStyle} />
@@ -171,14 +152,14 @@ export default function OnboardingPage({ user, lang, onComplete }) {
               </button>
             ) : <div />}
             <div style={{ display: 'flex', gap: 8 }}>
-              {step === 3 && (
+              {step === 2 && (
                 <button onClick={handleSkip} style={{ border: `1px solid ${C.border}`, background: C.white, borderRadius: 6, padding: '0 20px', height: 36, fontSize: 14, fontWeight: 500, color: C.textSec, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 150ms ease' }}>
                   {txt.skip}
                 </button>
               )}
-              <button onClick={() => step < 3 ? setStep(s => s + 1) : handleFinish()} disabled={loading}
+              <button onClick={() => step < 2 ? handleNext() : handleFinish()} disabled={loading}
                 style={{ border: 'none', background: color, borderRadius: 6, padding: '0 24px', height: 36, fontSize: 14, fontWeight: 500, color: '#fff', cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit', boxShadow: `0 2px 8px ${color}40`, transition: 'all 150ms ease' }}>
-                {loading ? '...' : step < 3 ? txt.next : txt.finish}
+                {loading ? '...' : step < 2 ? txt.next : txt.finish}
               </button>
             </div>
           </div>

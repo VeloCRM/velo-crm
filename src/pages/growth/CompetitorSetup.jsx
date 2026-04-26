@@ -62,7 +62,7 @@ export default function CompetitorSetup({ orgId }) {
 
   const inputStyle = {
     width: '100%', padding: '8px 12px', borderRadius: 8,
-    border: '1px solid rgba(255,255,255,0.08)', background: '#0f1729',
+    border: '1px solid rgba(255,255,255,0.08)', background: '#0C0E1A',
     color: '#e2e8f0', fontSize: 13, fontFamily: 'inherit', outline: 'none',
     transition: 'border-color 150ms ease',
   }
@@ -70,8 +70,8 @@ export default function CompetitorSetup({ orgId }) {
   const labelStyle = { display: 'block', fontSize: 12, fontWeight: 500, color: '#475569', marginBottom: 4 }
 
   const cardStyle = {
-    background: '#111827', borderRadius: 10,
-    border: '1px solid rgba(0,212,255,0.12)',
+    background: '#101422', borderRadius: 10,
+    border: '1px solid rgba(0,255,178,0.12)',
     boxShadow: '0 0 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
   }
 
@@ -109,7 +109,7 @@ export default function CompetitorSetup({ orgId }) {
 
         <button type="submit" disabled={saving || !form.name.trim()} style={{
           padding: '8px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
-          background: saving || !form.name.trim() ? '#475569' : 'linear-gradient(135deg, #00d4ff, #0099cc)',
+          background: saving || !form.name.trim() ? '#475569' : 'linear-gradient(135deg, #00FFB2, #4DA6FF)',
           color: saving || !form.name.trim() ? '#94a3b8' : '#080c14',
           cursor: saving || !form.name.trim() ? 'not-allowed' : 'pointer',
           fontFamily: 'inherit', transition: 'all 150ms ease',
@@ -120,7 +120,7 @@ export default function CompetitorSetup({ orgId }) {
 
       {/* ── Competitors List ──────────────────────────────────────────── */}
       <div style={{ ...cardStyle, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,212,255,0.12)' }}>
+        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,255,178,0.12)' }}>
           <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
             Tracked Competitors
             <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: '#475569' }}>
@@ -140,7 +140,7 @@ export default function CompetitorSetup({ orgId }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
-                <tr style={{ background: '#0d1420', borderBottom: '1px solid rgba(0,212,255,0.12)' }}>
+                <tr style={{ background: '#0C0E1A', borderBottom: '1px solid rgba(0,255,178,0.12)' }}>
                   {['Name', 'Industry', 'Instagram', 'Location', 'Google Maps', 'Actions'].map(h => (
                     <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
                   ))}
@@ -149,7 +149,7 @@ export default function CompetitorSetup({ orgId }) {
               <tbody>
                 {competitors.map((comp, idx) => (
                   <tr key={comp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 150ms ease' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,212,255,0.03)'}
+                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.03)'}
                     onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
                     <td style={{ padding: '12px 16px', fontWeight: 600, color: '#e2e8f0' }}>{comp.name}</td>
                     <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{comp.industry || '\u2014'}</td>
@@ -161,7 +161,7 @@ export default function CompetitorSetup({ orgId }) {
                     <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{comp.location || '\u2014'}</td>
                     <td style={{ padding: '12px 16px' }}>
                       {comp.google_maps_url
-                        ? <a href={comp.google_maps_url} target="_blank" rel="noopener noreferrer" style={{ color: '#00d4ff', fontSize: 12, textDecoration: 'none' }}>View Map ↗</a>
+                        ? <a href={comp.google_maps_url} target="_blank" rel="noopener noreferrer" style={{ color: '#00FFB2', fontSize: 12, textDecoration: 'none' }}>View Map ↗</a>
                         : <span style={{ color: '#475569' }}>\u2014</span>}
                     </td>
                     <td style={{ padding: '12px 16px', textAlign: 'right' }}>

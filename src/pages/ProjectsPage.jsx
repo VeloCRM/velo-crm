@@ -206,7 +206,7 @@ export default function ProjectsPage({ t, lang, dir, isRTL, contacts, deals, toa
                 onKeyDown={e => e.key === 'Enter' && addTask()}
                 placeholder={lang === 'ar' ? 'أضف مهمة جديدة...' : 'Add a new task...'}
                 style={{ ...inputStyle(dir), flex: 1 }} />
-              <button onClick={addTask} style={makeBtn('primary', { height: 36, padding: '0 14px' })}>{Icons.plus(14)}</button>
+              <button onClick={addTask} className="velo-btn-primary" style={makeBtn('primary', { height: 36, padding: '0 14px' })}>{Icons.plus(14)}</button>
             </div>
             {(selected.tasks || []).length === 0 && (
               <p style={{ textAlign: 'center', color: C.textMuted, fontSize: 13, padding: 24 }}>
@@ -327,7 +327,7 @@ export default function ProjectsPage({ t, lang, dir, isRTL, contacts, deals, toa
               {f.label}
             </button>
           ))}
-          <button onClick={openNew} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {lang === 'ar' ? 'مشروع جديد' : 'New Project'}</button>
+          <button onClick={openNew} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {lang === 'ar' ? 'مشروع جديد' : 'New Project'}</button>
         </div>
       </div>
 
@@ -341,7 +341,7 @@ export default function ProjectsPage({ t, lang, dir, isRTL, contacts, deals, toa
           <p style={{ fontSize: 13, color: C.textMuted, marginBottom: 16 }}>
             {lang === 'ar' ? 'ابدأ بإنشاء مشروعك الأول' : 'Get started by creating your first project'}
           </p>
-          <button onClick={openNew} style={makeBtn('primary')}>{Icons.plus(14)} {lang === 'ar' ? 'مشروع جديد' : 'New Project'}</button>
+          <button onClick={openNew} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.plus(14)} {lang === 'ar' ? 'مشروع جديد' : 'New Project'}</button>
         </div>
       )}
 
@@ -595,7 +595,7 @@ function ProjectModal({ project, setProject, onSave, onClose, lang, dir, isRTL, 
         {/* Footer actions */}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 20, paddingTop: 16, borderTop: `1px solid ${C.border}` }}>
           <button onClick={onClose} style={makeBtn('secondary')}>{lang === 'ar' ? 'إلغاء' : 'Cancel'}</button>
-          <button onClick={onSave} style={makeBtn('primary')}>
+          <button onClick={onSave} className="velo-btn-primary" style={makeBtn('primary')}>
             {Icons.check(14)} {project.id ? (lang === 'ar' ? 'حفظ التعديلات' : 'Save Changes') : (lang === 'ar' ? 'إنشاء المشروع' : 'Create Project')}
           </button>
         </div>

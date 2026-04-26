@@ -7,10 +7,10 @@ import EmptyState from '../components/EmptyState'
 
 const TYPE_COLORS = {
   meeting:     { bg:'rgba(0,255,136,0.1)', text:'#00ff88', accent:'#00ff88', label:'Meeting', ar:'اجتماع' },
-  call:        { bg:'rgba(0,212,255,0.1)', text:'#00d4ff', accent:'#00d4ff', label:'Call', ar:'مكالمة' },
+  call:        { bg:'rgba(0,255,178,0.1)', text:'#00FFB2', accent:'#00FFB2', label:'Call', ar:'مكالمة' },
   demo:        { bg:'rgba(124,58,237,0.1)', text:'#7c3aed', accent:'#7c3aed', label:'Demo', ar:'عرض' },
   'follow-up': { bg:'rgba(245,158,11,0.1)', text:'#f59e0b', accent:'#D29922', label:'Follow-up', ar:'متابعة' },
-  appointment: { bg:'rgba(0,212,255,0.1)', text:'#00d4ff', accent:'#00d4ff', label:'Appointment', ar:'موعد' },
+  appointment: { bg:'rgba(0,255,178,0.1)', text:'#00FFB2', accent:'#00FFB2', label:'Appointment', ar:'موعد' },
 }
 
 const REMINDERS = [
@@ -146,7 +146,7 @@ export default function CalendarPage({ t, lang, dir, isRTL, contacts, toast }) {
             ))}
           </div>
           <button type="button" onClick={goToday} style={makeBtn('secondary', { fontSize: 12 })}>{t.today}</button>
-          <button type="button" onClick={() => { setFormDate(todayStr); setEditingEvent(null); setShowForm(true) }} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {t.newAppointment}</button>
+          <button type="button" onClick={() => { setFormDate(todayStr); setEditingEvent(null); setShowForm(true) }} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {t.newAppointment}</button>
         </div>
       </div>
 
@@ -443,7 +443,7 @@ function EventFormModal({ t, dir, isRTL, lang, contacts, event, defaultDate, onS
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
         <button type="button" onClick={onClose} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-        <button type="button" onClick={handleSave} style={makeBtn('primary')}>{isRTL ? 'حفظ' : 'Save'}</button>
+        <button type="button" onClick={handleSave} className="velo-btn-primary" style={makeBtn('primary')}>{isRTL ? 'حفظ' : 'Save'}</button>
       </div>
     </Modal>
   )

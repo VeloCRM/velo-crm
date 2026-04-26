@@ -3,8 +3,8 @@ import { C, makeBtn } from '../design'
 const illustrations = {
   contacts: (
     <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-      <circle cx="60" cy="60" r="56" fill="rgba(0,212,255,0.06)" opacity=".5"/>
-      <circle cx="60" cy="44" r="16" stroke="#2563EB" strokeWidth="2.5" fill="rgba(0,212,255,0.06)"/>
+      <circle cx="60" cy="60" r="56" fill="rgba(0,255,178,0.06)" opacity=".5"/>
+      <circle cx="60" cy="44" r="16" stroke="#2563EB" strokeWidth="2.5" fill="rgba(0,255,178,0.06)"/>
       <path d="M36 88c0-13.25 10.75-24 24-24s24 10.75 24 24" stroke="#2563EB" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
       <circle cx="88" cy="36" r="8" stroke="#7C3AED" strokeWidth="2" fill="rgba(124,58,237,0.06)"/>
       <line x1="88" y1="32" x2="88" y2="40" stroke="#7C3AED" strokeWidth="2" strokeLinecap="round"/>
@@ -22,8 +22,8 @@ const illustrations = {
   ),
   inbox: (
     <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-      <circle cx="60" cy="60" r="56" fill="rgba(0,212,255,0.06)" opacity=".5"/>
-      <rect x="28" y="36" width="64" height="48" rx="6" stroke="#2563EB" strokeWidth="2.5" fill="rgba(0,212,255,0.06)"/>
+      <circle cx="60" cy="60" r="56" fill="rgba(0,255,178,0.06)" opacity=".5"/>
+      <rect x="28" y="36" width="64" height="48" rx="6" stroke="#2563EB" strokeWidth="2.5" fill="rgba(0,255,178,0.06)"/>
       <path d="M28 42l32 22 32-22" stroke="#2563EB" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   ),
@@ -40,8 +40,8 @@ const illustrations = {
   ),
   calendar: (
     <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-      <circle cx="60" cy="60" r="56" fill="rgba(0,212,255,0.06)" opacity=".5"/>
-      <rect x="26" y="32" width="68" height="56" rx="8" stroke="#2563EB" strokeWidth="2.5" fill="rgba(0,212,255,0.06)"/>
+      <circle cx="60" cy="60" r="56" fill="rgba(0,255,178,0.06)" opacity=".5"/>
+      <rect x="26" y="32" width="68" height="56" rx="8" stroke="#2563EB" strokeWidth="2.5" fill="rgba(0,255,178,0.06)"/>
       <line x1="26" y1="50" x2="94" y2="50" stroke="#2563EB" strokeWidth="2"/>
       <line x1="44" y1="28" x2="44" y2="38" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round"/>
       <line x1="76" y1="28" x2="76" y2="38" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round"/>
@@ -56,7 +56,7 @@ const illustrations = {
     <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
       <circle cx="60" cy="60" r="56" fill="rgba(0,255,136,0.06)" opacity=".5"/>
       <rect x="16" y="34" width="22" height="52" rx="4" stroke="#16A34A" strokeWidth="2" fill="rgba(0,255,136,0.06)"/>
-      <rect x="44" y="42" width="22" height="44" rx="4" stroke="#2563EB" strokeWidth="2" fill="rgba(0,212,255,0.06)"/>
+      <rect x="44" y="42" width="22" height="44" rx="4" stroke="#2563EB" strokeWidth="2" fill="rgba(0,255,178,0.06)"/>
       <rect x="72" y="50" width="22" height="36" rx="4" stroke="#7C3AED" strokeWidth="2" fill="rgba(124,58,237,0.06)"/>
       <path d="M38 55h6M66 60h6" stroke="#6B7280" strokeWidth="2" strokeLinecap="round" strokeDasharray="2 3"/>
     </svg>
@@ -69,7 +69,7 @@ const illustrations = {
   ),
   reports: (
     <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-      <circle cx="60" cy="60" r="56" fill="rgba(0,212,255,0.06)" opacity=".5"/>
+      <circle cx="60" cy="60" r="56" fill="rgba(0,255,178,0.06)" opacity=".5"/>
       <circle cx="60" cy="60" r="28" stroke="#2563EB" strokeWidth="2.5" fill="none"/>
       <path d="M60 60L60 32" stroke="#2563EB" strokeWidth="2.5" strokeLinecap="round"/>
       <path d="M60 60L82 72" stroke="#7C3AED" strokeWidth="2.5" strokeLinecap="round"/>

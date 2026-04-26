@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { C, makeBtn, card, STAGE_COLORS } from '../design'
 import { Icons } from '../components/shared'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 
 const RANGES = [
   { id: '7', label: '7 Days' },
@@ -64,7 +65,7 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
             ))}
           </div>
           <button style={makeBtn('secondary', { gap: 6 })}>{Icons.download(14)} {lang === 'ar' ? 'تصدير PDF' : 'Export PDF'}</button>
-          {onOpenBuilder && <button onClick={onOpenBuilder} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {lang === 'ar' ? 'تقرير مخصص' : 'Custom Report'}</button>}
+          {onOpenBuilder && <button onClick={onOpenBuilder} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {lang === 'ar' ? 'تقرير مخصص' : 'Custom Report'}</button>}
         </div>
       </div>
 
@@ -176,6 +177,227 @@ export default function ReportsPage({ t, lang, dir, isRTL, contacts, deals, tick
           </table>
         </div>
       </div>
+
+      {/* Dental-specific section — live Supabase queries */}
+      <DentalReportsSection lang={lang} dir={dir} isRTL={isRTL} />
+    </div>
+  )
+}
+
+// ─── Dental Reports ─────────────────────────────────────────────────────────
+// Live Supabase aggregations for the dental workflow. Queries are scoped to
+// the caller's org via RLS (profile.org_id). If the Supabase client is not
+// configured, the section renders an empty state.
+function DentalReportsSection({ lang, dir, isRTL }) {
+  const [state, setState] = useState({
+    loading: true,
+    error: null,
+    appointmentsThisMonth: 0,
+    revenueByCurrency: [], // [{ currency, total }]
+    topProcedures: [],     // [{ name, count }]
+    appointmentsByDoctor: [], // [{ doctorName, count, color }]
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (!isSupabaseConfigured()) { setState(s => ({ ...s, loading: false })); return }
+      try {
+        const now = new Date()
+        const firstDayStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10)
+
+        // Aggregate locally from raw rows. These are small monthly windows,
+        // so pulling and reducing client-side is fine; moving to an RPC
+        // becomes worthwhile when row counts cross ~10k/month.
+        const [apptsRes, paymentsRes, doctorsRes, profDoctorsRes] = await Promise.all([
+          supabase
+            .from('appointments')
+            .select('id, doctor_id, type, appointment_date')
+            .gte('appointment_date', firstDayStr),
+          supabase
+            .from('payments')
+            .select('amount, currency, status, payment_date, created_at')
+            .eq('status', 'paid')
+            .gte('payment_date', firstDayStr),
+          supabase.from('doctors').select('id, full_name, color'),
+          supabase.from('profiles').select('id, full_name, color').eq('role', 'doctor'),
+        ])
+        if (cancelled) return
+
+        const appts = apptsRes.data || []
+        const payments = paymentsRes.data || []
+
+        // Doctor lookup: merge both sources (same fix as AddAppointmentModal).
+        const doctorMap = new Map()
+        for (const d of [...(doctorsRes.data || []), ...(profDoctorsRes.data || [])]) {
+          if (d?.id && !doctorMap.has(d.id)) doctorMap.set(d.id, d)
+        }
+
+        // Revenue by currency
+        const revMap = new Map()
+        for (const p of payments) {
+          const cur = p.currency || 'IQD'
+          revMap.set(cur, (revMap.get(cur) || 0) + Number(p.amount || 0))
+        }
+        const revenueByCurrency = Array.from(revMap.entries())
+          .map(([currency, total]) => ({ currency, total }))
+          .sort((a, b) => b.total - a.total)
+
+        // Top procedures (from appointments.type — treatment_plan_items table
+        // does not exist in this schema; see report for the gap).
+        const procMap = new Map()
+        for (const a of appts) {
+          const type = a.type || 'other'
+          procMap.set(type, (procMap.get(type) || 0) + 1)
+        }
+        const topProcedures = Array.from(procMap.entries())
+          .map(([name, count]) => ({ name, count }))
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5)
+
+        // Appointments by doctor
+        const docCountMap = new Map()
+        for (const a of appts) {
+          if (!a.doctor_id) continue
+          docCountMap.set(a.doctor_id, (docCountMap.get(a.doctor_id) || 0) + 1)
+        }
+        const appointmentsByDoctor = Array.from(docCountMap.entries())
+          .map(([docId, count]) => {
+            const doc = doctorMap.get(docId)
+            return {
+              doctorName: doc?.full_name || 'Unknown',
+              color: doc?.color || '#4DA6FF',
+              count,
+            }
+          })
+          .sort((a, b) => b.count - a.count)
+
+        setState({
+          loading: false,
+          error: null,
+          appointmentsThisMonth: appts.length,
+          revenueByCurrency,
+          topProcedures,
+          appointmentsByDoctor,
+        })
+      } catch (err) {
+        console.error('Dental reports load error:', err)
+        if (!cancelled) setState(s => ({ ...s, loading: false, error: err.message || 'Failed to load' }))
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  const fmtNum = (n) => Number(n || 0).toLocaleString()
+  const labelFor = (type) => (type || '').replace(/_/g, ' ')
+
+  const prettyProc = (name) => labelFor(name).replace(/\b\w/g, c => c.toUpperCase())
+
+  return (
+    <div style={{ marginTop: 24 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <h2 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: 0, fontFamily: 'DM Sans,Inter,sans-serif' }}>
+          {isRTL ? 'تقارير الأسنان' : 'Dental Reports'}
+        </h2>
+        <span style={{ fontSize: 11, color: C.textMuted }}>
+          {isRTL ? 'بيانات مباشرة من قاعدة البيانات (هذا الشهر)' : 'Live data (this month)'}
+        </span>
+      </div>
+
+      {state.loading ? (
+        <div style={{ ...card, padding: 24, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
+          {isRTL ? 'جارٍ التحميل...' : 'Loading…'}
+        </div>
+      ) : state.error ? (
+        <div style={{ ...card, padding: 24, textAlign: 'center', color: C.danger, fontSize: 13 }}>{state.error}</div>
+      ) : (
+        <>
+          {/* Headline stat + currency breakdown */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: 16, marginBottom: 16 }}>
+            <div style={{ ...card, padding: 20 }}>
+              <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 8 }}>
+                {isRTL ? 'مواعيد هذا الشهر' : 'Appointments this month'}
+              </div>
+              <div style={{ fontSize: 28, fontWeight: 800, color: C.text }}>{fmtNum(state.appointmentsThisMonth)}</div>
+            </div>
+            <div style={{ ...card, padding: 20 }}>
+              <div style={{ fontSize: 11, color: C.textMuted, fontWeight: 600, letterSpacing: '0.07em', textTransform: 'uppercase', marginBottom: 12 }}>
+                {isRTL ? 'الإيرادات حسب العملة' : 'Revenue by currency'}
+              </div>
+              {state.revenueByCurrency.length === 0 ? (
+                <div style={{ fontSize: 13, color: C.textMuted }}>{isRTL ? 'لا توجد مدفوعات بعد' : 'No paid payments this month'}</div>
+              ) : (
+                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                  {state.revenueByCurrency.map(r => (
+                    <div key={r.currency}>
+                      <div style={{ fontSize: 11, color: C.textMuted }}>{r.currency}</div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: C.text }}>{fmtNum(r.total)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Top procedures + Appointments by doctor */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ ...card, padding: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 14px', fontFamily: 'DM Sans,Inter,sans-serif' }}>
+                {isRTL ? 'أكثر الإجراءات' : 'Top procedures'}
+              </h3>
+              {state.topProcedures.length === 0 ? (
+                <div style={{ fontSize: 13, color: C.textMuted }}>{isRTL ? 'لا توجد بيانات' : 'No data'}</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {(() => {
+                    const max = Math.max(...state.topProcedures.map(p => p.count), 1)
+                    return state.topProcedures.map(p => (
+                      <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: C.textSec, width: 100, textAlign: isRTL ? 'right' : 'left' }}>{prettyProc(p.name)}</span>
+                        <div style={{ flex: 1, height: 20, background: C.bg, borderRadius: 5, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 5, background: C.primary, width: `${(p.count / max) * 100}%`, display: 'flex', alignItems: 'center', paddingLeft: 6 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{p.count}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  })()}
+                </div>
+              )}
+              <div style={{ marginTop: 14, fontSize: 10, color: C.textMuted, fontStyle: 'italic' }}>
+                {isRTL
+                  ? 'مُستمد من حقل النوع في المواعيد. خطط العلاج التفصيلية (treatment_plan_items) ليست جدولًا مستقلًا.'
+                  : 'Derived from appointments.type. A dedicated treatment_plan_items table is not yet in the schema.'}
+              </div>
+            </div>
+
+            <div style={{ ...card, padding: 20 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 14px', fontFamily: 'DM Sans,Inter,sans-serif' }}>
+                {isRTL ? 'المواعيد حسب الطبيب' : 'Appointments by doctor'}
+              </h3>
+              {state.appointmentsByDoctor.length === 0 ? (
+                <div style={{ fontSize: 13, color: C.textMuted }}>{isRTL ? 'لا توجد بيانات' : 'No data'}</div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {(() => {
+                    const max = Math.max(...state.appointmentsByDoctor.map(d => d.count), 1)
+                    return state.appointmentsByDoctor.map(d => (
+                      <div key={d.doctorName} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: C.textSec, width: 140, textAlign: isRTL ? 'right' : 'left', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.doctorName}</span>
+                        <div style={{ flex: 1, height: 20, background: C.bg, borderRadius: 5, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', borderRadius: 5, background: d.color, width: `${(d.count / max) * 100}%`, display: 'flex', alignItems: 'center', paddingLeft: 6 }}>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: '#fff' }}>{d.count}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

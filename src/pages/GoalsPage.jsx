@@ -174,7 +174,7 @@ export default function GoalsPage({ t, lang, dir, isRTL, contacts, deals, toast 
             {activeCount} {lang === 'ar' ? 'نشط' : 'active'} &middot; {completedCount} {lang === 'ar' ? 'مكتمل' : 'completed'}
           </p>
         </div>
-        <button onClick={openAdd} style={makeBtn('primary', { gap: 6 })}>
+        <button onClick={openAdd} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>
           {Icons.plus(14)} {lang === 'ar' ? 'هدف جديد' : 'New Goal'}
         </button>
       </div>
@@ -339,7 +339,7 @@ export default function GoalsPage({ t, lang, dir, isRTL, contacts, deals, toast 
               <button onClick={() => setShowModal(false)} style={makeBtn('secondary')}>
                 {lang === 'ar' ? 'إلغاء' : 'Cancel'}
               </button>
-              <button onClick={handleSave} style={makeBtn('primary', { gap: 6 })}>
+              <button onClick={handleSave} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>
                 {Icons.check(14)}
                 {editing ? (lang === 'ar' ? 'حفظ التغييرات' : 'Save Changes') : (lang === 'ar' ? 'إنشاء الهدف' : 'Create Goal')}
               </button>

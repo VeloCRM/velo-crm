@@ -4,7 +4,7 @@ import { C, makeBtn, card } from '../design'
 const TOOTH_STATUS = {
   healthy:    { color: '#00ff88', bg: 'rgba(0,255,136,0.1)', label: 'Healthy' },
   cavity:     { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', label: 'Cavity' },
-  crown:      { color: '#00d4ff', bg: 'rgba(0,212,255,0.1)', label: 'Crown' },
+  crown:      { color: '#00FFB2', bg: 'rgba(0,255,178,0.1)', label: 'Crown' },
   missing:    { color: '#64748b', bg: 'rgba(255,255,255,0.04)', label: 'Missing' },
   implant:    { color: '#7c3aed', bg: 'rgba(124,58,237,0.1)', label: 'Implant' },
   root_canal: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)', label: 'Root Canal' },
@@ -13,7 +13,7 @@ const TOOTH_STATUS = {
 const UPPER_TEETH = [18,17,16,15,14,13,12,11,21,22,23,24,25,26,27,28]
 const LOWER_TEETH = [48,47,46,45,44,43,42,41,31,32,33,34,35,36,37,38]
 
-export default function DentalChart({ teeth, onUpdateTooth, lang }) {
+export default function DentalChart({ teeth, onUpdateTooth, onAddToTreatmentPlan, lang }) {
   const [selectedTooth, setSelectedTooth] = useState(null)
   const isRTL = lang === 'ar'
 
@@ -88,7 +88,7 @@ export default function DentalChart({ teeth, onUpdateTooth, lang }) {
           </span>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             {Object.entries(TOOTH_STATUS).map(([key, val]) => (
-              <button type="button" key={key} onClick={(e) => { e.preventDefault(); onUpdateTooth(selectedTooth, key); setSelectedTooth(null) }}
+              <button type="button" key={key} onClick={(e) => { e.preventDefault(); onUpdateTooth(selectedTooth, key) }}
                 style={{
                   padding: '6px 12px', borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
                   border: getStatus(selectedTooth) === key ? `2px solid ${val.color}` : `1px solid ${C.border}`,
@@ -99,6 +99,24 @@ export default function DentalChart({ teeth, onUpdateTooth, lang }) {
               </button>
             ))}
           </div>
+          {/* "Add to Treatment Plan" only shows when the tooth has a non-healthy
+              diagnosis AND the parent has wired up the handler. */}
+          {onAddToTreatmentPlan && getStatus(selectedTooth) !== 'healthy' && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                onAddToTreatmentPlan(selectedTooth, getStatus(selectedTooth))
+                setSelectedTooth(null)
+              }}
+              style={{
+                ...makeBtn('primary', { fontSize: 11, gap: 4 }),
+                marginLeft: 'auto',
+                minHeight: 32,
+              }}>
+              {isRTL ? '+ إضافة لخطة العلاج' : '+ Add to Treatment Plan'}
+            </button>
+          )}
         </div>
       )}
     </div>

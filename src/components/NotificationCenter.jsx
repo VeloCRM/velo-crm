@@ -2,10 +2,10 @@ import { C } from '../design'
 
 const TYPE_ICONS = {
   deal: { icon: '💰', bg: 'rgba(0,255,136,0.1)', color: '#00ff88' },
-  contact: { icon: '👤', bg: 'rgba(0,212,255,0.1)', color: '#00d4ff' },
+  contact: { icon: '👤', bg: 'rgba(0,255,178,0.1)', color: '#00FFB2' },
   ticket: { icon: '🎫', bg: 'rgba(124,58,237,0.1)', color: '#7c3aed' },
   payment: { icon: '💳', bg: 'rgba(245,158,11,0.1)', color: '#f59e0b' },
-  appointment: { icon: '📅', bg: 'rgba(0,212,255,0.1)', color: '#00d4ff' },
+  appointment: { icon: '📅', bg: 'rgba(0,255,178,0.1)', color: '#00FFB2' },
   system: { icon: '⚙️', bg: 'rgba(255,255,255,0.04)', color: '#64748b' },
 }
 

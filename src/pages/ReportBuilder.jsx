@@ -86,7 +86,7 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
               <button key={r.id} onClick={() => setRange(r.id)} style={{ padding: '6px 12px', border: 'none', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', background: range === r.id ? C.primary : C.white, color: range === r.id ? '#fff' : C.textSec, transition: 'all 150ms ease' }}>{r.l}</button>
             ))}
           </div>
-          <button onClick={() => setShowMetricPicker(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مقياس' : 'Add Metric'}</button>
+          <button onClick={() => setShowMetricPicker(true)} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مقياس' : 'Add Metric'}</button>
           <button onClick={handleSave} style={makeBtn(saved ? 'success' : 'secondary', { gap: 6 })}>
             {saved ? Icons.check(14) : Icons.download(14)} {saved ? (isRTL ? 'تم الحفظ' : 'Saved!') : (isRTL ? 'حفظ التقرير' : 'Save Report')}
           </button>
@@ -103,7 +103,7 @@ export default function ReportBuilder({ t, lang, dir, isRTL, contacts, deals, ti
           <p style={{ fontSize: 13, color: C.textMuted, margin: '0 0 24px' }}>
             {isRTL ? 'اختر مقاييس من المكتبة لبناء تقريرك المخصص' : 'Choose metrics from the library to build your custom report'}
           </p>
-          <button onClick={() => setShowMetricPicker(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مقياس' : 'Add Metric'}</button>
+          <button onClick={() => setShowMetricPicker(true)} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {isRTL ? 'إضافة مقياس' : 'Add Metric'}</button>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>

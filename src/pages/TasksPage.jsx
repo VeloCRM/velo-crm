@@ -15,7 +15,7 @@ const STATUS_LABELS = {
 
 const COLUMN_BG = {
   todo:        'rgba(255,255,255,0.02)',
-  in_progress: 'rgba(0,212,255,0.04)',
+  in_progress: 'rgba(0,255,178,0.04)',
   in_review:   'rgba(124,58,237,0.04)',
   done:        'rgba(0,255,136,0.04)',
 }
@@ -23,7 +23,7 @@ const COLUMN_BG = {
 const PRIORITY_COLORS = {
   urgent: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
   high:   { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
-  medium: { color: '#00d4ff', bg: 'rgba(0,212,255,0.1)' },
+  medium: { color: '#00FFB2', bg: 'rgba(0,255,178,0.1)' },
   low:    { color: '#64748b', bg: 'rgba(255,255,255,0.04)' },
 }
 
@@ -244,7 +244,7 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
               {T('List', 'قائمة')}
             </button>
           </div>
-          <button onClick={() => openAdd()} style={makeBtn('primary')}>
+          <button onClick={() => openAdd()} className="velo-btn-primary" style={makeBtn('primary')}>
             {Icons.plus(14)}
             <span>{T('Add Task', 'إضافة مهمة')}</span>
           </button>
@@ -751,7 +751,7 @@ function TaskFormModal({ task, onSave, onClose, dir, isRTL, lang, contacts, deal
           <button type="button" onClick={onClose} style={makeBtn('secondary')}>
             {T('Cancel', 'إلغاء')}
           </button>
-          <button type="submit" style={makeBtn('primary')}>
+          <button type="submit" className="velo-btn-primary" style={makeBtn('primary')}>
             {isNew ? T('Create Task', 'إنشاء المهمة') : T('Save Changes', 'حفظ التغييرات')}
           </button>
         </div>

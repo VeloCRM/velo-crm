@@ -9,6 +9,7 @@ import {
 } from './sampleData'
 import AuthPage from './pages/Auth'
 const CalendarPage = lazy(() => import('./pages/CalendarPage'))
+const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'))
 const AutomationsPage = lazy(() => import('./pages/AutomationsPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
 const ReportsPage = lazy(() => import('./pages/ReportsPage'))
@@ -38,7 +39,9 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
 import { calculateLeadScore } from './lib/ai'
-import { sanitizeContact, sanitizeDeal, sanitizeTicket, isSessionExpired, touchSession, clearAllVeloData } from './lib/sanitize'
+import { sanitizeContact, sanitizeDeal, sanitizeTicket, isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, validateContactForSave, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
+import { acceptInvitation, getPendingInvite, clearPendingInvite, rememberPendingInvite } from './lib/invitations'
+import { can, canWrite, canDelete, normalizeRole, isReadOnlyRole } from './lib/permissions'
 import './App.css'
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
@@ -101,9 +104,9 @@ function loadLayout() {
 function saveLayout(layout) { localStorage.setItem('velo_dashboard_layout', JSON.stringify(layout)) }
 
 const STATUS_COLORS = {
-  active: { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' },
-  lead: { bg: 'rgba(0,212,255,0.1)', text: '#00d4ff' },
-  inactive: { bg: 'rgba(255,255,255,0.04)', text: '#64748b' },
+  active: { bg: 'rgba(0,255,178,0.1)', text: '#00FFB2' },
+  lead: { bg: 'rgba(77,166,255,0.12)', text: '#4DA6FF' },
+  inactive: { bg: 'rgba(255,255,255,0.05)', text: '#7B7F9E' },
 }
 
 let _idCounter = 100
@@ -118,16 +121,16 @@ function daysBetween(d1, d2) {
 function FormField({ label, children, dir }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#6B7280', marginBottom: 6, direction: dir }}>{label}</label>
+      <label style={{ display: 'block', fontSize: 13, fontWeight: 500, color: '#7B7F9E', marginBottom: 6, direction: dir }}>{label}</label>
       {children}
     </div>
   )
 }
 const inputStyle = (dir) => ({
-  width: '100%', padding: '0 12px', height: 36, borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)',
-  fontSize: 14, color: C.text, fontFamily: 'inherit', outline: 'none', background: '#0f1729',
+  width: '100%', padding: '0 12px', height: 36, borderRadius: 7, border: '1px solid rgba(255,255,255,0.065)',
+  fontSize: 14, color: C.text, fontFamily: "'DM Sans',sans-serif", outline: 'none', background: C.bgSec,
   direction: dir, textAlign: dir === 'rtl' ? 'right' : 'left', boxSizing: 'border-box',
-  transition: 'border-color 150ms ease, box-shadow 150ms ease',
+  transition: 'border-color 0.18s ease, box-shadow 0.18s ease',
 })
 const selectStyle = (dir) => ({ ...inputStyle(dir), appearance: 'auto' })
 
@@ -161,6 +164,7 @@ export default function App() {
   const [aiOpen, setAiOpen] = useState(false)
   const [orgSettings, setOrgSettings] = useState(() => isSupabaseConfigured() ? {} : { industry: 'dental' })
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
+  const [inboxUnread, setInboxUnread] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
 
   // Impersonation state — persisted in localStorage
@@ -179,13 +183,16 @@ export default function App() {
   const navigate = useNavigate()
   const location = useLocation()
   const _pathParts = location.pathname.split('/').filter(Boolean)
-  const page = _pathParts[0] || 'dashboard'
-  const pageSubId = _pathParts[1] || null
+  const page = sanitizePathParam(_pathParts[0] || '') || 'dashboard'
+  const pageSubId = _pathParts[1] ? (sanitizePathParam(_pathParts[1]) || null) : null
   const setPage = useCallback((p) => navigate('/' + p), [navigate])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [layout, setLayout] = useState(loadLayout)
   const [showCustomizer, setShowCustomizer] = useState(false)
+  const [userRole, setUserRole] = useState('admin')
   const [contacts, setContacts] = useState([])
+  const [contactsTotal, setContactsTotal] = useState(0)
+  const [contactsLoadingMore, setContactsLoadingMore] = useState(false)
   const [deals, setDeals] = useState([])
   const [tasks, setTasks] = useState([])
   const [tickets, setTickets] = useState([])
@@ -230,13 +237,27 @@ export default function App() {
   }, [lang, dir])
   useEffect(() => { saveLayout(layout) }, [layout])
 
-  // Redirect / to /dashboard (or /agency for super admin)
+  // Redirect / (and post-auth /join) to /dashboard (or /agency for super admin).
+  // For /join we first capture the token to localStorage so an already-signed-in
+  // user who clicks an invite link still gets the invitation applied.
   useEffect(() => {
-    if (location.pathname === '/') {
+    const path = location.pathname
+    if (path.startsWith('/join')) {
+      const params = new URLSearchParams(location.search)
+      const rawToken = params.get('token') || ''
+      const token = sanitizePathParam(rawToken)
+      if (token) rememberPendingInvite(token)
+      if (user) {
+        if (user.email === SUPER_ADMIN_EMAIL && !impersonation) navigate('/agency', { replace: true })
+        else navigate('/dashboard', { replace: true })
+      }
+      return
+    }
+    if (path === '/') {
       if (user?.email === SUPER_ADMIN_EMAIL && !impersonation) navigate('/agency', { replace: true })
       else navigate('/dashboard', { replace: true })
     }
-  }, [location.pathname, navigate, user, impersonation])
+  }, [location.pathname, location.search, navigate, user, impersonation])
 
   // Dark mode
   useEffect(() => {
@@ -295,8 +316,8 @@ export default function App() {
   const loadAllData = async () => {
     const isSA = user?.email === SUPER_ADMIN_EMAIL
     if (!useDB) {
-      if (isSA) { setContacts([]); setDeals([]); setTickets([]); setTasks([]); setAllPayments([]) }
-      else { setContacts(SAMPLE_CONTACTS); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS); setTasks(SAMPLE_TASKS) }
+      if (isSA) { setContacts([]); setContactsTotal(0); setDeals([]); setTickets([]); setTasks([]); setAllPayments([]) }
+      else { setContacts(SAMPLE_CONTACTS); setContactsTotal(SAMPLE_CONTACTS.length); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS); setTasks(SAMPLE_TASKS) }
       return
     }
     setDataLoading(true)
@@ -305,7 +326,8 @@ export default function App() {
       // Check if user has an org
       const { supabase: sb } = await import('./lib/supabase.js')
       if (sb) {
-        const { data: profile } = await sb.from('profiles').select('org_id').eq('id', user.id).single()
+        const { data: profile } = await sb.from('profiles').select('org_id, role').eq('id', user.id).single()
+        setUserRole(normalizeRole(profile?.role))
         if (profile?.org_id) {
           const { data: org } = await sb.from('organizations').select('*').eq('id', profile.org_id).single()
           if (org) setOrgSettings(org)
@@ -328,18 +350,20 @@ export default function App() {
       if (isSA) {
         // Super admin without impersonation — don't fetch org data (would leak all orgs' data)
         setContacts([])
+        setContactsTotal(0)
         setDeals([])
         setTickets([])
         setAllPayments([])
       } else {
-        const [rawContacts, rawDeals, rawTickets, rawPayments] = await Promise.all([
+        const [contactsPage, rawDeals, rawTickets, rawPayments] = await Promise.all([
           db.fetchContacts(),
           db.fetchDeals(),
           db.fetchTickets(),
           db.fetchAllPayments().catch(() => []),
         ])
-        const hydrated = db.hydrateReferences(rawContacts, rawDeals, rawTickets)
+        const hydrated = db.hydrateReferences(contactsPage.rows, rawDeals, rawTickets)
         setContacts(hydrated.contacts)
+        setContactsTotal(contactsPage.total)
         setDeals(hydrated.deals)
         setTickets(hydrated.tickets)
         setAllPayments(rawPayments)
@@ -362,14 +386,15 @@ export default function App() {
       const org = await db.fetchOrg(orgId)
       if (org) setOrgSettings(org)
       const userIds = await db.fetchOrgUserIds(orgId)
-      const [rawContacts, rawDeals, rawTickets, rawPayments] = await Promise.all([
+      const [contactsPage, rawDeals, rawTickets, rawPayments] = await Promise.all([
         db.fetchContactsForOrg(orgId, userIds),
         db.fetchDealsForOrg(userIds),
         db.fetchTicketsForOrg(userIds),
         db.fetchPaymentsForOrg(userIds),
       ])
-      const hydrated = db.hydrateReferences(rawContacts, rawDeals, rawTickets)
+      const hydrated = db.hydrateReferences(contactsPage.rows, rawDeals, rawTickets)
       setContacts(hydrated.contacts)
+      setContactsTotal(contactsPage.total)
       setDeals(hydrated.deals)
       setTickets(hydrated.tickets)
       setAllPayments(rawPayments)
@@ -381,10 +406,79 @@ export default function App() {
     }
   }
 
+  // Fetch the next page of contacts and merge into state.
+  // Re-runs reference hydration so deals/tickets referencing newly-loaded
+  // contacts pick up the right names/companies.
+  const loadMoreContacts = useCallback(async () => {
+    if (!useDB) return
+    if (contactsLoadingMore) return
+    if (contacts.length >= contactsTotal) return
+    if (!checkSupabaseRateLimit()) {
+      addToast(isRTL ? 'كثرة الطلبات، حاول لاحقاً' : 'Too many requests, try again shortly', 'error')
+      return
+    }
+    setContactsLoadingMore(true)
+    try {
+      const offset = contacts.length
+      const page = impersonation
+        ? await db.fetchContactsForOrg(impersonation.orgId, await db.fetchOrgUserIds(impersonation.orgId), offset)
+        : await db.fetchContacts(offset)
+      const merged = [...contacts, ...page.rows]
+      const hydrated = db.hydrateReferences(merged, deals, tickets)
+      setContacts(hydrated.contacts)
+      setDeals(hydrated.deals)
+      setTickets(hydrated.tickets)
+      setContactsTotal(page.total)
+    } catch (err) {
+      console.error('Load more contacts error:', err)
+      addToast(isRTL ? 'فشل تحميل المزيد' : 'Failed to load more', 'error')
+    } finally {
+      setContactsLoadingMore(false)
+    }
+  }, [useDB, contactsLoadingMore, contacts, contactsTotal, deals, tickets, impersonation, addToast, isRTL])
+
+  // Initial data load on sign-in (or impersonation switch).
+  // Skip when a pending invite exists — the invite-apply effect will
+  // call loadAllData after the RPC updates profile.org_id, so we avoid a
+  // racy double-fetch against the pre-invite profile.
   useEffect(() => {
-    if (user && !impersonation) loadAllData()
-    else if (user && impersonation) loadDataForOrg(impersonation.orgId)
+    if (!user) return
+    if (!impersonation && getPendingInvite()) return
+    if (!impersonation) loadAllData()
+    else loadDataForOrg(impersonation.orgId)
   }, [user])
+
+  // Apply any pending invitation token once the user is authenticated.
+  // Runs when user first becomes set (fresh signup) AND when an already-
+  // signed-in user lands on /join (token captured by the redirect effect).
+  useEffect(() => {
+    if (!user) return
+    const pending = getPendingInvite()
+    if (!pending) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const result = await acceptInvitation(pending)
+        if (cancelled) return
+        clearPendingInvite()
+        addToast(
+          isRTL ? `مرحباً بك في ${result.orgName}` : `Welcome to ${result.orgName}`,
+          'success'
+        )
+        // Re-load data now that org_id/role have changed.
+        if (!impersonation) loadAllData()
+      } catch (err) {
+        if (cancelled) return
+        console.error('Accept invitation error:', err)
+        clearPendingInvite()
+        addToast(
+          isRTL ? 'تعذر قبول الدعوة' : (err.message || 'Could not accept invitation'),
+          'error'
+        )
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user, location.pathname])
 
   // settingsTab is now derived from URL: /settings/:tab
 
@@ -392,6 +486,7 @@ export default function App() {
     await signOut()
     setUser(null)
     setContacts([])
+    setContactsTotal(0)
     setDeals([])
     setTickets([])
     setOrgSettings({})
@@ -424,6 +519,7 @@ export default function App() {
       localStorage.removeItem('velo_admin_session')
       setOrgSettings({})
       setContacts([])
+      setContactsTotal(0)
       setDeals([])
       setTickets([])
       setAllPayments([])
@@ -437,7 +533,7 @@ export default function App() {
     return (
       <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter',-apple-system,sans-serif", background: C.bg }}>
         <div style={{ textAlign: 'center' }}>
-          <div style={{ width: 48, height: 48, borderRadius: 12, background: `linear-gradient(135deg,${C.primary},#8250DF)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 22, margin: '0 auto 16px' }}>V</div>
+          <div style={{ width: 48, height: 48, borderRadius: 12, background: `linear-gradient(135deg,${C.primary},#A78BFA)`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 22, margin: '0 auto 16px' }}>V</div>
           <div style={{ fontSize: 14, color: C.textMuted }}>Loading...</div>
         </div>
       </div>
@@ -450,6 +546,15 @@ export default function App() {
 
   // Super Admin check
   const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL
+
+  // Effective role for permission checks. Super admin and agency-mode
+  // impersonation always get full admin access; org users use their own role.
+  const effectiveRole = (isSuperAdmin || impersonation) ? 'admin' : userRole
+  const requirePerm = (feature, action = 'w') => {
+    if (can(effectiveRole, feature, action)) return true
+    addToast(isRTL ? 'ليس لديك صلاحية للقيام بذلك' : 'You do not have permission', 'error')
+    return false
+  }
 
   // Impersonation handlers
   const startImpersonation = async (org) => {
@@ -467,6 +572,7 @@ export default function App() {
     localStorage.removeItem('velo_admin_session')
     setOrgSettings({})
     setContacts([])
+    setContactsTotal(0)
     setDeals([])
     setTickets([])
     setAllPayments([])
@@ -498,9 +604,13 @@ export default function App() {
 
   // ── CRUD — Supabase-backed with optimistic local updates ──────────────
   const addContact = async (raw) => {
+    if (!requirePerm('contacts', 'w')) return
     const c = sanitizeContact(raw)
+    const v = validateContactForSave(c, { isRTL })
+    if (!v.ok) { addToast(v.error, 'error'); return }
     const optimistic = { ...c, id: genId('c'), createdAt: new Date().toISOString().slice(0,10), documents: [], notesTimeline: [], activityHistory: [] }
     setContacts(prev => [...prev, optimistic])
+    setContactsTotal(n => n + 1)
     addToast(t.contactAdded || (isRTL ? 'تمت إضافة جهة الاتصال' : 'Contact added successfully'), 'success')
     pushNotification('contact', isRTL ? 'جهة اتصال جديدة' : 'New contact added', c.name || c.email || '')
     if (useDB) {
@@ -515,6 +625,11 @@ export default function App() {
       setContacts(prev => prev.map(c => c.id === id ? data._fromDb : c))
       return
     }
+    if (!requirePerm('contacts', 'w')) return
+    // Validate email/phone if present. Full form updates sanitize too.
+    const sanitized = sanitizeContact({ ...(contacts.find(c => c.id === id) || {}), ...data })
+    const v = validateContactForSave(sanitized, { isRTL })
+    if (!v.ok) { addToast(v.error, 'error'); return }
     setContacts(prev => prev.map(c => c.id === id ? { ...c, ...data } : c))
     addToast(isRTL ? 'تم تحديث جهة الاتصال' : 'Contact updated', 'success')
     if (useDB) {
@@ -534,7 +649,9 @@ export default function App() {
     }
   }
   const deleteContact = async (id) => {
+    if (!requirePerm('contacts', 'd')) return
     setContacts(prev => prev.filter(c => c.id !== id))
+    setContactsTotal(n => Math.max(0, n - 1))
     setDeals(prev => prev.filter(d => d.contactId !== id))
     addToast(isRTL ? 'تم حذف جهة الاتصال' : 'Contact deleted', 'success')
     if (useDB) {
@@ -543,6 +660,12 @@ export default function App() {
     }
   }
   const addNoteToContact = async (contactId, text) => {
+    // Note-adding is the one write that the 'assistant' role is allowed.
+    // Gate by either write or note permission on contacts.
+    if (!can(effectiveRole, 'contacts', 'w') && !can(effectiveRole, 'contacts', 'n')) {
+      addToast(isRTL ? 'ليس لديك صلاحية' : 'You do not have permission', 'error')
+      return
+    }
     const newNote = { id: genId('n'), text, date: new Date().toISOString().slice(0,10), author: t.adminUser }
     setContacts(prev => prev.map(c => c.id === contactId ? {
       ...c,
@@ -558,6 +681,7 @@ export default function App() {
   }
 
   const addDeal = async (raw) => {
+    if (!requirePerm('pipeline', 'w')) return
     const d = sanitizeDeal(raw)
     const optimistic = { ...d, id: genId('d'), createdAt: new Date().toISOString().slice(0,10), name: d.name || d.title || '' }
     setDeals(prev => [...prev, optimistic])
@@ -571,6 +695,7 @@ export default function App() {
     }
   }
   const updateDeal = async (id, data) => {
+    if (!requirePerm('pipeline', 'w')) return
     const prev = deals.find(d => d.id === id)
     setDeals(prevDeals => prevDeals.map(d => d.id === id ? { ...d, ...data } : d))
     addToast(isRTL ? 'تم تحديث الصفقة' : 'Deal updated', 'success')
@@ -583,6 +708,7 @@ export default function App() {
     }
   }
   const deleteDeal = async (id) => {
+    if (!requirePerm('pipeline', 'd')) return
     setDeals(prev => prev.filter(d => d.id !== id))
     addToast(isRTL ? 'تم حذف الصفقة' : 'Deal deleted', 'success')
     if (useDB) {
@@ -592,6 +718,7 @@ export default function App() {
   }
 
   const addTicket = async (raw) => {
+    if (!requirePerm('tickets', 'w')) return
     const tk = sanitizeTicket(raw)
     const nums = tickets.map(t => parseInt((t.ticketId||'').replace('VLO-',''))).filter(n => !isNaN(n))
     const nextNum = 'VLO-' + String(Math.max(0, ...nums) + 1).padStart(3, '0')
@@ -607,6 +734,7 @@ export default function App() {
     }
   }
   const updateTicket = async (id, data) => {
+    if (!requirePerm('tickets', 'w')) return
     setTickets(prev => prev.map(tk => tk.id === id ? { ...tk, ...data, updatedAt: new Date().toISOString() } : tk))
     addToast(isRTL ? 'تم تحديث التذكرة' : 'Ticket updated', 'success')
     if (useDB) {
@@ -640,7 +768,6 @@ export default function App() {
     { label: isRTL ? 'إدارة الوكالة' : 'Agency Management', items: [
       { id: 'dashboard', icon: Icons.dashboard, label: isRTL ? 'لوحة التحكم' : 'Dashboard' },
       { id: 'agency', icon: Icons.building, label: isRTL ? 'المؤسسات' : 'Organizations' },
-      { id: 'growth', icon: Icons.trendUp, label: isRTL ? 'ذكاء النمو' : 'Growth Intelligence' },
     ]},
     { label: isRTL ? 'المالية' : 'Financial', items: [
       { id: 'finance', icon: Icons.dollar, label: isRTL ? 'الاشتراكات و MRR' : 'Subscriptions & MRR' },
@@ -655,13 +782,12 @@ export default function App() {
       { id: 'dashboard', icon: Icons.dashboard, label: t.dashboard },
       { id: 'contacts', icon: Icons.contacts, label: orgSettings.industry === 'dental' ? (isRTL ? 'المرضى' : 'Patients') : t.contacts },
       { id: 'pipeline', icon: Icons.pipeline, label: t.pipeline },
-      { id: 'inbox', icon: Icons.inbox, label: t.inbox, badge: 2 },
+      { id: 'inbox', icon: Icons.inbox, label: t.inbox, badge: inboxUnread || undefined },
       { id: 'tickets', icon: Icons.ticket, label: t.tickets, badge: tickets.filter(tk => tk.status === 'open').length || undefined },
       { id: 'calendar', icon: Icons.calendar, label: t.calendar },
       { id: 'tasks', icon: Icons.check, label: isRTL ? 'المهام' : 'Tasks' },
     ]},
     { label: t.tools, items: [
-      { id: 'projects', icon: Icons.target, label: isRTL ? 'المشاريع' : 'Projects' },
       { id: 'goals', icon: Icons.trendUp, label: isRTL ? 'الأهداف' : 'Goals' },
       { id: 'docs', icon: Icons.file, label: isRTL ? 'المستندات' : 'Docs' },
       { id: 'automations', icon: Icons.automations, label: t.automations },
@@ -669,7 +795,6 @@ export default function App() {
       { id: 'social', icon: Icons.globe, label: isRTL ? 'التواصل' : 'Social' },
       { id: 'integrations', icon: Icons.integrations, label: t.integrations },
       { id: 'reports', icon: Icons.reports, label: t.reports },
-      { id: 'growth', icon: Icons.trendUp, label: isRTL ? 'النمو' : 'Growth' },
       { id: 'finance', icon: Icons.dollar, label: isRTL ? 'المالية' : 'Finance' },
     ]},
     { label: t.account, items: [
@@ -677,6 +802,15 @@ export default function App() {
       { id: 'settings', icon: Icons.settings, label: t.settings },
     ]},
   ]
+
+  // Filter non-agency nav items by role (super admin + impersonation keep
+  // everything; the page gate still enforces permissions for direct URLs).
+  const visibleNavGroups = isAgencyMode
+    ? navGroups
+    : navGroups
+        .map(g => ({ ...g, items: g.items.filter(item => can(effectiveRole, item.id, 'r')) }))
+        .filter(g => g.items.length > 0)
+
   const widgetNames = {
     stats: t.statsOverview, chart: t.monthlyRevenue||'Monthly Growth', tasks: t.tasksToday,
     recentContacts: t.contactsWidget, pipeline: t.pipelineSummary, ticketStats: t.ticketsByStatus, activity: t.recentActivity,
@@ -685,68 +819,91 @@ export default function App() {
   }
 
   return (
-    <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:"'Inter',-apple-system,sans-serif", direction:dir }}>
+    <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:"'DM Sans',-apple-system,sans-serif", direction:dir }}>
       {/* ── SIDEBAR (desktop) ────────────────────────────────────────── */}
       <aside className="desktop-sidebar" style={{
-        width: sidebarCollapsed?56:240, minWidth: sidebarCollapsed?56:240,
+        width: sidebarCollapsed?56:228, minWidth: sidebarCollapsed?56:228,
         background: C.sidebar, display:'flex', flexDirection:'column',
         transition:'width 200ms ease, min-width 200ms ease',
         borderRight: isRTL?'none':`1px solid ${C.sidebarBorder}`,
         borderLeft: isRTL?`1px solid ${C.sidebarBorder}`:'none',
         overflow:'hidden', position:'relative', zIndex:10,
       }}>
-        <div style={{ padding: sidebarCollapsed?'16px 8px':'16px 16px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${C.sidebarBorder}`, minHeight:56 }}>
+        <div style={{ padding: sidebarCollapsed?'16px 8px':'16px 16px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${C.sidebarBorder}`, minHeight:60 }}>
           {isAgencyMode ? (
             <>
-              <div style={{ width:32, height:32, borderRadius:8, background:'linear-gradient(135deg, #00d4ff, #7c3aed)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, boxShadow:'0 0 12px rgba(0,212,255,0.25)' }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
+              <div style={{ width:36, height:36, borderRadius:10, background:'rgba(0,255,178,0.1)', border:'1px solid rgba(0,255,178,0.25)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFB2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
               </div>
               {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
-                <div style={{color:C.sidebarActiveText,fontWeight:700,fontSize:15,letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:8}}>
+                <div style={{color:C.text,fontWeight:800,fontSize:17,fontFamily:"'Syne',sans-serif",letterSpacing:'-0.03em',display:'flex',alignItems:'center',gap:8}}>
                   {isRTL ? 'وكالة Velo' : 'Velo Agency'}
-                  <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'rgba(0,212,255,0.15)',color:'#00d4ff',letterSpacing:'0.05em',textTransform:'uppercase',lineHeight:'14px',border:'1px solid rgba(0,212,255,0.2)'}}>PRO</span>
+                  <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'rgba(0,255,178,0.1)',color:'#00FFB2',letterSpacing:'0.05em',textTransform:'uppercase',lineHeight:'14px',border:'1px solid rgba(0,255,178,0.25)'}}>PRO</span>
                 </div>
-                <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
+                <div style={{color:C.sidebarText,fontSize:11,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
               </div>}
             </>
           ) : (
             <>
-              <div style={{ width:32, height:32, borderRadius:8, background:`linear-gradient(135deg,${orgSettings.primary_color || C.primary},${C.purple})`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:14, flexShrink:0 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
+              {/* Logo mark — 36x36 rounded 10, tooth SVG in mint */}
+              <div style={{ width:36, height:36, borderRadius:10, background:'rgba(0,255,178,0.1)', border:'1px solid rgba(0,255,178,0.25)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFB2" strokeWidth="2"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="#00FFB2"/><circle cx="15" cy="19" r="1" fill="#00FFB2"/></svg>
+              </div>
               {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
-                <div style={{color:C.sidebarActiveText,fontWeight:600,fontSize:15,letterSpacing:'-0.01em'}}>{orgSettings.name || t.appName}</div>
-                <div style={{color:C.sidebarText,fontSize:12,marginTop:1}}>{orgSettings.name ? t.appName : t.appTagline}</div>
+                <div style={{color:C.text,fontWeight:800,fontSize:17,fontFamily:"'Syne',sans-serif",letterSpacing:'-0.03em'}}>{orgSettings.name || t.appName}</div>
+                <div style={{color:C.sidebarText,fontSize:11,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{orgSettings.name ? t.appName : t.appTagline}</div>
               </div>}
             </>
           )}
         </div>
         <nav style={{ flex:1, overflowY:'auto', padding:'8px', minHeight:0 }}>
-          {navGroups.map((group, gi) => (
+          {visibleNavGroups.map((group, gi) => (
             <div key={gi} style={{ marginBottom:4 }}>
-              {!sidebarCollapsed && <div style={{ color:C.sidebarText, fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', padding:'12px 12px 4px' }}>{group.label}</div>}
+              {!sidebarCollapsed && <div style={{ color:C.textMuted, fontSize:9.5, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.1em', padding:'14px 12px 5px', fontFamily:"'DM Sans',sans-serif" }}>{group.label}</div>}
               {group.items.map(item => {
                 const active = page === item.id
                 return (
                   <button key={item.id} onClick={() => setPage(item.id)}
                     style={{ width:'100%', display:'flex', alignItems:'center', gap:8,
-                      padding: sidebarCollapsed?'8px 0':'0 12px', height:36, justifyContent: sidebarCollapsed?'center':'flex-start',
-                      borderRadius:6, border:'none', background: active?'rgba(0,212,255,0.08)':'transparent',
-                      color: active?'#e2e8f0':'#475569', cursor:'pointer', fontSize:14,
-                      fontWeight: active?500:400, transition:'all 200ms ease', fontFamily:'inherit',
+                      padding: sidebarCollapsed?'8px 0':'0 10px', height:36, justifyContent: sidebarCollapsed?'center':'flex-start',
+                      borderRadius:8, border:'none', background: active?'rgba(0,255,178,0.08)':'transparent',
+                      color: active?'#00FFB2':C.sidebarText, cursor:'pointer', fontSize:13,
+                      fontWeight: active?500:400, transition:'all 0.18s ease', fontFamily:"'DM Sans',sans-serif",
                       textAlign: isRTL?'right':'left', direction:dir,
-                      borderLeft: active && !isRTL ? '2px solid #00d4ff' : '2px solid transparent',
-                      borderRight: active && isRTL ? '2px solid #00d4ff' : '2px solid transparent',
-                      boxShadow: active ? 'inset 0 0 20px rgba(0,212,255,0.04)' : 'none',
+                      borderLeft: active && !isRTL ? '2px solid #00FFB2' : '2px solid transparent',
+                      borderRight: active && isRTL ? '2px solid #00FFB2' : '2px solid transparent',
+                      boxShadow: 'none',
                     }}
-                    onMouseEnter={e=>{if(!active){ e.currentTarget.style.background='rgba(0,212,255,0.04)'; e.currentTarget.style.color='#94a3b8' }}}
-                    onMouseLeave={e=>{if(!active){ e.currentTarget.style.background='transparent'; e.currentTarget.style.color='#475569' }}}>
-                    <span style={{ display:'flex', alignItems:'center', color: active?'#00d4ff':'#475569', flexShrink:0, opacity: active?1:0.7, transition:'all 200ms ease' }}>{item.icon(16)}</span>
-                    {!sidebarCollapsed && <><span style={{flex:1}}>{item.label}</span>{item.badge && <span style={{ background:C.danger, color:'#fff', fontSize:11, fontWeight:500, padding:'0 8px', borderRadius:10, height:20, display:'inline-flex', alignItems:'center' }}>{item.badge}</span>}</>}
+                    onMouseEnter={e=>{if(!active){ e.currentTarget.style.background='rgba(255,255,255,0.04)'; e.currentTarget.style.color='#E8EAF5' }}}
+                    onMouseLeave={e=>{if(!active){ e.currentTarget.style.background='transparent'; e.currentTarget.style.color=C.sidebarText }}}>
+                    <span style={{ display:'flex', alignItems:'center', color: active?'#00FFB2':C.sidebarText, flexShrink:0, opacity: active?1:0.55, transition:'all 0.18s ease' }}>{item.icon(16)}</span>
+                    {!sidebarCollapsed && <><span style={{flex:1}}>{item.label}</span>{item.badge && <span style={{ background:'#00FFB2', color:'#07080E', fontSize:9.5, fontWeight:700, padding:'0 7px', borderRadius:10, height:18, display:'inline-flex', alignItems:'center' }}>{item.badge}</span>}</>}
                   </button>
                 )
               })}
             </div>
           ))}
         </nav>
+        {/* User section (desktop only) — gradient avatar with online dot glow */}
+        {!sidebarCollapsed && user && (
+          <div style={{ borderTop:`1px solid ${C.sidebarBorder}`, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
+            <div style={{ position:'relative', flexShrink:0 }}>
+              <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, #00FFB2, #4DA6FF)', display:'flex', alignItems:'center', justifyContent:'center', color:'#07080E', fontSize:12, fontWeight:700, fontFamily:"'DM Sans',sans-serif" }}>
+                {(user?.email || 'U').charAt(0).toUpperCase()}
+              </div>
+              {/* Online indicator: 6px mint dot with glow */}
+              <div style={{ position:'absolute', bottom:-1, [isRTL?'left':'right']:-1, width:6, height:6, borderRadius:'50%', background:'#00FFB2', boxShadow:'0 0 6px #00FFB2', border:`2px solid ${C.sidebar}` }} />
+            </div>
+            <div style={{ minWidth:0, flex:1 }}>
+              <div style={{ fontSize:12, fontWeight:600, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontFamily:"'DM Sans',sans-serif" }}>
+                {user?.user_metadata?.full_name || (user?.email || '').split('@')[0] || t.adminUser}
+              </div>
+              <div style={{ fontSize:10, color:C.textMuted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                {user?.email || 'demo@velo.app'}
+              </div>
+            </div>
+          </div>
+        )}
         <button onClick={() => setSidebarCollapsed(c=>!c)} style={{ height:40, border:'none', background:'transparent', color:C.sidebarText, cursor:'pointer', borderTop:`1px solid ${C.sidebarBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'inherit', transition:'color 150ms ease' }}
           onMouseEnter={e=>e.currentTarget.style.color=C.sidebarActiveText} onMouseLeave={e=>e.currentTarget.style.color=C.sidebarText}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
@@ -756,21 +913,21 @@ export default function App() {
       </aside>
 
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
-      <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'#080c14' }}>
-        <header className="mobile-header" style={{ height:52, minHeight:52, background:'#0d1420', borderBottom:'1px solid rgba(255,255,255,0.06)', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
+      <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:C.bg }}>
+        <header className="mobile-header" style={{ height:52, minHeight:52, background:'rgba(12,14,26,0.8)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
           {/* Mobile: Logo + company name in header */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-              <div style={{ width:28, height:28, borderRadius:7, background:`linear-gradient(135deg,${orgSettings.primary_color || C.primary},#8250DF)`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontWeight:700, fontSize:12 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
-              <span style={{ fontSize:14, fontWeight:700, color:C.text }}>{orgSettings.name || 'Velo'}</span>
+              <div style={{ width:28, height:28, borderRadius:7, background:'rgba(0,255,178,0.1)', border:'1px solid rgba(0,255,178,0.25)', display:'flex', alignItems:'center', justifyContent:'center', color:'#00FFB2', fontWeight:700, fontSize:12 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
+              <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:"'Syne',sans-serif" }}>{orgSettings.name || 'Velo'}</span>
             </div>
           )}
           {/* Search → opens Command Palette */}
-          <div onClick={() => setCmdPaletteOpen(true)} style={{ display:'flex', alignItems:'center', gap:8, background:C.bg, borderRadius:6, padding:'0 12px', height:36, border:`1px solid ${C.border}`, flex:1, maxWidth:360, cursor:'pointer', transition:'border-color 150ms ease' }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor='#9CA3AF'} onMouseLeave={e=>e.currentTarget.style.borderColor=C.border}>
+          <div onClick={() => setCmdPaletteOpen(true)} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'0 12px', height:34, border:'1px solid rgba(255,255,255,0.07)', flex:1, maxWidth:320, cursor:'pointer', transition:'border-color 0.18s ease' }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.14)'} onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.07)'}>
             <span style={{color:C.textMuted,display:'flex'}}>{Icons.search(16)}</span>
-            <span style={{ fontSize:14, color:C.textMuted, flex:1 }}>{t.searchPlaceholder}</span>
-            <kbd style={{ padding:'2px 6px', borderRadius:4, background:C.white, border:`1px solid ${C.border}`, fontSize:11, color:C.textMuted, fontFamily:'inherit' }}>Ctrl+K</kbd>
+            <span style={{ fontSize:13, color:C.textMuted, flex:1 }}>{t.searchPlaceholder}</span>
+            <kbd style={{ padding:'2px 6px', borderRadius:4, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.065)', fontSize:10, color:C.textMuted, fontFamily:"'DM Sans',sans-serif" }}>Ctrl+K</kbd>
           </div>
           <div style={{flex:1}}/>
           {!isMobile && (
@@ -779,23 +936,23 @@ export default function App() {
             </button>
           )}
           {/* Dark mode toggle */}
-          <button onClick={() => setDarkMode(d => !d)} style={{ width:36, height:36, borderRadius:6, border:`1px solid rgba(255,255,255,0.08)`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, transition:'all 150ms ease' }}
+          <button onClick={() => setDarkMode(d => !d)} style={{ width:32, height:32, borderRadius:8, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec, transition:'all 0.18s ease' }}
             title={darkMode ? 'Light Mode' : 'Dark Mode'}
-            onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background=C.white}>
+            onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}>
             {darkMode
               ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
               : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
             }
           </button>
           {/* Notifications */}
-          <button onClick={() => setNotifOpen(v => !v)} style={{ width:36, height:36, borderRadius:6, border:`1px solid rgba(255,255,255,0.08)`, background:C.white, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textLabel, position:'relative', transition:'all 150ms ease' }}
-            onMouseEnter={e=>e.currentTarget.style.background=C.bg} onMouseLeave={e=>e.currentTarget.style.background=C.white}>
+          <button onClick={() => setNotifOpen(v => !v)} style={{ width:32, height:32, borderRadius:8, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec, position:'relative', transition:'all 0.18s ease' }}
+            onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}>
             {Icons.bell(16)}
-            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:C.danger, color:'#fff', fontSize:10, fontWeight:500, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #fff' }}>{notifications.filter(n => !n.read).length}</span>}
+            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:'#FF6B6B', color:'#07080E', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #07080E' }}>{notifications.filter(n => !n.read).length}</span>}
           </button>
           {/* User avatar + dropdown */}
           <div style={{ position:'relative' }}>
-            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:32, height:32, borderRadius:'50%', background:`linear-gradient(135deg,${C.primary},${C.purple})`, display:'flex', alignItems:'center', justifyContent:'center', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer', transition:'transform 150ms ease' }}
+            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, #00FFB2, #4DA6FF)', display:'flex', alignItems:'center', justifyContent:'center', color:'#07080E', fontSize:13, fontWeight:600, cursor:'pointer', transition:'transform 0.18s ease', boxShadow:'0 0 12px rgba(0,255,178,0.25)' }}
               onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
               {(user?.email || 'U').charAt(0).toUpperCase()}
             </div>
@@ -884,23 +1041,21 @@ export default function App() {
                 ? <SkeletonDashboard />
                 : orgSettings?.industry === 'dental'
                   ? <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} setPage={setPage} /></Suspense>
-                  : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />
+                  : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />
               )}
-              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} urlTicketId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
-              {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><CalendarPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
+              {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><AppointmentsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} setPage={setPage} /></Suspense>}
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
               {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} /></Suspense>}
-              {page === 'growth' && <Suspense fallback={<SkeletonGeneric />}><GrowthIntelligence orgId={orgSettings?.id} isSuperAdmin={isSuperAdmin} /></Suspense>}
               {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin && !impersonation} orgPayments={impersonation ? allPayments : null} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
               {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} /></Suspense>}
               {page === 'tasks' && <Suspense fallback={<SkeletonGeneric />}><TasksPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} user={user} toast={addToast} showConfirm={showConfirm} /></Suspense>}
-              {page === 'projects' && <Suspense fallback={<SkeletonGeneric />}><ProjectsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} showConfirm={showConfirm} /></Suspense>}
               {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
               {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
               {page === 'agency' && isSuperAdmin && !impersonation && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
@@ -919,7 +1074,7 @@ export default function App() {
             <h2 style={{ fontSize:18, fontWeight:700, color:C.text }}>{t.widgetSettings}</h2>
             <div style={{ display:'flex', gap:8 }}>
               <button type="button" onClick={() => setLayout({...DEFAULT_LAYOUT})} style={makeBtn('secondary', {fontSize:11})}>{isRTL?'إعادة تعيين':'Reset'}</button>
-              <button type="button" onClick={() => setShowCustomizer(false)} style={makeBtn('primary')}>{t.done}</button>
+              <button type="button" onClick={() => setShowCustomizer(false)} className="velo-btn-primary" style={makeBtn('primary')}>{t.done}</button>
             </div>
           </div>
           <p style={{ fontSize:13, color:C.textMuted, marginBottom:16 }}>{t.dragToReorder} &middot; {layout.order.filter(id=>layout.visible[id]).length}/{layout.order.length} {t.widgetsVisible}</p>
@@ -946,7 +1101,6 @@ export default function App() {
               { id:'dashboard', icon: Icons.dashboard, label: isRTL?'لوحة التحكم':'Dashboard' },
               { id:'agency', icon: Icons.building, label: isRTL?'المؤسسات':'Orgs' },
               { id:'finance', icon: Icons.dollar, label: 'MRR' },
-              { id:'growth', icon: Icons.trendUp, label: isRTL?'النمو':'Growth' },
               { id:'_more', icon: (s) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>, label: isRTL?'المزيد':'More' },
             ] : [
               { id:'dashboard', icon: Icons.dashboard, label: t.dashboard },
@@ -984,7 +1138,6 @@ export default function App() {
                   { id:'social', icon: Icons.globe, label: isRTL?'التواصل':'Social' },
                   { id:'integrations', icon: Icons.integrations, label: t.integrations },
                   { id:'reports', icon: Icons.reports, label: t.reports },
-                  { id:'growth', icon: Icons.trendUp, label: isRTL?'النمو':'Growth' },
                   { id:'finance', icon: Icons.dollar, label: isRTL?'المالية':'Finance' },
                   { id:'settings', icon: Icons.settings, label: t.settings },
                 ]).map(item => (
@@ -1043,7 +1196,7 @@ export default function App() {
         <button onClick={() => setAiOpen(true)} style={{
           position: 'fixed', bottom: 24, [isRTL ? 'left' : 'right']: 24, width: 52, height: 52,
           borderRadius: 16, border: 'none', cursor: 'pointer', zIndex: 1700,
-          background: `linear-gradient(135deg, ${C.primary}, #8250DF)`,
+          background: `linear-gradient(135deg, ${C.primary}, #A78BFA)`,
           boxShadow: '0 4px 16px rgba(9,105,218,.3)', display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'transform .2s, box-shadow .2s',
         }}
@@ -1083,7 +1236,7 @@ function AgencyEmptyState({ isRTL, setPage }) {
       <p style={{ fontSize: 14, color: C.textMuted, margin: '0 0 24px', maxWidth: 420 }}>
         {isRTL ? 'اختر مؤسسة من لوحة الوكالة لعرض بياناتها.' : 'Select an organization from the Agency Dashboard to view their data.'}
       </p>
-      <button onClick={() => setPage('agency')} style={makeBtn('primary', { gap: 8 })}>
+      <button onClick={() => setPage('agency')} className="velo-btn-primary" style={makeBtn('primary', { gap: 8 })}>
         {Icons.building(16)} {isRTL ? 'لوحة الوكالة' : 'Go to Agency Dashboard'}
       </button>
     </div>
@@ -1120,7 +1273,7 @@ function AgencyDashboardView({ t, lang, isRTL, dir, setPage }) {
           <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'نظرة عامة للوكالة' : 'Agency Overview'}</h1>
           <p style={{ fontSize: 13, color: C.textSec, marginTop: 4 }}>{new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
         </div>
-        <button onClick={() => setPage('agency')} style={makeBtn('primary', { gap: 8 })}>
+        <button onClick={() => setPage('agency')} className="velo-btn-primary" style={makeBtn('primary', { gap: 8 })}>
           {Icons.building(16)} {isRTL ? 'إدارة المؤسسات' : 'Manage Organizations'}
         </button>
       </div>
@@ -1191,14 +1344,14 @@ function AgencyDashboardView({ t, lang, isRTL, dir, setPage }) {
   )
 }
 
-function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments, isSuperAdmin, impersonation }) {
+function DashboardPage({ t, lang, isRTL, dir, contacts, contactsTotal = 0, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments, isSuperAdmin, impersonation }) {
   // Agency mode — show agency-level stats instead of regular dashboard
   if (isSuperAdmin && !impersonation) {
     return <AgencyDashboardView t={t} lang={lang} isRTL={isRTL} dir={dir} setPage={setPage} />
   }
 
   const widgetRenderers = {
-    stats: () => <StatsCards t={t} contacts={contacts} deals={deals} tickets={tickets} dir={dir} />,
+    stats: () => <StatsCards t={t} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tickets={tickets} dir={dir} />,
     chart: () => <MonthlyChart t={t} isRTL={isRTL} />,
     tasks: () => <TasksWidget t={t} tasks={tasks} toggleTask={toggleTask} dir={dir} />,
     recentContacts: () => <RecentContactsWidget t={t} contacts={contacts} dir={dir} setPage={setPage} />,
@@ -1233,13 +1386,16 @@ function DashboardPage({ t, lang, isRTL, dir, contacts, deals, tasks, tickets, t
 }
 
 // ── Dashboard Widgets ───────────────────────────────────────────────────────
-function StatsCards({ t, contacts, deals, tickets, dir }) {
+function StatsCards({ t, contacts, contactsTotal = 0, deals, tickets, dir }) {
   const openDeals = deals.filter(d => !['won','lost'].includes(d.stage))
   const pipelineVal = openDeals.reduce((s,d) => s+d.value, 0)
   const wonThisMonth = deals.filter(d => d.stage==='won').reduce((s,d) => s+d.value, 0)
   const openTicketCount = (tickets||[]).filter(tk => ['open','in_progress'].includes(tk.status)).length
+  // Use contactsTotal (from the DB count) rather than contacts.length, which
+  // is capped by the paginated initial load.
+  const totalContactsDisplay = contactsTotal || contacts.length
   const stats = [
-    { label:t.totalContacts, value:contacts.length, change:'+12%', icon:Icons.contacts, color:C.primary, bg:C.primaryBg },
+    { label:t.totalContacts, value:totalContactsDisplay, change:'+12%', icon:Icons.contacts, color:C.primary, bg:C.primaryBg },
     { label:t.openDeals, value:openDeals.length, change:'+3', icon:Icons.target, color:C.purple, bg:C.purpleBg },
     { label:t.pipelineValue, value:fmt$(pipelineVal), change:'+18%', icon:Icons.dollar, color:C.success, bg:C.successBg },
     { label:t.openTickets, value:openTicketCount, change:'+2', icon:Icons.ticket, color:C.danger, bg:C.dangerBg },
@@ -1452,7 +1608,7 @@ function AppointmentsWidget({ t, dir, useDB }) {
 
 function TopLeadsWidget({ t, contacts, deals, dir, isRTL }) {
   const scored = contacts.map(c => ({ ...c, ...calculateLeadScore(c, deals, []) })).sort((a,b) => b.score - a.score).slice(0, 5)
-  const tierStyles = { hot:{ bg:'rgba(239,68,68,0.1)', color:'#ef4444', icon:'🔥' }, warm:{ bg:'rgba(245,158,11,0.1)', color:'#D29922', icon:'🌡️' }, cold:{ bg:'rgba(0,212,255,0.1)', color:'#00d4ff', icon:'❄️' } }
+  const tierStyles = { hot:{ bg:'rgba(239,68,68,0.1)', color:'#FF6B6B', icon:'' }, warm:{ bg:'rgba(245,158,11,0.1)', color:'#D29922', icon:'' }, cold:{ bg:'rgba(0,255,178,0.09)', color:'#00FFB2', icon:'' } }
   return (
     <div style={{ ...card, padding:20, direction:dir }}>
       <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:'0 0 14px' }}>{isRTL?'أفضل العملاء المحتملين':'Top Leads by Score'}</h3>
@@ -1483,9 +1639,9 @@ function PendingPaymentsWidget({ t, contacts, allPayments, dir, isRTL }) {
         const overdue = p.dueDate && new Date(p.dueDate) < new Date()
         return (
           <div key={p.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 0', borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ width:28, height:28, borderRadius:6, background: overdue?'rgba(239,68,68,0.1)':'rgba(245,158,11,0.1)', color: overdue?'#ef4444':'#D29922', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>{Icons.dollar(14)}</div>
+            <div style={{ width:28, height:28, borderRadius:6, background: overdue?'rgba(239,68,68,0.1)':'rgba(245,158,11,0.1)', color: overdue?'#FF6B6B':'#D29922', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, flexShrink:0 }}>{Icons.dollar(14)}</div>
             <div style={{ flex:1 }}><div style={{ fontSize:12, fontWeight:600, color:C.text }}>{p.contactName}</div><div style={{ fontSize:10, color:C.textMuted }}>{isRTL?'استحقاق:':'Due:'} {p.dueDate||'—'}</div></div>
-            <span style={{ fontSize:12, fontWeight:700, color: overdue?'#ef4444':'#D29922' }}>{fmtMoney(p.amount, p.currency||'USD')}</span>
+            <span style={{ fontSize:12, fontWeight:700, color: overdue?'#FF6B6B':'#D29922' }}>{fmtMoney(p.amount, p.currency||'USD')}</span>
           </div>
         )
       })}
@@ -1502,9 +1658,9 @@ function FinanceSummaryWidget({ t, contacts, allPayments, dir, isRTL }) {
       <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:'0 0 14px' }}>{isRTL?'ملخص مالي':'Finance Summary'}</h3>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
         {[
-          { label:isRTL?'الإيرادات':'Revenue', value:totalPaid, color:'#00ff88', bg:'rgba(0,255,136,0.1)' },
+          { label:isRTL?'الإيرادات':'Revenue', value:totalPaid, color:'#00FFB2', bg:'rgba(0,255,136,0.1)' },
           { label:isRTL?'معلق':'Pending', value:totalPending, color:'#D29922', bg:'rgba(245,158,11,0.1)' },
-          { label:isRTL?'المصروفات':'Expenses', value:expenses, color:'#ef4444', bg:'rgba(239,68,68,0.1)' },
+          { label:isRTL?'المصروفات':'Expenses', value:expenses, color:'#FF6B6B', bg:'rgba(239,68,68,0.1)' },
           { label:isRTL?'الصافي':'Net', value:totalPaid-expenses, color:C.primary, bg:C.primaryBg },
         ].map((s,i) => (
           <div key={i} style={{ padding:10, borderRadius:8, background:s.bg, textAlign:'center' }}>
@@ -1521,7 +1677,7 @@ function FinanceSummaryWidget({ t, contacts, allPayments, dir, isRTL }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTACTS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate, isSuperAdmin, impersonation }) {
+function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMoreContacts, contactsLoadingMore = false, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate, isSuperAdmin, impersonation }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
@@ -1533,8 +1689,19 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
   const [newNote, setNewNote] = useState('')
   const [showDealForm, setShowDealForm] = useState(false)
 
-  // Sync URL param to state
-  useEffect(() => { _setSelectedContact(urlContactId || null) }, [urlContactId])
+  // Sync URL param to state. The special value "new" is an intent from the
+  // dashboard's "New Patient" quick action — open the create form and clear
+  // the URL so refresh doesn't reopen it.
+  useEffect(() => {
+    if (urlContactId === 'new') {
+      setEditingContact(null)
+      setShowForm(true)
+      _setSelectedContact(null)
+      navigate('/contacts')
+      return
+    }
+    _setSelectedContact(urlContactId || null)
+  }, [urlContactId])
 
   // Navigate-aware setter
   const selectedContact = _selectedContact
@@ -1549,9 +1716,10 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
   }
 
   const normalizePhoneSearch = (p) => (p || '').replace(/[\s\-()]/g, '').replace(/^\+964/, '0').replace(/^964/, '0').replace(/^0+/, '')
+  const safeSearch = sanitizeSearch(search)
   const filtered = contacts.filter(c => {
-    const q = search.toLowerCase()
-    const qDigits = normalizePhoneSearch(search)
+    const q = safeSearch.toLowerCase()
+    const qDigits = normalizePhoneSearch(safeSearch)
     const matchSearch = !q || (c.name||'').toLowerCase().includes(q) || (c.email||'').toLowerCase().includes(q) || (c.company||'').toLowerCase().includes(q) || (c.city||'').toLowerCase().includes(q) || (c.tags||[]).some(tag => tag.toLowerCase().includes(q)) || (qDigits.length >= 3 && normalizePhoneSearch(c.phone).includes(qDigits))
     const matchStatus = filterStatus === 'all' || c.status === filterStatus
     const matchCat = filterCategory === 'all' || c.category === filterCategory
@@ -1587,10 +1755,16 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
       {/* Header */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
         <div>
-          <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{t.contacts}</h1>
-          <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>{filtered.length} {t.contactsCount}</p>
+          <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{isDental ? (isRTL ? "المرضى" : "Patients") : t.contacts}</h1>
+          <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>
+            {contactsTotal > contacts.length
+              ? (isRTL
+                  ? `عرض ${contacts.length} من أصل ${contactsTotal}`
+                  : `Showing ${contacts.length} of ${contactsTotal} ${isDental ? 'patients' : (t.contactsCount || 'contacts')}`)
+              : `${filtered.length} ${isDental ? (isRTL ? 'مريض' : 'patients') : t.contactsCount}`}
+          </p>
         </div>
-        <button data-action="new-contact" onClick={() => { setEditingContact(null); setShowForm(true) }} style={makeBtn('primary', { gap:6 })}>
+        <button data-action="new-contact" onClick={() => { setEditingContact(null); setShowForm(true) }} className="velo-btn-primary" style={makeBtn('primary', { gap:6 })}>
           {Icons.plus(16)} {t.addContact}
         </button>
       </div>
@@ -1599,7 +1773,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
       <div style={{ ...card, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', direction:dir }}>
         <div style={{ display:'flex', alignItems:'center', gap:8, background:C.bg, borderRadius:8, padding:'6px 12px', border:`1px solid ${C.border}`, flex:1, maxWidth:320 }}>
           <span style={{color:C.textMuted,display:'flex'}}>{Icons.search(16)}</span>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t.search || t.searchPlaceholder} style={{ border:'none', background:'transparent', outline:'none', fontSize:13, color:C.text, flex:1, fontFamily:'inherit', direction:dir }} />
+          <input value={search} onChange={e=>setSearch(e.target.value)} maxLength={LIMITS.search} placeholder={t.search || t.searchPlaceholder} style={{ border:'none', background:'transparent', outline:'none', fontSize:13, color:C.text, flex:1, fontFamily:'inherit', direction:dir }} />
         </div>
         <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 12px', borderRadius:8 }}>
           <option value="all">{t.allStatuses}</option>
@@ -1636,7 +1810,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
               const cc = CAT_COLORS[c.category] || CAT_COLORS.other
               const sc = STATUS_COLORS[c.status] || STATUS_COLORS.lead
               const ls = calculateLeadScore(c, deals, [])
-              const lsColors = { hot:{ bg:'rgba(239,68,68,0.1)', color:'#ef4444', icon:'🔥' }, warm:{ bg:'rgba(245,158,11,0.1)', color:'#D29922', icon:'🌡️' }, cold:{ bg:'rgba(0,212,255,0.1)', color:'#00d4ff', icon:'❄️' } }
+              const lsColors = { hot:{ bg:'rgba(239,68,68,0.1)', color:'#FF6B6B', icon:'' }, warm:{ bg:'rgba(245,158,11,0.1)', color:'#D29922', icon:'' }, cold:{ bg:'rgba(0,255,178,0.09)', color:'#00FFB2', icon:'' } }
               const lsc = lsColors[ls.tier]
               return (
                 <tr key={c.id} onClick={() => setSelectedContact(c.id)}
@@ -1649,7 +1823,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
                       <div>
                         <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                           <span style={{ fontWeight:600, color:C.text }}>{c.name}</span>
-                          <span title={ls.reasons.join(', ')} style={{ fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:4, background:lsc.bg, color:lsc.color }}>{lsc.icon}{ls.score}</span>
+                          <span title={ls.reasons.join(', ')} style={{ fontSize:9, fontWeight:700, padding:'1px 5px', borderRadius:4, background:lsc.bg, color:lsc.color }}>{ls.score}</span>
                         </div>
                         {(c.tags||[]).length > 0 && <div style={{display:'flex',gap:4,marginTop:3,flexWrap:'wrap'}}>{c.tags.slice(0,2).map(tag=><span key={tag} style={{fontSize:10,background:C.bg,border:`1px solid ${C.border}`,padding:'1px 6px',borderRadius:4,color:C.textMuted}}>{tag}</span>)}</div>}
                       </div>
@@ -1673,6 +1847,23 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, deals, addContact, update
           </tbody>
         </table>
       </div>
+
+      {/* Load More (pagination) */}
+      {contactsTotal > contacts.length && (
+        <div style={{ display:'flex', justifyContent:'center', marginTop:16 }}>
+          <button
+            onClick={() => loadMoreContacts && loadMoreContacts()}
+            disabled={contactsLoadingMore}
+            style={makeBtn('secondary', { gap:6, opacity: contactsLoadingMore ? 0.6 : 1, cursor: contactsLoadingMore ? 'wait' : 'pointer' })}
+          >
+            {contactsLoadingMore
+              ? (isRTL ? 'جار التحميل...' : 'Loading…')
+              : (isRTL
+                  ? `تحميل المزيد (عرض ${contacts.length} من ${contactsTotal})`
+                  : `Load more (showing ${contacts.length} of ${contactsTotal})`)}
+          </button>
+        </div>
+      )}
 
       {/* Add/Edit Modal */}
       {showForm && (
@@ -1734,11 +1925,11 @@ function ContactFormModal({ t, dir, isRTL, contact, onSave, onClose }) {
         <button onClick={onClose} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex' }}>{Icons.x(20)}</button>
       </div>
       <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-        <FormField label={t.contactName} dir={dir}><input value={form.name} onChange={e=>set('name',e.target.value)} style={inputStyle(dir)}/></FormField>
-        <FormField label={t.contactEmail} dir={dir}><input value={form.email} onChange={e=>set('email',e.target.value)} type="email" style={inputStyle(dir)}/></FormField>
-        <FormField label={t.contactPhone} dir={dir}><input value={form.phone} onChange={e=>set('phone',e.target.value)} style={inputStyle(dir)}/></FormField>
-        <FormField label={t.contactCompany} dir={dir}><input value={form.company} onChange={e=>set('company',e.target.value)} style={inputStyle(dir)}/></FormField>
-        <FormField label={t.city} dir={dir}><input value={form.city} onChange={e=>set('city',e.target.value)} style={inputStyle(dir)}/></FormField>
+        <FormField label={t.contactName} dir={dir}><input value={form.name} onChange={e=>set('name',e.target.value)} maxLength={LIMITS.name} style={inputStyle(dir)}/></FormField>
+        <FormField label={t.contactEmail} dir={dir}><input value={form.email} onChange={e=>set('email',e.target.value)} type="email" maxLength={LIMITS.email} style={inputStyle(dir)}/></FormField>
+        <FormField label={t.contactPhone} dir={dir}><input value={form.phone} onChange={e=>set('phone',e.target.value)} maxLength={LIMITS.phone} style={inputStyle(dir)}/></FormField>
+        <FormField label={t.contactCompany} dir={dir}><input value={form.company} onChange={e=>set('company',e.target.value)} maxLength={100} style={inputStyle(dir)}/></FormField>
+        <FormField label={t.city} dir={dir}><input value={form.city} onChange={e=>set('city',e.target.value)} maxLength={100} style={inputStyle(dir)}/></FormField>
         <FormField label={t.contactSource} dir={dir}>
           <select value={form.source} onChange={e=>set('source',e.target.value)} style={selectStyle(dir)}>
             {['referral','event','partnership','website','inbound','outbound','linkedin'].map(s=><option key={s} value={s}>{t[`source${s.charAt(0).toUpperCase()+s.slice(1)}`]||s}</option>)}
@@ -1757,11 +1948,11 @@ function ContactFormModal({ t, dir, isRTL, contact, onSave, onClose }) {
           </select>
         </FormField>
       </div>
-      <FormField label={t.contactTags + ' (comma separated)'} dir={dir}><input value={form.tags} onChange={e=>set('tags',e.target.value)} style={inputStyle(dir)} placeholder="e.g. enterprise, renewal"/></FormField>
-      <FormField label={t.contactNotes} dir={dir}><textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={3} style={{...inputStyle(dir),resize:'vertical'}}/></FormField>
+      <FormField label={t.contactTags + ' (comma separated)'} dir={dir}><input value={form.tags} onChange={e=>set('tags',e.target.value)} maxLength={300} style={inputStyle(dir)} placeholder="e.g. enterprise, renewal"/></FormField>
+      <FormField label={t.contactNotes} dir={dir}><textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={3} maxLength={LIMITS.notes} style={{...inputStyle(dir),resize:'vertical'}}/></FormField>
       <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
         <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={handleSubmit} style={makeBtn('primary')}>{t.save}</button>
+        <button onClick={handleSubmit} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
       </div>
     </Modal>
   )
@@ -1776,6 +1967,14 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
   const [showEmailModal, setShowEmailModal] = useState(false)
   const [showSmsModal, setShowSmsModal] = useState(false)
   const [showCallModal, setShowCallModal] = useState(false)
+  // Bridge from the dental chart: when a tooth's condition is non-healthy
+  // and the user clicks "Add to Treatment Plan", we switch to the treatments
+  // tab and hand this prefill to TreatmentPlanTab.
+  const [treatmentPrefill, setTreatmentPrefill] = useState(null)
+  const handleAddToTreatmentPlan = (tooth, condition) => {
+    setTreatmentPrefill({ tooth, condition })
+    setProfileTab('treatments')
+  }
 
   // Dental data stored locally (not sent to Supabase)
   const [dentalData, setDentalData] = useState(() => {
@@ -1887,7 +2086,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
           <div style={{ flex:1 }}>
             <div style={{ display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
               <h2 style={{ fontSize:22, fontWeight:700, color:C.text, margin:0 }}>{contact.name}</h2>
-              {(() => { const ls=calculateLeadScore(contact,contactDeals,[]); const lc={hot:{bg:'rgba(239,68,68,0.1)',color:'#ef4444',icon:'🔥'},warm:{bg:'rgba(245,158,11,0.1)',color:'#D29922',icon:'🌡️'},cold:{bg:'rgba(0,212,255,0.1)',color:'#00d4ff',icon:'❄️'}}[ls.tier]; return <span title={ls.reasons.join(', ')} style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:6, background:lc.bg, color:lc.color }}>{lc.icon} {ls.score}</span> })()}
+              {(() => { const ls=calculateLeadScore(contact,contactDeals,[]); const lc={hot:{bg:'rgba(239,68,68,0.1)',color:'#FF6B6B',icon:''},warm:{bg:'rgba(245,158,11,0.1)',color:'#D29922',icon:''},cold:{bg:'rgba(0,255,178,0.09)',color:'#00FFB2',icon:''}}[ls.tier]; return <span title={ls.reasons.join(', ')} style={{ fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:6, background:lc.bg, color:lc.color }}>{ls.score}</span> })()}
               <span style={{ fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:6, background:sc.bg, color:sc.text }}>{statusLabel}</span>
               <span style={{ fontSize:11, fontWeight:500, padding:'3px 10px', borderRadius:6, background:cc.bg, color:cc.text }}>{t[contact.category]||contact.category}</span>
             </div>
@@ -1924,7 +2123,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
         {contact.email && <button type="button" onClick={(e)=>{e.stopPropagation();setShowEmailModal(true)}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:'none',background:'#E16F2418',color:'#E16F24',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36}}>
           {Icons.mail(14)} Email
         </button>}
-        {contact.phone && <button type="button" onClick={(e)=>{e.stopPropagation();setShowCallModal(true)}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:'none',background:'rgba(0,255,136,0.09)',color:'#00ff88',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36}}>
+        {contact.phone && <button type="button" onClick={(e)=>{e.stopPropagation();setShowCallModal(true)}} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:'none',background:'rgba(0,255,136,0.09)',color:'#00FFB2',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36}}>
           {Icons.phone(14)} {isRTL?'اتصال':'Call'}
         </button>}
         <button type="button" title={isRTL?'اربط فيسبوك من التكاملات':'Connect Facebook in Integrations'} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.textMuted,fontSize:12,fontWeight:500,cursor:'default',fontFamily:'inherit',minHeight:36,opacity:.5}}>
@@ -1986,7 +2185,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
             <div style={{ display:'flex', gap:8, marginBottom:20 }}>
               <input value={newNote} onChange={e => setNewNote(e.target.value)} placeholder={t.writeSomething} style={{ ...inputStyle(dir), flex:1 }}
                 onKeyDown={e => { if (e.key==='Enter' && newNote.trim()) { addNoteToContact(contact.id, newNote.trim()); setNewNote('') }}} />
-              <button onClick={() => { if(newNote.trim()) { addNoteToContact(contact.id, newNote.trim()); setNewNote('') }}} style={makeBtn('primary')}>{t.addNote}</button>
+              <button onClick={() => { if(newNote.trim()) { addNoteToContact(contact.id, newNote.trim()); setNewNote('') }}} className="velo-btn-primary" style={makeBtn('primary')}>{t.addNote}</button>
             </div>
             {(contact.notesTimeline||[]).length === 0
               ? <p style={{ color:C.textMuted, fontSize:13, textAlign:'center', padding:24 }}>{t.noNotes}</p>
@@ -2057,7 +2256,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
           <div style={{ ...card, padding:24 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:0 }}>{t.relatedDeals}</h3>
-              <button onClick={() => setShowDealForm(true)} style={makeBtn('primary', { gap:6 })}>
+              <button onClick={() => setShowDealForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap:6 })}>
                 {Icons.plus(14)} {t.createDealForContact}
               </button>
             </div>
@@ -2085,8 +2284,8 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
 
         {/* Dental tabs */}
         {isDental && profileTab === 'medical' && <DentalMedicalHistory contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} />}
-        {isDental && profileTab === 'dental_chart' && <DentalChartWrapper contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} />}
-        {isDental && profileTab === 'treatments' && <DentalTreatments contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} />}
+        {isDental && profileTab === 'dental_chart' && <DentalChartWrapper contact={dentalContact} onUpdate={onUpdateDentalLocal} onAddToTreatmentPlan={handleAddToTreatmentPlan} lang={lang} />}
+        {isDental && profileTab === 'treatments' && <DentalTreatments contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} prefill={treatmentPrefill} onPrefillConsumed={() => setTreatmentPrefill(null)} />}
         {isDental && profileTab === 'prescriptions' && <DentalPrescriptions contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} />}
         {isDental && profileTab === 'xrays' && <DentalXRays contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} />}
       </div>
@@ -2104,7 +2303,7 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
       {showCallModal && (
         <Modal onClose={() => setShowCallModal(false)} dir={dir} width={380}>
           <div style={{ textAlign:'center', padding:'16px 0' }}>
-            <div style={{ width:56, height:56, borderRadius:'50%', background:'rgba(0,255,136,0.09)', color:'#00ff88', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>{Icons.phone(24)}</div>
+            <div style={{ width:56, height:56, borderRadius:'50%', background:'rgba(0,255,136,0.09)', color:'#00FFB2', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 14px' }}>{Icons.phone(24)}</div>
             <h3 style={{ fontSize:18, fontWeight:700, color:C.text, margin:'0 0 4px' }}>{contact.name}</h3>
             <p style={{ fontSize:16, color:C.textSec, fontFamily:'monospace', margin:'0 0 20px' }}>{contact.phone}</p>
             <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
@@ -2132,9 +2331,9 @@ const PAYMENT_METHODS = [
   { id:'asia_hawala', en:'Asia Hawala', ar:'آسيا حوالة', icon:'💱' },
 ]
 const PAYMENT_STATUSES = [
-  { id:'paid', en:'Paid', ar:'مدفوع', color:'#00ff88', bg:'rgba(0,255,136,0.1)' },
+  { id:'paid', en:'Paid', ar:'مدفوع', color:'#00FFB2', bg:'rgba(0,255,136,0.1)' },
   { id:'pending', en:'Pending', ar:'معلق', color:'#D29922', bg:'rgba(245,158,11,0.1)' },
-  { id:'overdue', en:'Overdue', ar:'متأخر', color:'#ef4444', bg:'rgba(239,68,68,0.1)' },
+  { id:'overdue', en:'Overdue', ar:'متأخر', color:'#FF6B6B', bg:'rgba(239,68,68,0.1)' },
   { id:'cancelled', en:'Cancelled', ar:'ملغى', color:'#64748b', bg:'rgba(255,255,255,0.04)' },
 ]
 
@@ -2172,8 +2371,8 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
   }
 
   const statusTransitions = {
-    pending: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#00ff88' }, { to:'overdue', label:isRTL?'متأخر':'Mark as Overdue', color:'#ef4444' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#64748b' }],
-    overdue: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#00ff88' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#64748b' }],
+    pending: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#00FFB2' }, { to:'overdue', label:isRTL?'متأخر':'Mark as Overdue', color:'#FF6B6B' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#64748b' }],
+    overdue: [{ to:'paid', label:isRTL?'تم الدفع':'Mark as Paid', color:'#00FFB2' }, { to:'cancelled', label:isRTL?'إلغاء':'Cancel', color:'#64748b' }],
     paid: [{ to:'pending', label:isRTL?'إرجاع إلى معلق':'Mark as Pending', color:'#D29922' }],
     cancelled: [{ to:'pending', label:isRTL?'إعادة تفعيل':'Reactivate', color:'#D29922' }],
   }
@@ -2183,9 +2382,9 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
       {/* Summary */}
       <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
         {[
-          { label: isRTL?'إجمالي المدفوع':'Total Paid', value: totalPaid, color:'#00ff88', bg:'rgba(0,255,136,0.1)' },
+          { label: isRTL?'إجمالي المدفوع':'Total Paid', value: totalPaid, color:'#00FFB2', bg:'rgba(0,255,136,0.1)' },
           { label: isRTL?'معلق + متأخر':'Pending + Overdue', value: totalPending, color:'#D29922', bg:'rgba(245,158,11,0.1)' },
-          { label: isRTL?'متأخر':'Overdue', value: totalOverdue, color:'#ef4444', bg:'rgba(239,68,68,0.1)' },
+          { label: isRTL?'متأخر':'Overdue', value: totalOverdue, color:'#FF6B6B', bg:'rgba(239,68,68,0.1)' },
         ].map((s,i) => (
           <div key={i} style={{ padding:14, borderRadius:10, background:s.bg, textAlign:'center' }}>
             <div style={{ fontSize:10, fontWeight:600, color:s.color, marginBottom:4 }}>{s.label}</div>
@@ -2196,7 +2395,7 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
 
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
         <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:0 }}>{isRTL?'المدفوعات':'Payments'} ({payments.length})</h3>
-        <button type="button" onClick={()=>setShowForm(true)} style={makeBtn('primary',{gap:6,fontSize:12})}>{Icons.plus(14)} {isRTL?'إضافة دفعة':'Add Payment'}</button>
+        <button type="button" onClick={()=>setShowForm(true)} className="velo-btn-primary" style={makeBtn('primary',{gap:6,fontSize:12})}>{Icons.plus(14)} {isRTL?'إضافة دفعة':'Add Payment'}</button>
       </div>
 
       {payments.length === 0 ? (
@@ -2281,7 +2480,7 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
             <FormField label={isRTL?'الوصف / رقم الفاتورة':'Description / Invoice #'} dir={dir}><input value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))} placeholder={isRTL?'مثال: فاتورة #1234':'e.g. Invoice #1234'} style={inputStyle(dir)} /></FormField>
             <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
               <button type="button" onClick={()=>setShowForm(false)} style={makeBtn('secondary')}>{isRTL?'إلغاء':'Cancel'}</button>
-              <button type="submit" style={makeBtn('primary')}>{isRTL?'إضافة':'Add'}</button>
+              <button type="submit" className="velo-btn-primary" style={makeBtn('primary')}>{isRTL?'إضافة':'Add'}</button>
             </div>
           </form>
         </Modal>
@@ -2290,7 +2489,7 @@ function PaymentsTab({ payments, addPayment, updatePayment, deletePayment, conta
         <Modal onClose={() => setConfirmDeletePayment(null)} dir={dir} width={400}>
           <div style={{ textAlign:'center', padding:8 }}>
             <div style={{ width:48, height:48, borderRadius:'50%', margin:'0 auto 12px', background:'rgba(239,68,68,0.1)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
             </div>
             <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 8px' }}>{isRTL ? 'حذف الدفعة؟' : 'Delete this payment?'}</h3>
             <p style={{ fontSize:13, color:C.textSec, margin:'0 0 16px' }}>{isRTL ? 'لا يمكن التراجع عن هذا' : 'This action cannot be undone'}</p>
@@ -2339,18 +2538,18 @@ function ComposeModal({ type, contact, dir, isRTL, onClose }) {
 const DEFAULT_PIPELINE = {
   id: 'default', name: 'Sales Pipeline', stages: [
     { id: 'lead', name: 'Lead', color: '#64748b' },
-    { id: 'qualified', name: 'Qualified', color: '#00d4ff' },
+    { id: 'qualified', name: 'Qualified', color: '#00FFB2' },
     { id: 'proposal', name: 'Proposal', color: '#D29922' },
-    { id: 'negotiation', name: 'Negotiation', color: '#8250DF' },
-    { id: 'won', name: 'Won', color: '#00ff88' },
-    { id: 'lost', name: 'Lost', color: '#ef4444' },
+    { id: 'negotiation', name: 'Negotiation', color: '#A78BFA' },
+    { id: 'won', name: 'Won', color: '#00FFB2' },
+    { id: 'lost', name: 'Lost', color: '#FF6B6B' },
   ]
 }
-const STAGE_PRESET_COLORS = ['#64748b','#00d4ff','#D29922','#8250DF','#00ff88','#ef4444','#E16F24','#0D9488','#6366F1','#EC4899']
+const STAGE_PRESET_COLORS = ['#64748b','#00FFB2','#D29922','#A78BFA','#00FFB2','#FF6B6B','#E16F24','#0D9488','#6366F1','#EC4899']
 
 function PipelineBuilderModal({ t, dir, isRTL, pipeline, onSave, onClose }) {
   const [name, setName] = useState(pipeline?.name || '')
-  const [stages, setStages] = useState(pipeline?.stages || [{ id: `s${Date.now()}`, name: '', color: '#00d4ff' }])
+  const [stages, setStages] = useState(pipeline?.stages || [{ id: `s${Date.now()}`, name: '', color: '#00FFB2' }])
   const [dragIdx, setDragIdx] = useState(null)
 
   const addStage = () => setStages(prev => [...prev, { id: `s${Date.now()}`, name: '', color: STAGE_PRESET_COLORS[prev.length % STAGE_PRESET_COLORS.length] }])
@@ -2394,7 +2593,7 @@ function PipelineBuilderModal({ t, dir, isRTL, pipeline, onSave, onClose }) {
       <button onClick={addStage} style={{ ...makeBtn('ghost'), fontSize:12, gap:4, marginBottom:16 }}>{Icons.plus(14)} {isRTL?'إضافة مرحلة':'Add Stage'}</button>
       <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
         <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={() => { if(name.trim() && stages.filter(s=>s.name.trim()).length>=2) onSave({ id: pipeline?.id || `pl_${Date.now()}`, name, stages: stages.filter(s=>s.name.trim()).map(s=>({...s, id: s.id || s.name.toLowerCase().replace(/\s+/g,'_')})) }) }} style={makeBtn('primary')}>{t.save}</button>
+        <button onClick={() => { if(name.trim() && stages.filter(s=>s.name.trim()).length>=2) onSave({ id: pipeline?.id || `pl_${Date.now()}`, name, stages: stages.filter(s=>s.name.trim()).map(s=>({...s, id: s.id || s.name.toLowerCase().replace(/\s+/g,'_')})) }) }} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
       </div>
     </Modal>
   )
@@ -2572,7 +2771,7 @@ function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDea
         </div>
         <div style={{ display:'flex', gap:8 }}>
           <button onClick={() => { setEditingPipeline(null); setShowPipelineBuilder(true) }} style={makeBtn('secondary', { gap:6 })}>{Icons.plus(14)} {isRTL?'خط أنابيب جديد':'New Pipeline'}</button>
-          <button data-action="new-deal" onClick={() => { setEditingDeal(null); setShowForm(true) }} style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.addDeal}</button>
+          <button data-action="new-deal" onClick={() => { setEditingDeal(null); setShowForm(true) }} className="velo-btn-primary" style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.addDeal}</button>
         </div>
       </div>
 
@@ -2697,7 +2896,7 @@ function DealFormModal({ t, dir, contacts, deal, defaultContactId, stages, onSav
       <FormField label={t.dealNotes} dir={dir}><textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={3} style={{...inputStyle(dir),resize:'vertical'}}/></FormField>
       <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
         <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={handleSubmit} style={makeBtn('primary')}>{t.save}</button>
+        <button onClick={handleSubmit} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
       </div>
     </Modal>
   )
@@ -2710,10 +2909,10 @@ function DealFormModal({ t, dir, contacts, deal, defaultContactId, stages, onSav
 
 const CHANNEL_META = {
   whatsapp:  { color: '#25D366', bg: '#E7FFF1', label: 'WhatsApp' },
-  email:     { color: '#00d4ff', bg: 'rgba(0,212,255,0.1)', label: 'Email' },
+  email:     { color: '#00FFB2', bg: 'rgba(0,255,178,0.09)', label: 'Email' },
   facebook:  { color: '#1877F2', bg: '#E7F0FF', label: 'Facebook' },
   instagram: { color: '#E4405F', bg: '#FFE8ED', label: 'Instagram' },
-  sms:       { color: '#8250DF', bg: 'rgba(124,58,237,0.1)', label: 'SMS' },
+  sms:       { color: '#A78BFA', bg: 'rgba(124,58,237,0.1)', label: 'SMS' },
 }
 
 const ChannelIcon = ({ channel, size = 18 }) => {
@@ -2838,7 +3037,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
               {t.inbox}
               {totalUnread > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: C.white, background: C.danger, padding: '2px 7px', borderRadius: 10, marginLeft: 8, marginRight: 8 }}>{totalUnread}</span>}
             </h2>
-            <button style={makeBtn('primary', { padding: '6px 12px', fontSize: 12, gap: 5 })}>
+            <button className="velo-btn-primary" style={makeBtn('primary', { padding: '6px 12px', fontSize: 12, gap: 5 })}>
               {Icons.plus(14)} {t.compose}
             </button>
           </div>
@@ -3088,7 +3287,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
                 border: `1px solid ${C.primary}33`, boxShadow: '0 4px 12px rgba(0,0,0,.08)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
-                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `linear-gradient(135deg, ${C.primary}, #8250DF)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <div style={{ width: 22, height: 22, borderRadius: 6, background: `linear-gradient(135deg, ${C.primary}, #A78BFA)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                   </div>
                   <span style={{ fontSize: 12, fontWeight: 700, color: C.primary }}>{t.aiSuggestion}</span>
@@ -3163,7 +3362,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
                 title={t.aiReply}
                 style={{
                   width: 36, height: 36, borderRadius: 8,
-                  background: showAiSuggestion ? `linear-gradient(135deg, ${C.primary}, #8250DF)` : C.white,
+                  background: showAiSuggestion ? `linear-gradient(135deg, ${C.primary}, #A78BFA)` : C.white,
                   border: showAiSuggestion ? 'none' : `1px solid ${C.border}`,
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
                   color: showAiSuggestion ? '#fff' : C.textSec, flexShrink: 0,
@@ -3210,16 +3409,16 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
 // ═══════════════════════════════════════════════════════════════════════════
 
 const TICKET_PRIORITY_COLORS = {
-  low:    { bg: 'rgba(0,255,136,0.1)', text: '#00ff88', accent: '#00ff88' },
+  low:    { bg: 'rgba(0,255,136,0.1)', text: '#00FFB2', accent: '#00FFB2' },
   medium: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b', accent: '#D29922' },
   high:   { bg: '#FFF1E5', text: '#BC4C00', accent: '#E16F24' },
-  urgent: { bg: 'rgba(239,68,68,0.1)', text: '#ef4444', accent: '#ef4444' },
+  urgent: { bg: 'rgba(239,68,68,0.1)', text: '#FF6B6B', accent: '#FF6B6B' },
 }
 const TICKET_STATUS_COLORS = {
-  open:        { bg: 'rgba(0,212,255,0.1)', text: '#00d4ff' },
+  open:        { bg: 'rgba(0,255,178,0.09)', text: '#00FFB2' },
   in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' },
-  pending:     { bg: 'rgba(124,58,237,0.1)', text: '#8250DF' },
-  resolved:    { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' },
+  pending:     { bg: 'rgba(124,58,237,0.1)', text: '#A78BFA' },
+  resolved:    { bg: 'rgba(0,255,136,0.1)', text: '#00FFB2' },
   closed:      { bg: 'rgba(255,255,255,0.04)', text: '#64748b' },
 }
 const DEPARTMENTS = ['sales','support','technical','billing']
@@ -3308,7 +3507,7 @@ function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, update
           <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{t.tickets}</h1>
           <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>{filtered.length} {t.tickets?.toLowerCase?.() || 'tickets'}</p>
         </div>
-        <button data-action="new-ticket" onClick={() => setShowForm(true)} style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.newTicket}</button>
+        <button data-action="new-ticket" onClick={() => setShowForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.newTicket}</button>
       </div>
 
       {/* Filters */}
@@ -3488,7 +3687,7 @@ function TicketDetailPage({ t, dir, isRTL, lang, ticket, contacts, updateTicket,
               <input value={comment} onChange={e=>setComment(e.target.value)} placeholder={t.commentPlaceholder}
                 style={{ ...inputStyle(dir), flex:1 }}
                 onKeyDown={e=>{ if(e.key==='Enter') addComment() }} />
-              <button onClick={addComment} style={makeBtn('primary', { flexShrink:0 })}>{t.addComment}</button>
+              <button onClick={addComment} className="velo-btn-primary" style={makeBtn('primary', { flexShrink:0 })}>{t.addComment}</button>
             </div>
           </div>
         </div>
@@ -3616,7 +3815,7 @@ function TicketFormModal({ t, dir, contacts, defaultContactId, defaultContactNam
       </FormField>
       <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
         <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={handleSubmit} style={makeBtn('primary')}>{t.save}</button>
+        <button onClick={handleSubmit} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
       </div>
     </Modal>
   )

@@ -1,119 +1,89 @@
-/* Velo CRM — Dark Futuristic Theme */
+/* Velo CRM — Clinical Luxury Theme */
 
 :root {
-  --bg-primary: #080c14;
-  --bg-secondary: #0d1420;
-  --bg-card: #111827;
-  --bg-card-hover: #162032;
-  --bg-input: #0f1729;
+  /* Clinical Luxury Palette */
+  --bg-primary: #07080E;
+  --bg-secondary: #0C0E1A;
+  --bg-card: #101422;
+  --bg-card-hover: #141828;
+  --bg-hover: rgba(255,255,255,0.04);
 
-  --accent-cyan: #00d4ff;
-  --accent-purple: #7c3aed;
-  --accent-green: #00ff88;
-  --accent-yellow: #f59e0b;
-  --accent-red: #ef4444;
+  --accent-primary: #00FFB2;
+  --accent-secondary: #4DA6FF;
+  --accent-blue: #4DA6FF;
+  --accent-green: #00FFB2;
+  --accent-amber: #FFB347;
+  --accent-red: #FF6B6B;
+  --accent-coral: #FF6B6B;
+  --accent-purple: #A78BFA;
 
-  --text-primary: #e2e8f0;
-  --text-secondary: #94a3b8;
-  --text-muted: #475569;
+  --text-primary: #E8EAF5;
+  --text-secondary: #7B7F9E;
+  --text-muted: #3A3D55;
 
-  --border-glow: rgba(0, 212, 255, 0.2);
-  --border-glow-purple: rgba(124, 58, 237, 0.2);
-  --border-glow-green: rgba(0, 255, 136, 0.2);
-  --card-border: rgba(0, 212, 255, 0.12);
+  --border-default: rgba(255,255,255,0.07);
+  --border-hover: rgba(255,255,255,0.14);
 
-  --font-body: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-data: 'JetBrains Mono', 'Space Mono', 'SF Mono', monospace;
+  --radius-sm: 8px;
+  --radius-md: 11px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
 
-  /* Grid pattern for backgrounds */
-  --grid-pattern: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 0h40v40H0z' fill='none'/%3E%3Cpath d='M40 0v40M0 0h40' stroke='rgba(255,255,255,0.02)' stroke-width='1'/%3E%3C/svg%3E");
+  --shadow-card: none;
+  --shadow-glow-mint: 0 0 20px rgba(0,255,178,0.15);
+  --shadow-glow-blue: 0 0 20px rgba(77,166,255,0.15);
+  --transition: all 0.18s ease;
+
+  /* Legacy aliases — keep for compatibility */
+  --bg-void: #07080E;
+  --bg-deep: #0C0E1A;
+  --bg-surface: #101422;
+  --bg-glass: rgba(12,14,26,0.85);
+
+  --accent-cyan: #00FFB2;
+
+  --border-subtle: rgba(255,255,255,0.07);
+  --border-glow: rgba(0,255,178,0.3);
+
+  --shadow-glow: 0 0 20px rgba(0,255,178,0.15);
+
+  --font-display: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-data: 'DM Sans', sans-serif;
 }
 
-/* ─── Global dark overrides ───────────────────────────────────────── */
-
+/* ─── Global ──────────────────────────────────────────────────────── */
 body {
   background: var(--bg-primary) !important;
   color: var(--text-primary) !important;
 }
 
-/* ─── Card system ─────────────────────────────────────────────────── */
+/* ─── Scrollbar ───────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(--bg-primary); }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
 
+/* ─── Card system ─────────────────────────────────────────────────── */
 .velo-card {
   background: var(--bg-card);
-  border: 1px solid rgba(0, 212, 255, 0.12);
-  border-radius: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
   color: var(--text-primary);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.03);
-  animation: veloCardIn 0.4s ease both;
+  box-shadow: none;
 }
-
-.velo-card-glow-cyan {
-  border-top: 2px solid var(--accent-cyan);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3), 0 -4px 20px rgba(0, 212, 255, 0.06);
-}
-
-.velo-card-glow-purple {
-  border-top: 2px solid var(--accent-purple);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3), 0 -4px 20px rgba(124, 58, 237, 0.06);
-}
-
-.velo-card-glow-green {
-  border-top: 2px solid var(--accent-green);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3), 0 -4px 20px rgba(0, 255, 136, 0.06);
-}
-
-.velo-card-glow-yellow {
-  border-top: 2px solid var(--accent-yellow);
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3), 0 -4px 20px rgba(245, 158, 11, 0.06);
-}
-
-/* ─── Data numbers (monospace) ────────────────────────────────────── */
 
 .velo-data {
-  font-family: var(--font-data);
+  font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.02em;
 }
 
-/* ─── Grid background ─────────────────────────────────────────────── */
-
-.velo-grid-bg {
-  background-image: var(--grid-pattern);
-  background-size: 40px 40px;
-}
-
-/* ─── Animations ──────────────────────────────────────────────────── */
-
-@keyframes veloCardIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes veloGlow {
-  0%, 100% { box-shadow: 0 0 4px rgba(0, 212, 255, 0.15); }
-  50% { box-shadow: 0 0 12px rgba(0, 212, 255, 0.25); }
-}
-
-/* Staggered card animations */
-.velo-card:nth-child(1) { animation-delay: 0s; }
-.velo-card:nth-child(2) { animation-delay: 0.06s; }
-.velo-card:nth-child(3) { animation-delay: 0.12s; }
-.velo-card:nth-child(4) { animation-delay: 0.18s; }
-.velo-card:nth-child(5) { animation-delay: 0.24s; }
-
-/* ─── Scrollbar (dark) ────────────────────────────────────────────── */
-
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg-primary); }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); }
-
 /* ─── Input / Select overrides ────────────────────────────────────── */
-
 input, textarea, select {
-  background: var(--bg-input) !important;
+  background: var(--bg-secondary) !important;
   color: var(--text-primary) !important;
-  border-color: var(--card-border) !important;
+  border-color: var(--border-default) !important;
 }
 
 input::placeholder, textarea::placeholder {
@@ -121,23 +91,75 @@ input::placeholder, textarea::placeholder {
 }
 
 input:focus, textarea:focus, select:focus {
-  border-color: var(--accent-cyan) !important;
-  box-shadow: 0 0 0 2px rgba(0, 212, 255, 0.1) !important;
+  border-color: rgba(0,255,178,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(0,255,178,0.08) !important;
   outline: none;
 }
 
 /* ─── Table overrides ─────────────────────────────────────────────── */
-
+/* Clinical Luxury spec §9 — tables:
+   - Header row: subtle bg + bottom border
+   - Header text: 11px uppercase, letter-spacing 0.06em, muted color
+   - Body row hover: subtle wash */
 table { border-collapse: collapse; }
-thead tr { background: var(--bg-secondary) !important; }
-thead th { color: var(--text-muted) !important; }
-tbody tr { border-bottom-color: var(--card-border) !important; }
+thead tr {
+  background: rgba(255,255,255,0.03) !important;
+  border-bottom: 1px solid var(--border-default) !important;
+}
+thead th {
+  color: var(--text-muted) !important;
+  font-size: 11px !important;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600 !important;
+}
+tbody tr { border-bottom: 1px solid rgba(255,255,255,0.05) !important; }
+tbody tr:hover { background: rgba(255,255,255,0.03) !important; transition: var(--transition); }
 
 /* ─── Modal overrides ─────────────────────────────────────────────── */
-
-.modal-overlay { background: rgba(0, 0, 0, 0.7) !important; }
+.modal-overlay {
+  background: rgba(0,0,0,0.7) !important;
+  backdrop-filter: blur(8px);
+}
 .modal-content {
   background: var(--bg-card) !important;
-  border: 1px solid var(--card-border) !important;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 212, 255, 0.05) !important;
+  border: 1px solid var(--border-hover) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.6) !important;
+  animation: scaleIn 0.2s ease forwards !important;
+}
+
+/* ─── Button hover affordances ───────────────────────────────────────
+   Inline-style buttons (the dominant pattern in this app) can't express
+   :hover, so these utility classes add the Clinical Luxury hover glow
+   and lift. Opt in by setting className alongside the existing style. */
+.velo-btn-primary:hover {
+  background: #00E8A0 !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0,255,178,0.3);
+}
+.velo-btn-primary:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(0,255,178,0.2);
+}
+.velo-btn-secondary:hover {
+  background: rgba(0,255,178,0.15) !important;
+}
+.velo-btn-ghost:hover {
+  background: rgba(255,255,255,0.04) !important;
+  color: #E8EAF5 !important;
+}
+.velo-btn-danger:hover {
+  background: rgba(255,107,107,0.18) !important;
+}
+
+/* ─── Card hover lift ────────────────────────────────────────────────
+   Opt-in via className='velo-card-hover'. Kept off the base `.velo-card`
+   so non-interactive cards don't animate. */
+.velo-card-hover {
+  transition: var(--transition);
+}
+.velo-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-hover) !important;
 }

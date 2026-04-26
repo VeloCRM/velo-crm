@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import DentalChart from './DentalChart'
@@ -66,21 +66,47 @@ export function MedicalHistoryTab({ contact, onUpdate, lang, dir }) {
 }
 
 // ─── Dental Chart Tab ───────────────────────────────────────────────────────
-export function DentalChartTab({ contact, onUpdate, lang }) {
+export function DentalChartTab({ contact, onUpdate, onAddToTreatmentPlan, lang }) {
   const teeth = contact._teeth || {}
   const handleUpdateTooth = (num, status) => {
     const updated = { ...teeth, [num]: status }
     onUpdate({ _teeth: updated })
   }
-  return <DentalChart teeth={teeth} onUpdateTooth={handleUpdateTooth} lang={lang} />
+  return <DentalChart teeth={teeth} onUpdateTooth={handleUpdateTooth} onAddToTreatmentPlan={onAddToTreatmentPlan} lang={lang} />
 }
 
 // ─── Treatment Plan Tab ─────────────────────────────────────────────────────
-export function TreatmentPlanTab({ contact, onUpdate, lang, dir }) {
+// `prefill` (optional): { tooth, condition } — when set, the form auto-opens
+// with the tooth number pre-filled and a suggested procedure based on the
+// diagnosis. Consumed once via `onPrefillConsumed` so it doesn't loop.
+const CONDITION_PROCEDURE = {
+  cavity: 'Filling',
+  crown: 'Crown',
+  root_canal: 'Root Canal',
+  implant: 'Implant',
+  missing: 'Implant or Bridge',
+}
+
+export function TreatmentPlanTab({ contact, onUpdate, lang, dir, prefill, onPrefillConsumed }) {
   const isRTL = lang === 'ar'
   const treatments = contact._treatments || []
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ procedure: '', tooth: '', cost: '', status: 'planned', date: '' })
+
+  // When the dental chart hands us a tooth, auto-open the form with the
+  // tooth and a suggested procedure. Consume the prefill so it doesn't loop.
+  useEffect(() => {
+    if (!prefill || !prefill.tooth) return
+    setForm({
+      procedure: CONDITION_PROCEDURE[prefill.condition] || '',
+      tooth: String(prefill.tooth),
+      cost: '',
+      status: 'planned',
+      date: '',
+    })
+    setShowForm(true)
+    if (onPrefillConsumed) onPrefillConsumed()
+  }, [prefill?.tooth, prefill?.condition])
 
   const addTreatment = () => {
     if (!form.procedure) return
@@ -90,7 +116,7 @@ export function TreatmentPlanTab({ contact, onUpdate, lang, dir }) {
     setShowForm(false)
   }
 
-  const statusColors = { planned: { bg: 'rgba(0,212,255,0.1)', text: '#00d4ff' }, in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' }, completed: { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' } }
+  const statusColors = { planned: { bg: 'rgba(0,255,178,0.1)', text: '#00FFB2' }, in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' }, completed: { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' } }
 
   return (
     <div style={{ ...card, padding: 24 }}>

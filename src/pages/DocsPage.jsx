@@ -49,7 +49,7 @@ const TOOLBAR_GROUPS = [
   ],
 ]
 
-const COLORS = ['#111827', '#DC2626', '#2563EB', '#16A34A', '#D97706', '#7C3AED', '#EC4899']
+const COLORS = ['#101422', '#DC2626', '#2563EB', '#16A34A', '#D97706', '#7C3AED', '#EC4899']
 
 function Toolbar({ editorRef, isRTL }) {
   const exec = (cmd, arg) => {
@@ -103,7 +103,7 @@ function Toolbar({ editorRef, isRTL }) {
             onClick={() => exec('foreColor', c)}
             style={{
               width: 18, height: 18, borderRadius: '50%', background: c,
-              border: c === '#111827' ? `2px solid ${C.border}` : `2px solid ${c}`,
+              border: c === '#101422' ? `2px solid ${C.border}` : `2px solid ${c}`,
               cursor: 'pointer', padding: 0,
               transition: 'transform 150ms',
             }}
@@ -241,7 +241,7 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
               style={{ ...inputStyle(dir), width: 200, [isRTL ? 'paddingRight' : 'paddingLeft']: 32 }}
             />
           </div>
-          <button type="button" onClick={createDoc} style={makeBtn('primary', { gap: 6 })}>
+          <button type="button" onClick={createDoc} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>
             {Icons.plus(14)} {isRTL ? '\u0645\u0633\u062A\u0646\u062F \u062C\u062F\u064A\u062F' : 'New Document'}
           </button>
         </div>
@@ -313,7 +313,7 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
                   style={{ ...inputStyle(dir), height: 30, fontSize: 12 }}
                 />
                 <div style={{ display: 'flex', gap: 4 }}>
-                  <button type="button" onClick={addFolder} style={makeBtn('primary', { height: 28, fontSize: 12, padding: '0 10px', flex: 1 })}>
+                  <button type="button" onClick={addFolder} className="velo-btn-primary" style={makeBtn('primary', { height: 28, fontSize: 12, padding: '0 10px', flex: 1 })}>
                     {isRTL ? '\u0625\u0636\u0627\u0641\u0629' : 'Add'}
                   </button>
                   <button type="button" onClick={() => { setAddingFolder(false); setNewFolderName(''); setNewFolderNameAr('') }} style={makeBtn('ghost', { height: 28, fontSize: 12, padding: '0 10px' })}>
@@ -484,7 +484,7 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
               <p style={{ fontSize: 13, color: C.textMuted, margin: '0 0 20px' }}>
                 {isRTL ? '\u0627\u062E\u062A\u0631 \u0645\u0633\u062A\u0646\u062F\u0627\u064B \u0645\u0646 \u0627\u0644\u0642\u0627\u0626\u0645\u0629 \u0623\u0648 \u0623\u0646\u0634\u0626 \u0645\u0633\u062A\u0646\u062F\u0627\u064B \u062C\u062F\u064A\u062F\u0627\u064B \u0644\u0644\u0628\u062F\u0621' : 'Pick a document from the list or create a new one to get started'}
               </p>
-              <button type="button" onClick={createDoc} style={makeBtn('primary', { gap: 6 })}>
+              <button type="button" onClick={createDoc} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>
                 {Icons.plus(14)} {isRTL ? '\u0645\u0633\u062A\u0646\u062F \u062C\u062F\u064A\u062F' : 'New Document'}
               </button>
             </div>
@@ -589,7 +589,7 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
             </FormField>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-              <button type="button" onClick={() => setShowLinkModal(false)} style={makeBtn('primary')}>
+              <button type="button" onClick={() => setShowLinkModal(false)} className="velo-btn-primary" style={makeBtn('primary')}>
                 {isRTL ? '\u062A\u0645' : 'Done'}
               </button>
             </div>

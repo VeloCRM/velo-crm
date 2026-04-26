@@ -1,4 +1,4 @@
-import { supabase, supabaseAdmin, isSupabaseConfigured } from './supabase'
+import { supabase, isSupabaseConfigured } from './supabase'
 
 // ─── Notes JSON helpers ────────────────────────────────────────────────────
 // Notes field stores JSON: { bio: "", timeline: [...], documents: [...] }
@@ -17,13 +17,21 @@ function parseNotesJson(notesStr) {
 
 // ─── Contacts ───────────────────────────────────────────────────────────────
 
-export async function fetchContacts() {
-  const { data, error } = await supabase
+// Supabase caps rows at 1000 per request — paginate with .range() + exact count.
+// Page size is intentionally small so the initial load is fast; callers use
+// the Load More UI to pull the next page.
+export const CONTACTS_PAGE_SIZE = 100
+
+export async function fetchContacts(offset = 0, limit = CONTACTS_PAGE_SIZE) {
+  const { data, error, count } = await supabase
     .from('contacts')
-    .select('*')
+    .select('*', { count: 'exact' })
     .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
   if (error) throw error
-  return (data || []).map(mapContact)
+  const rows = (data || []).map(mapContact)
+  const total = count ?? rows.length
+  return { rows, total, hasMore: offset + rows.length < total }
 }
 
 export async function insertContact(c) {
@@ -387,7 +395,7 @@ export async function fetchAllPayments() {
 }
 
 export async function fetchAllPaymentsAdmin() {
-  const client = supabaseAdmin || supabase
+  const client = supabase
   const [paymentsRes, profilesRes, orgsRes, contactsRes] = await Promise.all([
     client.from('payments').select('*').order('created_at', { ascending: false }),
     client.from('profiles').select('id, org_id'),
@@ -539,7 +547,7 @@ export function hydrateReferences(contacts, deals, tickets) {
 // ─── Organizations ─────────────────────────────────────────────────────────
 
 export async function fetchOrganizations() {
-  const client = supabaseAdmin || supabase
+  const client = supabase
   const { data, error } = await client.from('organizations').select('*').order('created_at', { ascending: false })
   if (error) throw error
   return data || []
@@ -548,35 +556,43 @@ export async function fetchOrganizations() {
 // ─── Impersonation (Admin) ──────────────────────────────────────────────────
 
 export async function fetchOrg(orgId) {
-  const client = supabaseAdmin || supabase
+  const client = supabase
   const { data, error } = await client.from('organizations').select('*').eq('id', orgId).single()
   if (error) throw error
   return data
 }
 
 export async function fetchOrgUserIds(orgId) {
-  const client = supabaseAdmin || supabase
+  const client = supabase
   const { data, error } = await client.from('profiles').select('id').eq('org_id', orgId)
   if (error) throw error
   return (data || []).map(p => p.id)
 }
 
-export async function fetchContactsForOrg(orgId, userIds) {
-  const client = supabaseAdmin || supabase
-  let query = client.from('contacts').select('*').order('created_at', { ascending: false })
+export async function fetchContactsForOrg(orgId, userIds, offset = 0, limit = CONTACTS_PAGE_SIZE) {
+  const client = supabase
+  let query = client
+    .from('contacts')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
   if (orgId) {
     query = query.eq('org_id', orgId)
   } else if (userIds?.length) {
     query = query.in('user_id', userIds)
+  } else {
+    return { rows: [], total: 0, hasMore: false }
   }
-  const { data, error } = await query
+  const { data, error, count } = await query
   if (error) throw error
-  return (data || []).map(mapContact)
+  const rows = (data || []).map(mapContact)
+  const total = count ?? rows.length
+  return { rows, total, hasMore: offset + rows.length < total }
 }
 
 export async function fetchDealsForOrg(userIds) {
   if (!userIds?.length) return []
-  const client = supabaseAdmin || supabase
+  const client = supabase
   const { data, error } = await client
     .from('deals')
     .select('*')
@@ -588,7 +604,7 @@ export async function fetchDealsForOrg(userIds) {
 
 export async function fetchTicketsForOrg(userIds) {
   if (!userIds?.length) return []
-  const client = supabaseAdmin || supabase
+  const client = supabase
   const { data, error } = await client
     .from('tickets')
     .select('*, ticket_comments(*)')
@@ -600,7 +616,7 @@ export async function fetchTicketsForOrg(userIds) {
 
 export async function fetchPaymentsForOrg(userIds) {
   if (!userIds?.length) return []
-  const client = supabaseAdmin || supabase
+  const client = supabase
   const { data, error } = await client
     .from('payments')
     .select('*')

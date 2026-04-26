@@ -61,7 +61,7 @@ export default function AIAssistant({ open, onClose, apiKey, context, lang, know
   const noKey = !resolvedKey
 
   return (
-    <div style={{ position:'fixed', bottom:24, [isRTL?'left':'right']:24, width:400, maxWidth:'calc(100vw - 48px)', height:540, maxHeight:'calc(100vh - 100px)', background:'#111827', borderRadius:16, border:'1px solid rgba(0,212,255,0.12)', boxShadow:'0 16px 48px rgba(0,0,0,.5), 0 0 30px rgba(0,212,255,0.05)', zIndex:1800, display:'flex', flexDirection:'column', overflow:'hidden', direction:isRTL?'rtl':'ltr' }}>
+    <div style={{ position:'fixed', bottom:24, [isRTL?'left':'right']:24, width:400, maxWidth:'calc(100vw - 48px)', height:540, maxHeight:'calc(100vh - 100px)', background:'#101422', borderRadius:16, border:'1px solid rgba(0,255,178,0.12)', boxShadow:'0 16px 48px rgba(0,0,0,.5), 0 0 30px rgba(0,255,178,0.05)', zIndex:1800, display:'flex', flexDirection:'column', overflow:'hidden', direction:isRTL?'rtl':'ltr' }}>
       {/* Header */}
       <div style={{ padding:'12px 16px', borderBottom:`1px solid ${C.border}`, display:'flex', alignItems:'center', gap:10 }}>
         <div style={{ width:32, height:32, borderRadius:8, background:`linear-gradient(135deg,${C.primary},#8250DF)`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
@@ -75,7 +75,7 @@ export default function AIAssistant({ open, onClose, apiKey, context, lang, know
       {noKey ? (
         /* ── No API key: Setup prompt ────────────────────── */
         <div style={{ flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', textAlign:'center' }}>
-          <div style={{ width:72, height:72, borderRadius:20, background:'linear-gradient(135deg, rgba(0,212,255,0.1), rgba(124,58,237,0.1))', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:20, border:'1px solid rgba(0,212,255,0.12)' }}>
+          <div style={{ width:72, height:72, borderRadius:20, background:'linear-gradient(135deg, rgba(0,255,178,0.1), rgba(124,58,237,0.1))', display:'flex', alignItems:'center', justifyContent:'center', marginBottom:20, border:'1px solid rgba(0,255,178,0.12)' }}>
             <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#8250DF" strokeWidth="1.5" strokeLinecap="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
@@ -104,7 +104,7 @@ export default function AIAssistant({ open, onClose, apiKey, context, lang, know
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             {isRTL ? 'الذهاب إلى الإعدادات' : 'Go to Settings'}
           </button>
-          <div style={{ marginTop:20, padding:'10px 14px', borderRadius:8, background:'rgba(0,212,255,0.06)', border:'1px solid rgba(0,212,255,0.1)', fontSize:11, color:'#00d4ff', lineHeight:1.5 }}>
+          <div style={{ marginTop:20, padding:'10px 14px', borderRadius:8, background:'rgba(0,255,178,0.06)', border:'1px solid rgba(0,255,178,0.1)', fontSize:11, color:'#00FFB2', lineHeight:1.5 }}>
             💡 {isRTL ? 'احصل على مفتاح API من' : 'Get your API key from'} <strong>console.anthropic.com</strong>
           </div>
         </div>
@@ -128,7 +128,7 @@ export default function AIAssistant({ open, onClose, apiKey, context, lang, know
             )}
             {messages.map((msg,i) => (
               <div key={i} style={{ display:'flex', justifyContent:msg.role==='user'?'flex-end':'flex-start' }}>
-                <div style={{ maxWidth:'85%', padding:'10px 14px', borderRadius:12, background:msg.role==='user'?'linear-gradient(135deg, #00d4ff, #0099cc)':'#0d1420', color:msg.role==='user'?'#080c14':'#e2e8f0', border:msg.role==='user'?'none':'1px solid rgba(0,212,255,0.12)', fontSize:13, lineHeight:1.5, whiteSpace:'pre-wrap' }}>{msg.content}</div>
+                <div style={{ maxWidth:'85%', padding:'10px 14px', borderRadius:12, background:msg.role==='user'?'linear-gradient(135deg, #00FFB2, #4DA6FF)':'#0C0E1A', color:msg.role==='user'?'#080c14':'#e2e8f0', border:msg.role==='user'?'none':'1px solid rgba(0,255,178,0.12)', fontSize:13, lineHeight:1.5, whiteSpace:'pre-wrap' }}>{msg.content}</div>
               </div>
             ))}
             {loading && <div style={{ display:'flex', gap:4, padding:'8px 14px' }}>{[0,1,2].map(i=><div key={i} style={{ width:8, height:8, borderRadius:'50%', background:C.primary, opacity:.4, animation:`pulse .6s ease ${i*.15}s infinite alternate` }}/>)}<style>{`@keyframes pulse { to { opacity: 1 } }`}</style></div>}

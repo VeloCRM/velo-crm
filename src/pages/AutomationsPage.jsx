@@ -47,7 +47,7 @@ export default function AutomationsPage({ t, lang, dir, isRTL }) {
           <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0, fontFamily: 'DM Sans,Inter,sans-serif' }}>{t.automations}</h1>
           <p style={{ fontSize: 13, color: C.textSec, marginTop: 4 }}>{activeCount} {t.enabled || 'active'} &middot; {totalRuns} {t.totalRuns || 'total runs'}</p>
         </div>
-        <button onClick={() => setShowForm(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {t.newAutomation}</button>
+        <button onClick={() => setShowForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {t.newAutomation}</button>
       </div>
 
       {/* Stats row */}
@@ -122,7 +122,7 @@ function AutomationFormModal({ t, dir, lang, onSave, onClose }) {
       <FormField label={lang === 'ar' ? 'تفاصيل الإجراء' : 'Action Detail'} dir={dir}><input value={form.actionDetail} onChange={e => set('actionDetail', e.target.value)} style={inputStyle(dir)} /></FormField>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
         <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={() => { if (form.name) onSave(form) }} style={makeBtn('primary')}>{t.save}</button>
+        <button onClick={() => { if (form.name) onSave(form) }} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
       </div>
     </Modal>
   )

@@ -54,7 +54,7 @@ export default function KeyboardShortcutsHelp({ open, onClose, lang }) {
             </div>
           ))}
         </div>
-        <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 8, background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.12)', fontSize: 12, color: '#00d4ff' }}>
+        <div style={{ marginTop: 16, padding: '10px 12px', borderRadius: 8, background: 'rgba(0,255,178,0.08)', border: '1px solid rgba(0,255,178,0.12)', fontSize: 12, color: '#00FFB2' }}>
           {isRTL ? 'نصيحة: اضغط ?' : 'Tip: Press ?'} {isRTL ? 'في أي وقت لعرض هذه الاختصارات' : 'anytime to show these shortcuts'}
         </div>
       </div>

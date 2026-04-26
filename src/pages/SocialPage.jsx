@@ -139,7 +139,7 @@ function PublisherTab({ lang, dir, isRTL, orgSettings }) {
           {scheduleMode==='later' && <input type="datetime-local" value={scheduleDate} onChange={e=>setScheduleDate(e.target.value)} style={inputStyle(dir)} />}
         </div>
 
-        <button type="button" onClick={handlePublish} disabled={!text.trim()||selectedPlatforms.length===0} style={{ ...makeBtn('primary',{gap:6, width:'100%', justifyContent:'center', padding:'12px', fontSize:14}), opacity:(!text.trim()||selectedPlatforms.length===0)?.5:1 }}>
+        <button type="button" onClick={handlePublish} disabled={!text.trim()||selectedPlatforms.length===0} className="velo-btn-primary" style={{ ...makeBtn('primary',{gap:6, width:'100%', justifyContent:'center', padding:'12px', fontSize:14}), opacity:(!text.trim()||selectedPlatforms.length===0)?.5:1 }}>
           {scheduleMode==='later' ? (isRTL?'جدولة المنشور':'Schedule Post') : (isRTL?'نشر الآن':'Publish Now')}
         </button>
       </div>
@@ -177,7 +177,7 @@ function PublisherTab({ lang, dir, isRTL, orgSettings }) {
           </FormField>
           <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
             <button type="button" onClick={()=>setShowAiWriter(false)} style={makeBtn('secondary')}>{isRTL?'إلغاء':'Cancel'}</button>
-            <button type="button" onClick={generateAi} disabled={!aiPrompt.trim()} style={makeBtn('primary',{gap:6})}>{isRTL?'توليد':'Generate'}</button>
+            <button type="button" onClick={generateAi} disabled={!aiPrompt.trim()} className="velo-btn-primary" style={makeBtn('primary',{gap:6})}>{isRTL?'توليد':'Generate'}</button>
           </div>
         </Modal>
       )}
@@ -330,7 +330,7 @@ function AccountsTab({ lang, dir, isRTL }) {
           {acc.connected ? (
             <span style={{ fontSize:12, fontWeight:600, padding:'4px 12px', borderRadius:6, background:C.successBg, color:C.success }}>{isRTL?'متصل':'Connected'}</span>
           ) : (
-            <button type="button" style={makeBtn('primary',{fontSize:12})}>{isRTL?'ربط':'Connect'}</button>
+            <button type="button" className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{isRTL?'ربط':'Connect'}</button>
           )}
         </div>
       ))}

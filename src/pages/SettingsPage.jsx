@@ -1,12 +1,15 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
-import { sanitizeText, sanitizeName, maskApiKey } from '../lib/sanitize'
-import { supabase } from '../lib/supabase'
+import { sanitizeText, sanitizeName, maskApiKey, isValidEmail } from '../lib/sanitize'
+import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { callClaude, clearAgencyKeyCache } from '../lib/ai'
+import { createInvitation, listPendingInvitations, revokeInvitation, buildInviteUrl } from '../lib/invitations'
+import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
 
 const TABS = [
   { id: 'organization', icon: Icons.building || Icons.globe },
+  { id: 'clinic', icon: Icons.calendar },
   { id: 'profile', icon: Icons.user },
   { id: 'team', icon: Icons.users },
   { id: 'notifications', icon: Icons.bell },
@@ -34,7 +37,7 @@ const CURRENCIES = [
   { id: 'SAR', label: 'SAR (ر.س)' },
 ]
 
-const BRAND_COLORS = ['#00d4ff','#7c3aed','#00ff88','#ef4444','#f59e0b','#E16F24','#0D9488','#6366F1','#EC4899','#e2e8f0']
+const BRAND_COLORS = ['#00FFB2','#7c3aed','#00ff88','#ef4444','#f59e0b','#E16F24','#0D9488','#6366F1','#EC4899','#e2e8f0']
 
 const SAMPLE_TEAM = [
   { id: 'tm1', name: 'Admin User', email: 'admin@velo.app', role: 'admin', avatar: 'A' },
@@ -54,7 +57,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
   const visibleTabs = TABS.filter(tb => !tb.superAdminOnly || isSuperAdmin)
 
   const tabLabels = {
-    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
+    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', clinic: lang === 'ar' ? 'العيادة' : 'Clinic', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
   }
 
   return (
@@ -79,8 +82,9 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
         {/* Tab content */}
         <div style={{ flex: 1 }} className="fade-in" key={tab}>
           {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
+          {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} />}
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} />}
-          {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} />}
+          {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
           {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} />}
           {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
@@ -97,7 +101,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
   const [form, setForm] = useState({
     name: orgSettings.name || '',
     industry: orgSettings.industry || 'general',
-    primary_color: orgSettings.primary_color || '#00d4ff',
+    primary_color: orgSettings.primary_color || '#00FFB2',
     currency: orgSettings.currency || 'USD',
     timezone: orgSettings.timezone || 'America/New_York',
   })
@@ -181,7 +185,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
 
       {/* Industry note */}
       {form.industry === 'dental' && (
-        <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(0,212,255,0.08)', border: '1px solid #54AEFF44', marginBottom: 20, fontSize: 13, color: '#00d4ff', lineHeight: 1.5 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(0,255,178,0.08)', border: '1px solid #54AEFF44', marginBottom: 20, fontSize: 13, color: '#00FFB2', lineHeight: 1.5 }}>
           🦷 {lang === 'ar' ? 'وضع عيادة الأسنان مفعّل — ستظهر "المرضى" بدلاً من "جهات الاتصال" مع تبويبات المخطط الطبي والعلاجات والأشعة.' : 'Dental mode active — "Patients" replaces "Contacts" with Medical History, Dental Chart, Treatments, Prescriptions, and X-Rays tabs.'}
         </div>
       )}
@@ -244,21 +248,104 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
         </FormField>
       </div>
       <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <button style={makeBtn('primary')}>{t.saveChanges}</button>
+        <button className="velo-btn-primary" style={makeBtn('primary')}>{t.saveChanges}</button>
       </div>
     </div>
   )
 }
 
-function TeamTab({ t, lang, dir, isRTL }) {
+function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
   const [team, setTeam] = useState(() => isSupabaseConfigured() ? [] : SAMPLE_TEAM)
   const [inviteEmail, setInviteEmail] = useState('')
-  const [inviteRole, setInviteRole] = useState('editor')
+  const [inviteRole, setInviteRole] = useState('receptionist')
+  const [inviting, setInviting] = useState(false)
+  const [pending, setPending] = useState([])
+  const [inviteLink, setInviteLink] = useState(null) // { url, email }
+  const [copied, setCopied] = useState(false)
 
-  const invite = () => {
-    if (!inviteEmail.trim()) return
-    setTeam(prev => [...prev, { id: `tm${Date.now()}`, name: inviteEmail.split('@')[0], email: inviteEmail, role: inviteRole, avatar: inviteEmail.charAt(0).toUpperCase() }])
-    setInviteEmail('')
+  const orgId = orgSettings?.id || null
+
+  // Load real team members + pending invites from Supabase
+  useEffect(() => {
+    if (!isSupabaseConfigured() || !orgId) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, role')
+          .eq('org_id', orgId)
+        if (cancelled) return
+        setTeam((profiles || []).map(p => ({
+          id: p.id,
+          name: p.full_name || (p.email || '').split('@')[0] || 'Member',
+          email: p.email || '',
+          role: p.role || 'editor',
+          avatar: (p.full_name || p.email || 'M').charAt(0).toUpperCase(),
+        })))
+        const invites = await listPendingInvitations(orgId)
+        if (!cancelled) setPending(invites)
+      } catch (err) {
+        if (!cancelled) console.error('Team load error:', err)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [orgId])
+
+  const notify = (msg, type = 'success') => {
+    if (toast) toast(msg, type)
+  }
+
+  const invite = async () => {
+    if (inviting) return
+    const email = inviteEmail.trim().toLowerCase()
+    if (!email) return
+    if (!isValidEmail(email)) {
+      notify(isRTL ? 'البريد الإلكتروني غير صالح' : 'Invalid email address', 'error')
+      return
+    }
+    if (!orgId) {
+      notify(isRTL ? 'لم يتم العثور على المؤسسة' : 'Organization not found', 'error')
+      return
+    }
+    setInviting(true)
+    try {
+      const row = await createInvitation({ orgId, email, role: inviteRole })
+      const url = buildInviteUrl(row.token, email)
+      setInviteLink({ url, email })
+      setPending(prev => [row, ...prev])
+      setInviteEmail('')
+      notify(isRTL ? 'تم إنشاء رابط الدعوة' : 'Invitation link created')
+    } catch (err) {
+      console.error('Create invitation error:', err)
+      notify(isRTL ? 'فشل إنشاء الدعوة' : 'Failed to create invitation', 'error')
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  const revoke = async (id) => {
+    try {
+      await revokeInvitation(id)
+      setPending(prev => prev.filter(p => p.id !== id))
+      notify(isRTL ? 'تم إلغاء الدعوة' : 'Invitation revoked')
+    } catch (err) {
+      console.error('Revoke invitation error:', err)
+      notify(isRTL ? 'فشل الإلغاء' : 'Failed to revoke', 'error')
+    }
+  }
+
+  const copyLink = async () => {
+    if (!inviteLink?.url) return
+    try {
+      await navigator.clipboard.writeText(inviteLink.url)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // Fallback: select the input so user can copy manually.
+      const el = document.getElementById('velo-invite-link-input')
+      if (el && el.select) { el.select() }
+    }
   }
 
   return (
@@ -267,15 +354,95 @@ function TeamTab({ t, lang, dir, isRTL }) {
       <div style={{ ...card, padding: 20, marginBottom: 20 }}>
         <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>{t.inviteMember}</h2>
         <div style={{ display: 'flex', gap: 10 }}>
-          <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} placeholder="email@company.com" style={{ ...inputStyle(dir), flex: 1 }} onKeyDown={e => e.key === 'Enter' && invite()} />
-          <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ ...selectStyle(dir), width: 120 }}>
-            <option value="admin">{t.admin}</option>
-            <option value="editor">{t.editor}</option>
-            <option value="viewer">{t.viewer}</option>
+          <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} type="email" maxLength={255} placeholder="email@company.com" style={{ ...inputStyle(dir), flex: 1 }} onKeyDown={e => e.key === 'Enter' && invite()} />
+          <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ ...selectStyle(dir), width: 160 }}>
+            {ROLES.map(r => (
+              <option key={r} value={r}>
+                {(ROLE_LABELS[lang] || ROLE_LABELS.en)[r]}
+              </option>
+            ))}
           </select>
-          <button onClick={invite} style={makeBtn('primary')}>{t.inviteMember}</button>
+          <button onClick={invite} disabled={inviting} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: inviting ? 0.6 : 1, cursor: inviting ? 'wait' : 'pointer' }}>
+            {inviting ? (isRTL ? '...' : '…') : t.inviteMember}
+          </button>
         </div>
+        <p style={{ fontSize: 11, color: C.textMuted, margin: '10px 0 0' }}>
+          <strong style={{ color: C.textSec }}>
+            {(ROLE_LABELS[lang] || ROLE_LABELS.en)[inviteRole]}
+          </strong>
+          {' — '}
+          {(ROLE_DESCRIPTIONS[lang] || ROLE_DESCRIPTIONS.en)[inviteRole]}
+        </p>
+        <p style={{ fontSize: 11, color: C.textMuted, margin: '6px 0 0' }}>
+          {isRTL
+            ? 'سيتم إنشاء رابط دعوة يمكنك نسخه وإرساله يدوياً (واتساب، بريد إلكتروني).'
+            : 'Creates a copyable invite link you can send manually (WhatsApp, email, etc.).'}
+        </p>
       </div>
+
+      {/* Invite link modal */}
+      {inviteLink && (
+        <div
+          onClick={() => setInviteLink(null)}
+          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:16 }}
+        >
+          <div onClick={e => e.stopPropagation()} style={{ ...card, padding:24, maxWidth:560, width:'100%', direction:dir }}>
+            <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 8px' }}>
+              {isRTL ? 'رابط الدعوة جاهز' : 'Invitation link ready'}
+            </h3>
+            <p style={{ fontSize:12, color:C.textMuted, margin:'0 0 14px' }}>
+              {isRTL
+                ? `أرسل هذا الرابط إلى ${inviteLink.email} عبر واتساب أو البريد الإلكتروني. صالح لمدة 48 ساعة.`
+                : `Send this link to ${inviteLink.email} via WhatsApp or email. Expires in 48 hours.`}
+            </p>
+            <div style={{ display:'flex', gap:8 }}>
+              <input
+                id="velo-invite-link-input"
+                readOnly
+                value={inviteLink.url}
+                onFocus={e => e.target.select()}
+                style={{ ...inputStyle(dir), flex:1, fontFamily:'monospace', fontSize:12 }}
+              />
+              <button onClick={copyLink} className="velo-btn-primary" style={makeBtn('primary')}>
+                {copied ? (isRTL ? 'تم النسخ' : 'Copied!') : (isRTL ? 'نسخ' : 'Copy')}
+              </button>
+            </div>
+            <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16 }}>
+              <button onClick={() => setInviteLink(null)} style={makeBtn('secondary')}>
+                {isRTL ? 'إغلاق' : 'Done'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pending invitations */}
+      {pending.length > 0 && (
+        <div style={{ ...card, overflow: 'hidden', marginBottom: 20 }}>
+          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
+            <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>
+              {isRTL ? `دعوات معلقة (${pending.length})` : `Pending invitations (${pending.length})`}
+            </h3>
+          </div>
+          {pending.map(inv => {
+            const url = buildInviteUrl(inv.token, inv.email)
+            return (
+              <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
+                <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.bg, color: C.textSec, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>{(inv.email || '?').charAt(0).toUpperCase()}</div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{inv.email}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{url}</div>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: C.bg, color: C.textSec }}>{(ROLE_LABELS[lang] || ROLE_LABELS.en)[inv.role] || inv.role}</span>
+                <button onClick={() => setInviteLink({ url, email: inv.email })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.primary, fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
+                  {isRTL ? 'نسخ الرابط' : 'Copy link'}
+                </button>
+                <button onClick={() => revoke(inv.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }} title={isRTL ? 'إلغاء' : 'Revoke'}>{Icons.trash(14)}</button>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* Team list */}
       <div style={{ ...card, overflow: 'hidden' }}>
@@ -289,7 +456,7 @@ function TeamTab({ t, lang, dir, isRTL }) {
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{member.name}</div>
               <div style={{ fontSize: 12, color: C.textMuted }}>{member.email}</div>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: member.role === 'admin' ? C.primaryBg : C.bg, color: member.role === 'admin' ? C.primary : C.textSec, textTransform: 'capitalize' }}>{t[member.role] || member.role}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: member.role === 'admin' ? C.primaryBg : C.bg, color: member.role === 'admin' ? C.primary : C.textSec }}>{(ROLE_LABELS[lang] || ROLE_LABELS.en)[member.role] || member.role}</span>
             {member.role !== 'admin' && (
               <button onClick={() => setTeam(prev => prev.filter(m => m.id !== member.id))} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{Icons.trash(14)}</button>
             )}
@@ -338,7 +505,7 @@ function NotificationsTab({ t, lang, dir }) {
         </div>
       ))}
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button style={makeBtn('primary')}>{t.saveChanges}</button>
+        <button className="velo-btn-primary" style={makeBtn('primary')}>{t.saveChanges}</button>
       </div>
     </div>
   )
@@ -363,7 +530,7 @@ function BillingTab({ t, lang, dir }) {
             </div>
             <div style={{ fontSize: 32, fontWeight: 800, color: C.text }}>$49<span style={{ fontSize: 14, fontWeight: 500, color: C.textMuted }}>{t.perMonth}</span></div>
           </div>
-          <button style={makeBtn('primary', { gap: 6 })}>{Icons.trendUp(14)} {t.upgradeNow}</button>
+          <button className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.trendUp(14)} {t.upgradeNow}</button>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginTop: 20 }}>
@@ -474,7 +641,7 @@ function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
       <div style={{ ...card, padding: 24, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{ar ? 'مفاتيح API الخاصة بك' : 'Your API Keys'}</h2>
-          <button onClick={() => setShowNewForm(true)} style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {ar ? 'إنشاء مفتاح' : 'Generate Key'}</button>
+          <button onClick={() => setShowNewForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {ar ? 'إنشاء مفتاح' : 'Generate Key'}</button>
         </div>
         <p style={{ fontSize: 13, color: C.textSec, marginBottom: 16, lineHeight: 1.5 }}>
           {ar ? 'استخدم هذه المفاتيح للوصول إلى Velo API من التطبيقات الخارجية.' : 'Use these keys to access Velo API from external applications.'}
@@ -484,7 +651,7 @@ function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
         {showNewForm && (
           <div style={{ display: 'flex', gap: 8, marginBottom: 16, padding: 14, borderRadius: 10, background: C.bg, border: `1px solid ${C.border}` }}>
             <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder={ar ? 'اسم المفتاح (مثال: تطبيق الموبايل)' : 'Key name (e.g. Mobile App)'} style={{ ...inputStyle(dir), flex: 1 }} onKeyDown={e => e.key === 'Enter' && generateKey()} />
-            <button onClick={generateKey} style={makeBtn('primary', { fontSize: 12 })}>{ar ? 'إنشاء' : 'Generate'}</button>
+            <button onClick={generateKey} className="velo-btn-primary" style={makeBtn('primary', { fontSize: 12 })}>{ar ? 'إنشاء' : 'Generate'}</button>
             <button onClick={() => setShowNewForm(false)} style={makeBtn('secondary', { fontSize: 12 })}>{ar ? 'إلغاء' : 'Cancel'}</button>
           </div>
         )}
@@ -801,19 +968,19 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
         <WaStep num={1} title={lang==='ar'?'إنشاء حساب Meta Business':'Create Meta Business Account'} active={waStep===1}>
           <p style={{ fontSize:12, color:C.textSec, lineHeight:1.6, marginBottom:8 }}>{lang==='ar'?'أنشئ حساب أعمال على Meta وقم بإعداد WhatsApp Cloud API':'Create a business account on Meta and set up WhatsApp Cloud API'}</p>
           <a href="https://business.facebook.com" target="_blank" rel="noopener noreferrer" style={{ ...makeBtn('secondary',{gap:6,fontSize:12}), textDecoration:'none', display:'inline-flex' }}>{Icons.externalLink(13)} business.facebook.com</a>
-          <button type="button" onClick={()=>setWaStep(2)} style={{ ...makeBtn('primary',{fontSize:12}), marginLeft:8 }}>{lang==='ar'?'التالي':'Next'}</button>
+          <button type="button" onClick={()=>setWaStep(2)} className="velo-btn-primary" style={{ ...makeBtn('primary',{fontSize:12}), marginLeft:8 }}>{lang==='ar'?'التالي':'Next'}</button>
         </WaStep>
         <WaStep num={2} title={lang==='ar'?'رقم الهاتف':'Phone Number ID'} active={waStep===2}>
           <FormField label="Phone Number ID" dir={dir}><input value={wa.phone_id} onChange={e=>setWa(p=>({...p,phone_id:e.target.value}))} placeholder="123456789012345" style={inputStyle(dir)} /></FormField>
-          <button type="button" onClick={()=>setWaStep(3)} disabled={!wa.phone_id} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+          <button type="button" onClick={()=>setWaStep(3)} disabled={!wa.phone_id} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
         </WaStep>
         <WaStep num={3} title={lang==='ar'?'رمز الوصول':'Access Token'} active={waStep===3}>
           <FormField label="Permanent Access Token" dir={dir}><input value={wa.token} onChange={e=>setWa(p=>({...p,token:e.target.value}))} type="password" placeholder="EAAx..." style={inputStyle(dir)} /></FormField>
-          <button type="button" onClick={()=>setWaStep(4)} disabled={!wa.token} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+          <button type="button" onClick={()=>setWaStep(4)} disabled={!wa.token} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
         </WaStep>
         <WaStep num={4} title={lang==='ar'?'معرف حساب WhatsApp Business':'WABA ID'} active={waStep===4}>
           <FormField label="WhatsApp Business Account ID" dir={dir}><input value={wa.waba_id} onChange={e=>setWa(p=>({...p,waba_id:e.target.value}))} placeholder="123456789012345" style={inputStyle(dir)} /></FormField>
-          <button type="button" onClick={()=>setWaStep(5)} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+          <button type="button" onClick={()=>setWaStep(5)} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
         </WaStep>
         <WaStep num={5} title={lang==='ar'?'إعداد Webhook':'Webhook Setup'} active={waStep===5}>
           <div style={{ padding:'10px 14px', borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, marginBottom:12 }}>
@@ -823,7 +990,7 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
               <button type="button" onClick={()=>navigator.clipboard?.writeText(webhookUrl)} style={makeBtn('secondary',{fontSize:10,padding:'4px 8px'})}>{Icons.copy(12)}</button>
             </div>
           </div>
-          <button type="button" onClick={()=>setWaStep(6)} style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+          <button type="button" onClick={()=>setWaStep(6)} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
         </WaStep>
         <WaStep num={6} title={lang==='ar'?'رمز التحقق':'Verify Token'} active={waStep===6}>
           <div style={{ padding:'10px 14px', borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, marginBottom:12 }}>
@@ -923,7 +1090,7 @@ function AgencyAITab({ lang, dir, toast }) {
     <div>
       <div style={{ ...card, padding: 24, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #00d4ff, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #00FFB2, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
@@ -938,7 +1105,7 @@ function AgencyAITab({ lang, dir, toast }) {
           </div>
         </div>
 
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,212,255,0.06)', border: '1px solid rgba(0,212,255,0.1)', fontSize: 12, color: '#00d4ff', lineHeight: 1.5, marginBottom: 20 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,255,178,0.06)', border: '1px solid rgba(0,255,178,0.1)', fontSize: 12, color: '#00FFB2', lineHeight: 1.5, marginBottom: 20 }}>
           {isRTL
             ? 'هذا المفتاح يُستخدم كمفتاح افتراضي لجميع المؤسسات التي ليس لديها مفتاح خاص. يتيح لك تشغيل AI Growth Agent والمساعد الذكي لجميع العملاء.'
             : 'This key serves as the default for all organizations without their own key. It powers the AI Growth Agent and AI Assistant for all clients.'}
@@ -993,7 +1160,7 @@ function AgencyAITab({ lang, dir, toast }) {
               <button
                 onClick={handleSave}
                 disabled={saving || !apiKey.trim()}
-                style={makeBtn('primary', { gap: 6, opacity: saving || !apiKey.trim() ? 0.5 : 1 })}
+                className="velo-btn-primary" style={makeBtn('primary', { gap: 6, opacity: saving || !apiKey.trim() ? 0.5 : 1 })}
               >
                 {saving
                   ? (isRTL ? 'جاري الحفظ...' : 'Saving...')
@@ -1021,6 +1188,307 @@ function AgencyAITab({ lang, dir, toast }) {
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLINIC TAB — Manage Doctors, Chairs, Working Hours
+// ═══════════════════════════════════════════════════════════════════════════
+const DOC_COLORS = ['#4DA6FF','#00FFB2','#a855f7','#f59e0b','#ef4444','#6366f1','#ec4899','#14b8a6','#ff6b6b','#1dd1a1']
+const SPECIALTIES = ['General Dentistry','Orthodontics','Cosmetic Dentistry','Periodontics','Endodontics','Oral Surgery','Pediatric Dentistry','Prosthodontics']
+const WEEK_DAYS_EN = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday']
+const WEEK_DAYS_AR = ['السبت','الاحد','الاثنين','الثلاثاء','الاربعاء','الخميس','الجمعة']
+
+function ClinicTab({ lang, dir, isRTL, toast }) {
+  const [orgId, setOrgId] = useState(null)
+  const [doctors, setDoctors] = useState([])
+  const [chairs, setChairs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editDoc, setEditDoc] = useState(null)
+  const [editChair, setEditChair] = useState(null)
+  const [showDocForm, setShowDocForm] = useState(false)
+  const [showChairForm, setShowChairForm] = useState(false)
+  const [workingHours, setWorkingHours] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('velo_clinic_hours') || 'null') } catch { return null }
+  })
+
+  const defaultHours = { open: '08:00', close: '21:00', daysOff: [6] }
+  const hours = workingHours || defaultHours
+
+  useEffect(() => {
+    ;(async () => {
+      if (!supabase) return setLoading(false)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return setLoading(false)
+      const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
+      if (!profile?.org_id) return setLoading(false)
+      setOrgId(profile.org_id)
+      await fetchAll(profile.org_id)
+    })()
+  }, [])
+
+  const fetchAll = async (oid) => {
+    setLoading(true)
+    const [{ data: docs }, { data: chs }] = await Promise.all([
+      supabase.from('doctors').select('*').eq('org_id', oid).order('created_at'),
+      supabase.from('chairs').select('*').eq('org_id', oid).order('name'),
+    ])
+    setDoctors(docs || [])
+    setChairs(chs || [])
+    setLoading(false)
+  }
+
+  const saveDoctor = async (form) => {
+    if (editDoc?.id) {
+      const { error } = await supabase.from('doctors').update(form).eq('id', editDoc.id)
+      if (error) return toast?.('Error: ' + error.message, 'error')
+    } else {
+      const { error } = await supabase.from('doctors').insert({ ...form, org_id: orgId })
+      if (error) return toast?.('Error: ' + error.message, 'error')
+    }
+    toast?.(editDoc?.id ? 'Doctor updated' : 'Doctor added', 'success')
+    setShowDocForm(false); setEditDoc(null)
+    await fetchAll(orgId)
+  }
+
+  const deleteDoctor = async (id) => {
+    const { error } = await supabase.from('doctors').delete().eq('id', id)
+    if (error) return toast?.('Error: ' + error.message, 'error')
+    toast?.('Doctor deleted', 'success')
+    await fetchAll(orgId)
+  }
+
+  const saveChair = async (form) => {
+    if (editChair?.id) {
+      const { error } = await supabase.from('chairs').update(form).eq('id', editChair.id)
+      if (error) return toast?.('Error: ' + error.message, 'error')
+    } else {
+      const { error } = await supabase.from('chairs').insert({ ...form, org_id: orgId })
+      if (error) return toast?.('Error: ' + error.message, 'error')
+    }
+    toast?.(editChair?.id ? 'Chair updated' : 'Chair added', 'success')
+    setShowChairForm(false); setEditChair(null)
+    await fetchAll(orgId)
+  }
+
+  const deleteChair = async (id) => {
+    const { error } = await supabase.from('chairs').delete().eq('id', id)
+    if (error) return toast?.('Error: ' + error.message, 'error')
+    toast?.('Chair deleted', 'success')
+    await fetchAll(orgId)
+  }
+
+  const saveHours = (h) => {
+    setWorkingHours(h)
+    localStorage.setItem('velo_clinic_hours', JSON.stringify(h))
+    toast?.('Working hours saved', 'success')
+  }
+
+  if (loading) return <div style={{ ...card, padding: 40, textAlign: 'center', color: C.textMuted }}>Loading...</div>
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* Doctors */}
+      <div style={{ ...card, padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'الاطباء' : 'Doctors'}</h3>
+            <p style={{ fontSize: 13, color: C.textSec, margin: '4px 0 0' }}>{isRTL ? 'ادارة اطباء العيادة' : 'Manage clinic doctors and providers'}</p>
+          </div>
+          <button onClick={() => { setEditDoc(null); setShowDocForm(true) }} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.plus(14)} {isRTL ? 'اضافة طبيب' : 'Add Doctor'}</button>
+        </div>
+
+        {doctors.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13, border: '1px dashed var(--border-subtle)', borderRadius: 10 }}>
+            {isRTL ? 'لا يوجد اطباء. اضف طبيبك الاول.' : 'No doctors yet. Add your first doctor.'}
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {doctors.map(doc => (
+              <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--bg-void)', transition: 'border-color 0.15s' }}
+                onMouseEnter={e => e.currentTarget.style.borderColor = doc.color}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${doc.color}20`, border: `2px solid ${doc.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: doc.color, fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
+                  {doc.name?.charAt(0)}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{doc.name}</div>
+                  <div style={{ fontSize: 12, color: doc.color, fontWeight: 500, marginTop: 1 }}>{doc.specialty}</div>
+                  {doc.phone && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{doc.phone}</div>}
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 10, background: doc.is_active ? 'rgba(0,255,178,0.1)' : 'rgba(255,107,107,0.1)', color: doc.is_active ? '#00FFB2' : '#FF6B6B' }}>
+                  {doc.is_active ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'غير نشط' : 'Inactive')}
+                </span>
+                <button onClick={() => { setEditDoc(doc); setShowDocForm(true) }} style={{ ...makeBtn('ghost'), padding: 6, height: 30 }}>{Icons.edit(14)}</button>
+                <button onClick={() => deleteDoctor(doc.id)} style={{ ...makeBtn('ghost'), padding: 6, height: 30, color: '#FF6B6B' }}>{Icons.trash(14)}</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showDocForm && <DoctorForm doc={editDoc} onSave={saveDoctor} onCancel={() => { setShowDocForm(false); setEditDoc(null) }} dir={dir} isRTL={isRTL} />}
+      </div>
+
+      {/* Chairs */}
+      <div style={{ ...card, padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+          <div>
+            <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'الكراسي' : 'Chairs / Rooms'}</h3>
+            <p style={{ fontSize: 13, color: C.textSec, margin: '4px 0 0' }}>{isRTL ? 'ادارة كراسي وغرف العيادة' : 'Manage treatment chairs and rooms'}</p>
+          </div>
+          <button onClick={() => { setEditChair(null); setShowChairForm(true) }} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.plus(14)} {isRTL ? 'اضافة كرسي' : 'Add Chair'}</button>
+        </div>
+
+        {chairs.length === 0 ? (
+          <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13, border: '1px dashed var(--border-subtle)', borderRadius: 10 }}>
+            {isRTL ? 'لا توجد كراسي. اضف كرسيك الاول.' : 'No chairs yet. Add your first chair.'}
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 10 }}>
+            {chairs.map(ch => (
+              <div key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--bg-void)' }}>
+                <div style={{ width: 14, height: 14, borderRadius: 4, background: ch.color, flexShrink: 0 }} />
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: C.text }}>{ch.name}</span>
+                <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 8, background: ch.is_active ? 'rgba(0,255,178,0.1)' : 'rgba(255,107,107,0.1)', color: ch.is_active ? '#00FFB2' : '#FF6B6B' }}>
+                  {ch.is_active ? 'ON' : 'OFF'}
+                </span>
+                <button onClick={() => { setEditChair(ch); setShowChairForm(true) }} style={{ ...makeBtn('ghost'), padding: 4, height: 26 }}>{Icons.edit(13)}</button>
+                <button onClick={() => deleteChair(ch.id)} style={{ ...makeBtn('ghost'), padding: 4, height: 26, color: '#FF6B6B' }}>{Icons.trash(13)}</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {showChairForm && <ChairForm ch={editChair} onSave={saveChair} onCancel={() => { setShowChairForm(false); setEditChair(null) }} dir={dir} isRTL={isRTL} />}
+      </div>
+
+      {/* Working Hours */}
+      <div style={{ ...card, padding: 24 }}>
+        <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>{isRTL ? 'ساعات العمل' : 'Working Hours'}</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20, maxWidth: 400 }}>
+          <FormField label={isRTL ? 'وقت الفتح' : 'Open Time'} dir={dir}>
+            <input type="time" value={hours.open} onChange={e => saveHours({ ...hours, open: e.target.value })} style={inputStyle(dir)} />
+          </FormField>
+          <FormField label={isRTL ? 'وقت الاغلاق' : 'Close Time'} dir={dir}>
+            <input type="time" value={hours.close} onChange={e => saveHours({ ...hours, close: e.target.value })} style={inputStyle(dir)} />
+          </FormField>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
+          {isRTL ? 'ايام العطلة' : 'Days Off'}
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {(isRTL ? WEEK_DAYS_AR : WEEK_DAYS_EN).map((day, i) => {
+            const isOff = hours.daysOff?.includes(i)
+            return (
+              <button key={i} onClick={() => {
+                const next = isOff ? hours.daysOff.filter(d => d !== i) : [...(hours.daysOff || []), i]
+                saveHours({ ...hours, daysOff: next })
+              }}
+                style={{
+                  padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                  border: isOff ? '1px solid rgba(255,107,107,0.3)' : '1px solid var(--border-subtle)',
+                  background: isOff ? 'rgba(255,107,107,0.08)' : 'transparent',
+                  color: isOff ? '#FF6B6B' : C.text,
+                  transition: 'all 0.15s',
+                }}>
+                {day}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
+  const [form, setForm] = useState({
+    name: doc?.name || '',
+    specialty: doc?.specialty || 'General Dentistry',
+    color: doc?.color || '#4DA6FF',
+    phone: doc?.phone || '',
+    is_active: doc?.is_active ?? true,
+  })
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  return (
+    <div style={{ marginTop: 16, padding: 20, borderRadius: 12, border: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <FormField label={isRTL ? 'الاسم' : 'Name'} dir={dir}>
+          <input value={form.name} onChange={e => set('name', e.target.value)} style={inputStyle(dir)} placeholder="Dr. ..." />
+        </FormField>
+        <FormField label={isRTL ? 'التخصص' : 'Specialty'} dir={dir}>
+          <select value={form.specialty} onChange={e => set('specialty', e.target.value)} style={selectStyle(dir)}>
+            {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </FormField>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <FormField label={isRTL ? 'الهاتف' : 'Phone'} dir={dir}>
+          <input value={form.phone} onChange={e => set('phone', e.target.value)} style={inputStyle(dir)} placeholder="+964 ..." />
+        </FormField>
+        <FormField label={isRTL ? 'اللون' : 'Color'} dir={dir}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 4 }}>
+            {DOC_COLORS.map(c => (
+              <div key={c} onClick={() => set('color', c)}
+                style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: form.color === c ? '3px solid #fff' : '3px solid transparent', boxShadow: form.color === c ? `0 0 0 2px ${c}` : 'none', transition: 'all 0.15s' }} />
+            ))}
+          </div>
+        </FormField>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: C.text, fontWeight: 500 }}>
+          <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} style={{ accentColor: '#00FFB2' }} />
+          {isRTL ? 'نشط' : 'Active'}
+        </label>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onCancel} style={makeBtn('secondary')}>{isRTL ? 'الغاء' : 'Cancel'}</button>
+        <button onClick={() => { if (form.name.trim()) onSave(form) }} disabled={!form.name.trim()} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: form.name.trim() ? 1 : 0.5 }}>
+          {doc?.id ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'اضافة' : 'Add')}
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ChairForm({ ch, onSave, onCancel, dir, isRTL }) {
+  const [form, setForm] = useState({
+    name: ch?.name || '',
+    color: ch?.color || '#00FFB2',
+    is_active: ch?.is_active ?? true,
+  })
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  return (
+    <div style={{ marginTop: 16, padding: 20, borderRadius: 12, border: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <FormField label={isRTL ? 'الاسم' : 'Name'} dir={dir}>
+          <input value={form.name} onChange={e => set('name', e.target.value)} style={inputStyle(dir)} placeholder="Chair 1, Room A..." />
+        </FormField>
+        <FormField label={isRTL ? 'اللون' : 'Color'} dir={dir}>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 4 }}>
+            {DOC_COLORS.map(c => (
+              <div key={c} onClick={() => set('color', c)}
+                style={{ width: 28, height: 28, borderRadius: 6, background: c, cursor: 'pointer', border: form.color === c ? '3px solid #fff' : '3px solid transparent', boxShadow: form.color === c ? `0 0 0 2px ${c}` : 'none', transition: 'all 0.15s' }} />
+            ))}
+          </div>
+        </FormField>
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 12 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: C.text, fontWeight: 500 }}>
+          <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} style={{ accentColor: '#00FFB2' }} />
+          {isRTL ? 'نشط' : 'Active'}
+        </label>
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button onClick={onCancel} style={makeBtn('secondary')}>{isRTL ? 'الغاء' : 'Cancel'}</button>
+        <button onClick={() => { if (form.name.trim()) onSave(form) }} disabled={!form.name.trim()} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: form.name.trim() ? 1 : 0.5 }}>
+          {ch?.id ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'اضافة' : 'Add')}
+        </button>
       </div>
     </div>
   )
