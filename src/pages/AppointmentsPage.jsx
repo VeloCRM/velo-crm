@@ -4,7 +4,6 @@ import { Icons, Modal, FormField, inputStyle, selectStyle } from '../components/
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
   SAMPLE_DENTAL_DOCTORS,
-  SAMPLE_DENTAL_CHAIRS,
   getSampleDentalAppointmentsWeek,
 } from '../sampleData'
 
@@ -43,8 +42,8 @@ const HEADER_H = 44
 const LABELS = {
   en: {
     today: 'Today', day: 'Day', week: 'Week', newApt: '+ New Appointment',
-    doctors: 'Doctors', chairs: 'Chairs', patient: 'Patient', doctor: 'Doctor',
-    chair: 'Chair', date: 'Date', startTime: 'Start Time', duration: 'Duration',
+    doctors: 'Doctors', patient: 'Patient', doctor: 'Doctor',
+    date: 'Date', startTime: 'Start Time', duration: 'Duration',
     endTime: 'End Time', type: 'Type', price: 'Price', notes: 'Notes',
     status: 'Status', save: 'Save', cancel: 'Cancel', confirm: 'Confirm',
     complete: 'Complete', reschedule: 'Reschedule', delete: 'Delete',
@@ -58,8 +57,8 @@ const LABELS = {
   },
   ar: {
     today: 'اليوم', day: 'يوم', week: 'اسبوع', newApt: '+ موعد جديد',
-    doctors: 'الاطباء', chairs: 'الكراسي', patient: 'المريض', doctor: 'الطبيب',
-    chair: 'الكرسي', date: 'التاريخ', startTime: 'وقت البدء', duration: 'المدة',
+    doctors: 'الاطباء', patient: 'المريض', doctor: 'الطبيب',
+    date: 'التاريخ', startTime: 'وقت البدء', duration: 'المدة',
     endTime: 'وقت الانتهاء', type: 'النوع', price: 'السعر', notes: 'ملاحظات',
     status: 'الحالة', save: 'حفظ', cancel: 'الغاء', confirm: 'تاكيد',
     complete: 'اكمال', reschedule: 'اعادة جدولة', delete: 'حذف',
@@ -106,11 +105,9 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
   const [currentDate, setCurrentDate] = useState(() => { const d = new Date(); d.setHours(0,0,0,0); return d })
   const [appointments, setAppointments] = useState([])
   const [doctors, setDoctors] = useState([])
-  const [chairs, setChairs] = useState([])
   const [loading, setLoading] = useState(true)
   const [orgId, setOrgId] = useState(null)
   const [hiddenDoctors, setHiddenDoctors] = useState(new Set())
-  const [hiddenChairs, setHiddenChairs] = useState(new Set())
   const [filterDoctor, setFilterDoctor] = useState('all')
   const [selectedApt, setSelectedApt] = useState(null)
   const [showModal, setShowModal] = useState(false)
@@ -118,12 +115,11 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
   const [editApt, setEditApt] = useState(null)
   const scrollRef = useRef(null)
 
-  // ─── Fetch org, doctors, chairs ──────────────────────────────────────────
+  // ─── Fetch org, doctors ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isSupabaseConfigured()) {
       setOrgId('demo-org')
       setDoctors(SAMPLE_DENTAL_DOCTORS)
-      setChairs(SAMPLE_DENTAL_CHAIRS)
       return
     }
     ;(async () => {
@@ -132,12 +128,15 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
       const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
       if (!profile?.org_id) return
       setOrgId(profile.org_id)
-      const [{ data: docs }, { data: chs }] = await Promise.all([
-        supabase.from('doctors').select('*').eq('org_id', profile.org_id).eq('is_active', true).order('name'),
-        supabase.from('chairs').select('*').eq('org_id', profile.org_id).eq('is_active', true).order('name'),
-      ])
+      const { data: docs, error: docsError } = await supabase
+        .from('profiles')
+        .select('id, full_name, color, specialization, role, is_active')
+        .eq('org_id', profile.org_id)
+        .eq('role', 'doctor')
+        .eq('is_active', true)
+        .order('full_name')
+      if (docsError) console.warn('[AppointmentsPage] doctors fetch failed:', docsError)
       setDoctors(docs || [])
-      setChairs(chs || [])
     })()
   }, [])
 
@@ -208,7 +207,11 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
     return `${ws.toLocaleDateString(loc, opts)} - ${we.toLocaleDateString(loc, { ...opts, year: 'numeric' })}`
   }, [currentDate, viewMode, lang])
 
-  const visibleChairs = chairs.filter(c => !hiddenChairs.has(c.id))
+  const visibleDoctors = useMemo(() => {
+    let result = doctors.filter(d => !hiddenDoctors.has(d.id))
+    if (filterDoctor !== 'all') result = result.filter(d => d.id === filterDoctor)
+    return result
+  }, [doctors, hiddenDoctors, filterDoctor])
 
   const filteredApts = useMemo(() => {
     let result = appointments
@@ -282,8 +285,8 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
     setShowModal(true)
   }
 
-  const handleSlotClick = (time, chairId, date) => {
-    openNewModal({ appointment_time: time, chair_id: chairId, appointment_date: date || fmtDate(currentDate) })
+  const handleSlotClick = (time, doctorId, date) => {
+    openNewModal({ appointment_time: time, doctor_id: doctorId, appointment_date: date || fmtDate(currentDate) })
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -311,15 +314,15 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
           <select value={filterDoctor} onChange={e => setFilterDoctor(e.target.value)}
             style={{ ...selectStyle(dir), width: 'auto', height: 34, padding: '0 10px', fontSize: 13, minWidth: 140 }}>
             <option value="all">{L.allDoctors}</option>
-            {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+            {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
           </select>
           {/* New Appointment */}
           <button className="velo-btn-primary" onClick={() => openNewModal()} style={{ ...makeBtn('primary'), height: 34, fontSize: 13 }}>{L.newApt}</button>
         </div>
       </div>
 
-      {/* Empty state when no doctors/chairs */}
-      {!loading && doctors.length === 0 && chairs.length === 0 && (
+      {/* Empty state when no doctors */}
+      {!loading && doctors.length === 0 && (
         <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div style={{ ...card, padding: '48px 40px', textAlign: 'center', maxWidth: 440 }}>
             <div style={{ marginBottom: 16, color: C.textMuted }}>{Icons.calendar(48)}</div>
@@ -328,8 +331,8 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
             </h2>
             <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 24px', lineHeight: 1.6 }}>
               {lang === 'ar'
-                ? 'اذهب الى الاعدادات ← العيادة لاضافة الاطباء والكراسي.'
-                : 'Go to Settings \u2192 Clinic to add doctors and chairs.'}
+                ? 'اذهب الى الاعدادات ← العيادة لاضافة الاطباء.'
+                : 'Go to Settings \u2192 Clinic to add doctors.'}
             </p>
             <button className="velo-btn-primary" onClick={() => setPage && setPage('settings/clinic')}
               style={{ ...makeBtn('primary'), height: 42, fontSize: 14, padding: '0 28px' }}>
@@ -340,7 +343,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
       )}
 
       {/* Body: sidebar + calendar + detail panel */}
-      {(loading || doctors.length > 0 || chairs.length > 0) && <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {(loading || doctors.length > 0) && <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         {/* Left Sidebar */}
         <div style={{ width: 240, flexShrink: 0, borderInlineEnd: '1px solid var(--border-subtle)', background: 'var(--bg-card)', overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 20 }}>
           <MiniCalendar currentDate={currentDate} setCurrentDate={(d) => { setCurrentDate(d); setViewMode('day') }} lang={lang} isRTL={isRTL} appointments={appointments} />
@@ -356,26 +359,11 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
                   onChange={() => setHiddenDoctors(prev => { const n = new Set(prev); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n })}
                   style={{ accentColor: d.color }} />
                 <div style={{ width: 10, height: 10, borderRadius: '50%', background: d.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{d.name}</span>
+                <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{d.full_name}</span>
               </label>
             ))}
           </div>
 
-          {/* Chairs */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.textMuted, marginBottom: 10 }}>{L.chairs}</div>
-            {chairs.length === 0 ? <div style={{ fontSize: 12, color: C.textMuted }}>No chairs added</div> : chairs.map(ch => (
-              <label key={ch.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', cursor: 'pointer', borderRadius: 6, transition: 'background 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-surface)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <input type="checkbox" checked={!hiddenChairs.has(ch.id)}
-                  onChange={() => setHiddenChairs(prev => { const n = new Set(prev); n.has(ch.id) ? n.delete(ch.id) : n.add(ch.id); return n })}
-                  style={{ accentColor: ch.color }} />
-                <div style={{ width: 10, height: 10, borderRadius: 4, background: ch.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{ch.name}</span>
-              </label>
-            ))}
-          </div>
         </div>
 
         {/* Calendar Area */}
@@ -385,9 +373,8 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
           ) : viewMode === 'day' ? (
             <DayView
               scrollRef={scrollRef}
-              chairs={visibleChairs}
+              doctors={visibleDoctors}
               appointments={filteredApts.filter(a => a.appointment_date === fmtDate(currentDate))}
-              doctors={doctors}
               getDoctorById={getDoctorById}
               onSlotClick={handleSlotClick}
               onAptClick={setSelectedApt}
@@ -416,7 +403,6 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
           <DetailPanel
             apt={selectedApt}
             doctor={getDoctorById(selectedApt.doctor_id)}
-            chair={chairs.find(c => c.id === selectedApt.chair_id)}
             onClose={() => setSelectedApt(null)}
             onStatusChange={handleStatusChange}
             onDelete={handleDeleteApt}
@@ -437,7 +423,6 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
           onSave={handleSave}
           contacts={contacts}
           doctors={doctors}
-          chairs={chairs}
           editApt={editApt}
           defaults={modalDefaults}
           allAppointments={appointments}
@@ -517,22 +502,22 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
 // ═══════════════════════════════════════════════════════════════════════════
 // DAY VIEW
 // ═══════════════════════════════════════════════════════════════════════════
-function DayView({ scrollRef, chairs, appointments, doctors, getDoctorById, onSlotClick, onAptClick, isRTL, lang, L, currentDate }) {
-  const cols = chairs.length > 0 ? chairs : [{ id: '__none', name: 'Schedule', color: '#4DA6FF' }]
+function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick, onAptClick, isRTL, lang, L, currentDate }) {
+  const cols = doctors.length > 0 ? doctors : [{ id: '__none', full_name: lang === 'ar' ? 'لا يوجد أطباء' : 'No doctors', color: '#4DA6FF' }]
 
   return (
     <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      {/* Chair Headers */}
+      {/* Doctor Headers */}
       <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
         <div style={{ width: 60, flexShrink: 0, borderInlineEnd: '1px solid var(--border-subtle)' }} />
-        {cols.map(ch => (
-          <div key={ch.id} style={{
+        {cols.map(col => (
+          <div key={col.id} style={{
             flex: 1, padding: '10px 12px', textAlign: 'center',
             borderInlineEnd: '1px solid var(--border-subtle)',
             background: 'rgba(255,255,255,0.03)',
-            borderBottom: `2px solid ${ch.color || '#4DA6FF'}`,
+            borderBottom: `2px solid ${col.color || '#4DA6FF'}`,
           }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: "'Syne', sans-serif", letterSpacing: '-0.01em' }}>{ch.name}</div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: "'Syne', sans-serif", letterSpacing: '-0.01em' }}>{col.full_name}</div>
           </div>
         ))}
       </div>
@@ -550,16 +535,16 @@ function DayView({ scrollRef, chairs, appointments, doctors, getDoctorById, onSl
           </div>
 
           {/* Columns */}
-          {cols.map(ch => {
+          {cols.map(col => {
             const colApts = appointments.filter(a =>
-              ch.id === '__none' ? true : a.chair_id === ch.id
+              col.id === '__none' ? true : a.doctor_id === col.id
             )
             return (
-              <div key={ch.id} style={{ flex: 1, position: 'relative', borderInlineEnd: '1px solid var(--border-subtle)' }}>
+              <div key={col.id} style={{ flex: 1, position: 'relative', borderInlineEnd: '1px solid var(--border-subtle)' }}>
                 {/* Slot rows */}
                 {TIME_SLOTS.map((slot, i) => (
                   <div key={slot}
-                    onClick={() => onSlotClick(slot, ch.id === '__none' ? null : ch.id)}
+                    onClick={() => onSlotClick(slot, col.id === '__none' ? null : col.id)}
                     style={{
                       height: SLOT_H, borderBottom: `1px solid ${i % 2 === 0 ? 'var(--border-subtle)' : 'rgba(255,255,255,0.02)'}`,
                       cursor: 'pointer', transition: 'background 0.1s',
@@ -734,7 +719,7 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
 // ═══════════════════════════════════════════════════════════════════════════
 // DETAIL PANEL (right side)
 // ═══════════════════════════════════════════════════════════════════════════
-function DetailPanel({ apt, doctor, chair, onClose, onStatusChange, onDelete, onEdit, onGoToPatient, isRTL, lang, L, dir }) {
+function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, onGoToPatient, isRTL, lang, L, dir }) {
   const sc = STATUS_MAP[apt.status] || STATUS_MAP.pending
   const patientName = apt.contacts?.name || 'Unknown'
   const patientPhone = apt.contacts?.phone || ''
@@ -780,11 +765,10 @@ function DetailPanel({ apt, doctor, chair, onClose, onStatusChange, onDelete, on
           {doctor && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <div style={{ width: 10, height: 10, borderRadius: '50%', background: doctor.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{doctor.name}</span>
-              <span style={{ fontSize: 11, color: C.textMuted }}>({doctor.specialty})</span>
+              <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{doctor.full_name}</span>
+              <span style={{ fontSize: 11, color: C.textMuted }}>({doctor.specialization})</span>
             </div>
           )}
-          {chair && <DetailRow label={L.chair} value={chair.name} />}
           {(apt.price > 0) && <DetailRow label={L.price} value={`${Number(apt.price).toLocaleString()} ${apt.currency || 'IQD'}`} />}
           {apt.notes && (
             <div>
@@ -855,12 +839,11 @@ function DetailRow({ icon, label, value }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // APPOINTMENT MODAL
 // ═══════════════════════════════════════════════════════════════════════════
-function AppointmentModal({ onClose, onSave, contacts, doctors, chairs, editApt, defaults, allAppointments, dir, isRTL, lang, L, currentDate }) {
+function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, defaults, allAppointments, dir, isRTL, lang, L, currentDate }) {
   const [form, setForm] = useState(() => {
     if (editApt) return {
       contact_id: editApt.contact_id || '',
       doctor_id: editApt.doctor_id || '',
-      chair_id: editApt.chair_id || '',
       appointment_date: editApt.appointment_date || fmtDate(currentDate),
       appointment_time: editApt.appointment_time?.slice(0,5) || '09:00',
       duration_minutes: editApt.duration_minutes || 30,
@@ -874,8 +857,7 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, chairs, editApt,
     }
     return {
       contact_id: '',
-      doctor_id: doctors.length === 1 ? doctors[0].id : '',
-      chair_id: defaults?.chair_id || '',
+      doctor_id: defaults?.doctor_id || (doctors.length === 1 ? doctors[0].id : ''),
       appointment_date: defaults?.appointment_date || fmtDate(currentDate),
       appointment_time: defaults?.appointment_time || '09:00',
       duration_minutes: 30,
@@ -998,21 +980,13 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, chairs, editApt,
           </div>
         </FormField>
 
-        {/* Doctor & Chair in one row */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label={L.doctor} dir={dir}>
-            <select value={form.doctor_id} onChange={e => upd('doctor_id', e.target.value)} style={selectStyle(dir)}>
-              <option value="">--</option>
-              {doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
-            </select>
-          </FormField>
-          <FormField label={L.chair} dir={dir}>
-            <select value={form.chair_id} onChange={e => upd('chair_id', e.target.value)} style={selectStyle(dir)}>
-              <option value="">--</option>
-              {chairs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
-          </FormField>
-        </div>
+        {/* Doctor */}
+        <FormField label={L.doctor} dir={dir}>
+          <select value={form.doctor_id} onChange={e => upd('doctor_id', e.target.value)} style={selectStyle(dir)}>
+            <option value="">--</option>
+            {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+          </select>
+        </FormField>
 
         {/* Date */}
         <FormField label={L.date} dir={dir}>
