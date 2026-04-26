@@ -6,6 +6,7 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { callClaude, clearAgencyKeyCache } from '../lib/ai'
 import { createInvitation, listPendingInvitations, revokeInvitation, buildInviteUrl } from '../lib/invitations'
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
+import { SAMPLE_DENTAL_DOCTORS } from '../sampleData'
 
 const TABS = [
   { id: 'organization', icon: Icons.building || Icons.globe },
@@ -1203,9 +1204,17 @@ const WEEK_DAYS_EN = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursd
 const WEEK_DAYS_AR = ['السبت','الاحد','الاثنين','الثلاثاء','الاربعاء','الخميس','الجمعة']
 
 function ClinicTab({ lang, dir, isRTL, toast }) {
-  const [orgId, setOrgId] = useState(null)
-  const [doctors, setDoctors] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [orgId, setOrgId] = useState(() => isSupabaseConfigured() ? null : 'demo-org')
+  const [doctors, setDoctors] = useState(() =>
+    isSupabaseConfigured() ? [] : SAMPLE_DENTAL_DOCTORS.map(d => ({
+      id: d.id,
+      name: d.full_name,
+      specialty: d.specialization,
+      color: d.color,
+      is_active: true,
+    }))
+  )
+  const [loading, setLoading] = useState(() => isSupabaseConfigured())
   const [editDoc, setEditDoc] = useState(null)
   const [showDocForm, setShowDocForm] = useState(false)
   const [workingHours, setWorkingHours] = useState(() => {
@@ -1216,6 +1225,7 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
   const hours = workingHours || defaultHours
 
   useEffect(() => {
+    if (!isSupabaseConfigured()) return
     ;(async () => {
       if (!supabase) return setLoading(false)
       const { data: { user } } = await supabase.auth.getUser()
@@ -1236,6 +1246,10 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
   }
 
   const saveDoctor = async (form) => {
+    if (!isSupabaseConfigured()) {
+      toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
+      return
+    }
     if (editDoc?.id) {
       const { error } = await supabase.from('doctors').update(form).eq('id', editDoc.id)
       if (error) return toast?.('Error: ' + error.message, 'error')
@@ -1249,6 +1263,10 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
   }
 
   const deleteDoctor = async (id) => {
+    if (!isSupabaseConfigured()) {
+      toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
+      return
+    }
     const { error } = await supabase.from('doctors').delete().eq('id', id)
     if (error) return toast?.('Error: ' + error.message, 'error')
     toast?.('Doctor deleted', 'success')
