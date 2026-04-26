@@ -1091,29 +1091,29 @@ function AgencyAITab({ lang, dir, toast }) {
     <div>
       <div style={{ ...card, padding: 24, marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, #00FFB2, #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-purple))', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
           </div>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0', margin: 0 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
               {isRTL ? 'إعدادات AI الوكالة' : 'Agency AI Settings'}
             </h2>
-            <p style={{ fontSize: 12, color: '#475569', margin: '2px 0 0' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '2px 0 0' }}>
               {isRTL ? 'مفتاح API مشترك لجميع المؤسسات' : 'Shared API key for all organizations'}
             </p>
           </div>
         </div>
 
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,255,178,0.06)', border: '1px solid rgba(0,255,178,0.1)', fontSize: 12, color: '#00FFB2', lineHeight: 1.5, marginBottom: 20 }}>
+        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,255,178,0.06)', border: '1px solid rgba(0,255,178,0.1)', fontSize: 12, color: 'var(--accent-primary)', lineHeight: 1.5, marginBottom: 20 }}>
           {isRTL
             ? 'هذا المفتاح يُستخدم كمفتاح افتراضي لجميع المؤسسات التي ليس لديها مفتاح خاص. يتيح لك تشغيل AI Growth Agent والمساعد الذكي لجميع العملاء.'
             : 'This key serves as the default for all organizations without their own key. It powers the AI Growth Agent and AI Assistant for all clients.'}
         </div>
 
         {loading ? (
-          <div style={{ padding: 20, textAlign: 'center', color: '#475569', fontSize: 13 }}>
+          <div style={{ padding: 20, textAlign: 'center', color: 'var(--text-secondary)', fontSize: 13 }}>
             {isRTL ? 'جاري التحميل...' : 'Loading...'}
           </div>
         ) : (
@@ -1131,7 +1131,7 @@ function AgencyAITab({ lang, dir, toast }) {
                   <button
                     type="button"
                     onClick={() => setShowKey(v => !v)}
-                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', display: 'flex', padding: 4 }}
+                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--text-secondary)', display: 'flex', padding: 4 }}
                   >
                     {showKey ? Icons.eyeOff(16) : Icons.eye(16)}
                   </button>
@@ -1174,7 +1174,7 @@ function AgencyAITab({ lang, dir, toast }) {
 
       {/* Info card */}
       <div style={{ ...card, padding: 20 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0', margin: '0 0 12px' }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 12px' }}>
           {isRTL ? 'كيف يعمل' : 'How it works'}
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -1183,7 +1183,7 @@ function AgencyAITab({ lang, dir, toast }) {
             { icon: '2️⃣', text: isRTL ? 'جميع المؤسسات تستخدم هذا المفتاح تلقائياً' : 'All organizations automatically use this key' },
             { icon: '3️⃣', text: isRTL ? 'المؤسسات يمكنها تجاوزه بمفتاحها الخاص' : 'Organizations can override with their own key' },
           ].map((step, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#94a3b8' }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'var(--text-secondary)' }}>
               <span>{step.icon}</span>
               <span>{step.text}</span>
             </div>
