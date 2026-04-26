@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import { C, card, makeBtn } from '../design'
-import { Icons, Modal, FormField, inputStyle, selectStyle } from '../components/shared'
+import { Icons, Modal, FormField } from '../components/shared'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
 import {
   SAMPLE_DENTAL_DOCTORS,
@@ -8,11 +7,13 @@ import {
 } from '../sampleData'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const STATUS_MAP = {
-  pending:   { bg: 'rgba(255,255,255,0.05)',  text: '#7B7F9E', border: 'rgba(255,255,255,0.1)' },
-  confirmed: { bg: 'rgba(77,166,255,0.12)',   text: '#4DA6FF', border: 'rgba(77,166,255,0.25)' },
-  completed: { bg: 'rgba(0,255,178,0.1)',     text: '#00FFB2', border: 'rgba(0,255,178,0.25)' },
-  cancelled: { bg: 'rgba(255,107,107,0.1)',   text: '#FF6B6B', border: 'rgba(255,107,107,0.25)' },
+// Status -> Tailwind className map (replaces former bg/text/border hex map).
+// Mint discipline: only `confirmed` (active state) carries accent.
+const STATUS_STYLE = {
+  pending:   'bg-status-warning-bg text-status-warning-fg',
+  confirmed: 'bg-accent-subtle text-accent-fg',
+  completed: 'bg-status-success-bg text-status-success-fg',
+  cancelled: 'bg-status-danger-bg text-status-danger-fg',
 }
 
 const APT_TYPES = [
@@ -37,7 +38,9 @@ for (let h = 8; h <= 20; h++) {
 }
 
 const SLOT_H = 48
-const HEADER_H = 44
+
+// Shared form-field className: calm warm-paper-well (matches auth screens).
+const FIELD_BASE = 'w-full h-[42px] px-3 rounded-md bg-surface-canvas border border-stroke-subtle text-body text-content-primary outline-none transition-[border-color,box-shadow] duration-fast ease-standard focus:border-stroke-brand focus:shadow-focus-brand'
 
 const LABELS = {
   en: {
@@ -97,6 +100,7 @@ function minToTime(m) {
   const mm = m % 60
   return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
 }
+
 
 // ─── Main Component ─────────────────────────────────────────────────────────
 export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast, setPage }) {
@@ -194,8 +198,6 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
   const goPrev = () => setCurrentDate(prev => addDays(prev, viewMode === 'day' ? -1 : -7))
   const goNext = () => setCurrentDate(prev => addDays(prev, viewMode === 'day' ? 1 : 7))
 
-  const isToday = (d) => fmtDate(d) === fmtDate(new Date())
-
   const dateDisplay = useMemo(() => {
     if (viewMode === 'day') {
       return currentDate.toLocaleDateString(lang === 'ar' ? 'ar-IQ' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
@@ -291,51 +293,66 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 60px)', direction: dir, overflow: 'hidden' }}>
+    <div dir={dir} className="flex flex-col h-[calc(100vh-60px)] overflow-hidden bg-surface-canvas font-sans text-content-primary">
       {/* Top Bar */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 20px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--bg-card)', flexShrink: 0, gap: 12, flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={goToday} style={{ ...makeBtn('secondary'), height: 34, fontSize: 13 }}>{L.today}</button>
-          <button onClick={goPrev} style={{ ...makeBtn('ghost'), padding: 6, height: 34, width: 34, justifyContent: 'center' }}>{Icons.chevronLeft(16)}</button>
-          <button onClick={goNext} style={{ ...makeBtn('ghost'), padding: 6, height: 34, width: 34, justifyContent: 'center' }}>{Icons.chevronRight(16)}</button>
-          <span style={{ fontSize: 16, fontWeight: 700, color: C.text, marginInlineStart: 8, whiteSpace: 'nowrap' }}>{dateDisplay}</span>
+      <div className="flex items-center justify-between gap-3 flex-wrap ps-5 pe-5 py-3 bg-surface-raised border-b border-stroke-subtle flex-shrink-0">
+        <div className="flex items-center gap-2">
+          <button onClick={goToday}
+            className="h-[34px] px-3 rounded-md bg-surface-canvas border border-stroke-subtle text-body-sm font-semibold text-content-primary cursor-pointer hover:bg-surface-sunken hover:border-stroke transition-colors duration-fast ease-standard">
+            {L.today}
+          </button>
+          <button onClick={goPrev} aria-label="Previous"
+            className="h-[34px] w-[34px] flex items-center justify-center rounded-md bg-transparent text-content-secondary cursor-pointer hover:bg-surface-canvas hover:text-content-primary transition-colors duration-fast ease-standard">
+            {Icons.chevronLeft(16)}
+          </button>
+          <button onClick={goNext} aria-label="Next"
+            className="h-[34px] w-[34px] flex items-center justify-center rounded-md bg-transparent text-content-secondary cursor-pointer hover:bg-surface-canvas hover:text-content-primary transition-colors duration-fast ease-standard">
+            {Icons.chevronRight(16)}
+          </button>
+          <span className="font-display text-h3 !text-content-primary ms-2 whitespace-nowrap tabular-nums lining-nums">
+            {dateDisplay}
+          </span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Day/Week toggle */}
-          <div style={{ display: 'flex', borderRadius: 10, background: 'var(--bg-void)', border: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+        <div className="flex items-center gap-2">
+          {/* Day/Week segmented toggle */}
+          <div className="flex rounded-md bg-surface-canvas border border-stroke-subtle overflow-hidden">
             {['day', 'week'].map(v => (
               <button key={v} onClick={() => setViewMode(v)}
-                style={{ padding: '7px 16px', border: 'none', background: viewMode === v ? 'rgba(0,255,178,0.12)' : 'transparent', color: viewMode === v ? C.primary : C.textSec, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.15s' }}>
+                className={`px-4 py-1.5 border-none text-body-sm font-semibold cursor-pointer transition-colors duration-fast ease-standard ${viewMode === v ? 'bg-accent-subtle text-accent-fg' : 'bg-transparent text-content-tertiary hover:text-content-secondary'}`}>
                 {v === 'day' ? L.day : L.week}
               </button>
             ))}
           </div>
           {/* Doctor filter */}
-          <select value={filterDoctor} onChange={e => setFilterDoctor(e.target.value)}
-            style={{ ...selectStyle(dir), width: 'auto', height: 34, padding: '0 10px', fontSize: 13, minWidth: 140 }}>
+          <select value={filterDoctor} onChange={e => setFilterDoctor(e.target.value)} dir={dir}
+            aria-label={L.filterDoctor}
+            className="h-[34px] px-2.5 rounded-md bg-surface-canvas border border-stroke-subtle text-body-sm text-content-primary outline-none cursor-pointer min-w-[140px] focus:border-stroke-brand focus:shadow-focus-brand transition-[border-color,box-shadow] duration-fast ease-standard">
             <option value="all">{L.allDoctors}</option>
             {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
           </select>
-          {/* New Appointment */}
-          <button className="velo-btn-primary" onClick={() => openNewModal()} style={{ ...makeBtn('primary'), height: 34, fontSize: 13 }}>{L.newApt}</button>
+          {/* Single primary mint moment */}
+          <button onClick={() => openNewModal()}
+            className="h-[34px] px-4 rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body-sm font-semibold border-none cursor-pointer transition-colors duration-fast ease-standard hover:shadow-glow-mint">
+            {L.newApt}
+          </button>
         </div>
       </div>
 
       {/* Empty state when no doctors */}
       {!loading && doctors.length === 0 && (
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ ...card, padding: '48px 40px', textAlign: 'center', maxWidth: 440 }}>
-            <div style={{ marginBottom: 16, color: C.textMuted }}>{Icons.calendar(48)}</div>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="bg-surface-raised border border-stroke-subtle rounded-lg shadow-1 max-w-[440px] py-12 px-10 text-center">
+            <div className="text-content-tertiary mb-4 inline-flex">{Icons.calendar(48)}</div>
+            <h2 className="font-display text-h2 !text-content-primary m-0 mb-2">
               {lang === 'ar' ? 'لم يتم اضافة اطباء بعد' : 'No doctors added yet'}
             </h2>
-            <p style={{ fontSize: 14, color: C.textSec, margin: '0 0 24px', lineHeight: 1.6 }}>
+            <p className="text-body text-content-secondary leading-relaxed m-0 mb-6">
               {lang === 'ar'
                 ? 'اذهب الى الاعدادات ← العيادة لاضافة الاطباء.'
-                : 'Go to Settings \u2192 Clinic to add doctors.'}
+                : 'Go to Settings → Clinic to add doctors.'}
             </p>
-            <button className="velo-btn-primary" onClick={() => setPage && setPage('settings/clinic')}
-              style={{ ...makeBtn('primary'), height: 42, fontSize: 14, padding: '0 28px' }}>
+            <button onClick={() => setPage && setPage('settings/clinic')}
+              className="inline-flex items-center gap-2 h-[42px] px-7 rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body font-semibold border-none cursor-pointer transition-colors duration-fast ease-standard hover:shadow-glow-mint">
               {Icons.settings(15)} {lang === 'ar' ? 'اعدادات العيادة' : 'Clinic Settings'}
             </button>
           </div>
@@ -343,78 +360,86 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
       )}
 
       {/* Body: sidebar + calendar + detail panel */}
-      {(loading || doctors.length > 0) && <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Left Sidebar */}
-        <div style={{ width: 240, flexShrink: 0, borderInlineEnd: '1px solid var(--border-subtle)', background: 'var(--bg-card)', overflowY: 'auto', padding: '16px 12px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <MiniCalendar currentDate={currentDate} setCurrentDate={(d) => { setCurrentDate(d); setViewMode('day') }} lang={lang} isRTL={isRTL} appointments={appointments} />
+      {(loading || doctors.length > 0) && (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left Sidebar */}
+          <div className="w-[240px] flex-shrink-0 border-e border-stroke-subtle bg-surface-raised overflow-y-auto py-4 px-3 flex flex-col gap-5">
+            <MiniCalendar
+              currentDate={currentDate}
+              setCurrentDate={(d) => { setCurrentDate(d); setViewMode('day') }}
+              lang={lang}
+              isRTL={isRTL}
+              appointments={appointments}
+            />
 
-          {/* Doctors */}
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: C.textMuted, marginBottom: 10 }}>{L.doctors}</div>
-            {doctors.length === 0 ? <div style={{ fontSize: 12, color: C.textMuted }}>No doctors added</div> : doctors.map(d => (
-              <label key={d.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 4px', cursor: 'pointer', borderRadius: 6, transition: 'background 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-surface)'}
-                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                <input type="checkbox" checked={!hiddenDoctors.has(d.id)}
-                  onChange={() => setHiddenDoctors(prev => { const n = new Set(prev); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n })}
-                  style={{ accentColor: d.color }} />
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: d.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{d.full_name}</span>
-              </label>
-            ))}
+            {/* Doctors */}
+            <div>
+              <div className="text-caption uppercase text-content-tertiary mb-2.5">{L.doctors}</div>
+              {doctors.length === 0 ? (
+                <div className="text-caption text-content-tertiary">No doctors added</div>
+              ) : doctors.map(d => (
+                <label key={d.id}
+                  className="flex items-center gap-2 ps-1 pe-1 py-1.5 rounded-md cursor-pointer transition-colors duration-fast ease-standard hover:bg-surface-canvas">
+                  <input type="checkbox" checked={!hiddenDoctors.has(d.id)}
+                    onChange={() => setHiddenDoctors(prev => { const n = new Set(prev); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n })}
+                    style={{ accentColor: d.color }} />
+                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
+                  <span className="text-body-sm text-content-primary font-medium truncate">{d.full_name}</span>
+                </label>
+              ))}
+            </div>
           </div>
 
-        </div>
+          {/* Calendar Area */}
+          <div className="flex-1 overflow-hidden flex flex-col">
+            {loading ? (
+              <div className="flex-1 flex items-center justify-center text-content-tertiary text-body">Loading...</div>
+            ) : viewMode === 'day' ? (
+              <DayView
+                scrollRef={scrollRef}
+                doctors={visibleDoctors}
+                appointments={filteredApts.filter(a => a.appointment_date === fmtDate(currentDate))}
+                getDoctorById={getDoctorById}
+                onSlotClick={handleSlotClick}
+                onAptClick={setSelectedApt}
+                isRTL={isRTL}
+                lang={lang}
+                L={L}
+                currentDate={currentDate}
+              />
+            ) : (
+              <WeekView
+                currentDate={currentDate}
+                appointments={filteredApts}
+                doctors={doctors}
+                getDoctorById={getDoctorById}
+                onDayClick={(d) => { setCurrentDate(d); setViewMode('day') }}
+                onAptClick={setSelectedApt}
+                isRTL={isRTL}
+                lang={lang}
+                L={L}
+              />
+            )}
+          </div>
 
-        {/* Calendar Area */}
-        <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {loading ? (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted }}>Loading...</div>
-          ) : viewMode === 'day' ? (
-            <DayView
-              scrollRef={scrollRef}
-              doctors={visibleDoctors}
-              appointments={filteredApts.filter(a => a.appointment_date === fmtDate(currentDate))}
-              getDoctorById={getDoctorById}
-              onSlotClick={handleSlotClick}
-              onAptClick={setSelectedApt}
+          {/* Right Detail Panel */}
+          {selectedApt && (
+            <DetailPanel
+              apt={selectedApt}
+              doctor={getDoctorById(selectedApt.doctor_id)}
+              onClose={() => setSelectedApt(null)}
+              onStatusChange={handleStatusChange}
+              onDelete={handleDeleteApt}
+              onEdit={() => { openEditModal(selectedApt); setSelectedApt(null) }}
+              onGoToPatient={() => setPage && setPage('contacts/' + selectedApt.contact_id)}
               isRTL={isRTL}
               lang={lang}
               L={L}
-              currentDate={currentDate}
-            />
-          ) : (
-            <WeekView
-              currentDate={currentDate}
-              appointments={filteredApts}
-              doctors={doctors}
-              getDoctorById={getDoctorById}
-              onDayClick={(d) => { setCurrentDate(d); setViewMode('day') }}
-              onAptClick={setSelectedApt}
-              isRTL={isRTL}
-              lang={lang}
-              L={L}
+              dir={dir}
             />
           )}
         </div>
-
-        {/* Right Detail Panel */}
-        {selectedApt && (
-          <DetailPanel
-            apt={selectedApt}
-            doctor={getDoctorById(selectedApt.doctor_id)}
-            onClose={() => setSelectedApt(null)}
-            onStatusChange={handleStatusChange}
-            onDelete={handleDeleteApt}
-            onEdit={() => { openEditModal(selectedApt); setSelectedApt(null) }}
-            onGoToPatient={() => setPage && setPage('contacts/' + selectedApt.contact_id)}
-            isRTL={isRTL}
-            lang={lang}
-            L={L}
-            dir={dir}
-          />
-        )}
-      </div>}
+      )}
 
       {/* Modal */}
       {showModal && (
@@ -459,16 +484,22 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+      <div className="flex items-center justify-between mb-2.5">
         <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))}
-          style={{ background: 'none', border: 'none', color: C.textSec, cursor: 'pointer', padding: 2 }}>{Icons.chevronLeft(14)}</button>
-        <span style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{monthLabel}</span>
+          aria-label="Previous month"
+          className="bg-transparent border-none text-content-secondary cursor-pointer p-0.5 hover:text-content-primary transition-colors duration-fast ease-standard">
+          {Icons.chevronLeft(14)}
+        </button>
+        <span className="font-display text-body-lg !text-content-primary">{monthLabel}</span>
         <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))}
-          style={{ background: 'none', border: 'none', color: C.textSec, cursor: 'pointer', padding: 2 }}>{Icons.chevronRight(14)}</button>
+          aria-label="Next month"
+          className="bg-transparent border-none text-content-secondary cursor-pointer p-0.5 hover:text-content-primary transition-colors duration-fast ease-standard">
+          {Icons.chevronRight(14)}
+        </button>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 1, textAlign: 'center' }}>
+      <div className="grid grid-cols-7 gap-px text-center">
         {dayLabels.map((d, i) => (
-          <div key={i} style={{ fontSize: 10, fontWeight: 700, color: C.textMuted, padding: '4px 0' }}>{d}</div>
+          <div key={i} className="text-[10px] font-bold text-content-tertiary py-1 uppercase">{d}</div>
         ))}
         {Array.from({ length: offset }, (_, i) => <div key={`e${i}`} />)}
         {Array.from({ length: daysInMonth }, (_, i) => {
@@ -478,18 +509,18 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
           const isSel = fmtDate(currentDate) === dateStr
           const hasApt = aptDates.has(dateStr)
           const isTod = dateStr === fmtDate(new Date())
+          const stateClass = isSel
+            ? 'bg-accent text-content-on-accent font-bold'
+            : isTod
+              ? 'bg-accent-subtle text-accent-fg font-semibold hover:bg-accent-muted'
+              : 'text-content-primary font-medium hover:bg-surface-canvas'
           return (
             <div key={day} onClick={() => setCurrentDate(d)}
-              style={{
-                fontSize: 12, fontWeight: isSel ? 700 : 500, padding: '5px 0', cursor: 'pointer', borderRadius: 6,
-                background: isSel ? 'rgba(0,255,178,0.15)' : 'transparent',
-                color: isSel ? C.primary : isTod ? '#00FFB2' : C.text,
-                position: 'relative', transition: 'background 0.15s',
-              }}
-              onMouseEnter={e => { if (!isSel) e.currentTarget.style.background = 'var(--bg-surface)' }}
-              onMouseLeave={e => { if (!isSel) e.currentTarget.style.background = 'transparent' }}>
+              className={`text-body-sm py-1 cursor-pointer rounded-md tabular-nums lining-nums relative transition-colors duration-fast ease-standard ${stateClass}`}>
               {day}
-              {hasApt && <div style={{ position: 'absolute', bottom: 2, left: '50%', transform: 'translateX(-50%)', width: 4, height: 4, borderRadius: '50%', background: C.primary }} />}
+              {hasApt && !isSel && (
+                <div className="absolute bottom-0.5 start-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />
+              )}
             </div>
           )
         })}
@@ -503,33 +534,32 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
 // DAY VIEW
 // ═══════════════════════════════════════════════════════════════════════════
 function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick, onAptClick, isRTL, lang, L, currentDate }) {
-  const cols = doctors.length > 0 ? doctors : [{ id: '__none', full_name: lang === 'ar' ? 'لا يوجد أطباء' : 'No doctors', color: '#4DA6FF' }]
+  const cols = doctors.length > 0 ? doctors : [{ id: '__none', full_name: lang === 'ar' ? 'لا يوجد أطباء' : 'No doctors', color: null }]
 
   return (
-    <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div className="flex-1 overflow-hidden flex flex-col">
       {/* Doctor Headers */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-subtle)', flexShrink: 0 }}>
-        <div style={{ width: 60, flexShrink: 0, borderInlineEnd: '1px solid var(--border-subtle)' }} />
+      <div className="flex border-b border-stroke-subtle flex-shrink-0">
+        <div className="w-[60px] flex-shrink-0 border-e border-stroke-subtle" />
         {cols.map(col => (
-          <div key={col.id} style={{
-            flex: 1, padding: '10px 12px', textAlign: 'center',
-            borderInlineEnd: '1px solid var(--border-subtle)',
-            background: 'rgba(255,255,255,0.03)',
-            borderBottom: `2px solid ${col.color || '#4DA6FF'}`,
-          }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.text, fontFamily: "'Syne', sans-serif", letterSpacing: '-0.01em' }}>{col.full_name}</div>
+          <div key={col.id}
+            className="flex-1 px-3 py-2.5 text-center border-e border-stroke-subtle bg-surface-sunken/40 border-b-2 border-solid"
+            style={{ borderBottomColor: col.color || 'rgb(var(--velo-border-default))' }}>
+            <div className="font-display text-h3 !text-content-primary truncate">{col.full_name}</div>
           </div>
         ))}
       </div>
 
       {/* Time Grid */}
-      <div ref={scrollRef} style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', position: 'relative' }}>
-        <div style={{ display: 'flex', position: 'relative' }}>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden relative">
+        <div className="flex relative">
           {/* Time Labels */}
-          <div style={{ width: 60, flexShrink: 0, borderInlineEnd: '1px solid var(--border-subtle)' }}>
+          <div className="w-[60px] flex-shrink-0 border-e border-stroke-subtle">
             {TIME_SLOTS.map((slot, i) => (
-              <div key={slot} style={{ height: SLOT_H, display: 'flex', alignItems: 'flex-start', justifyContent: 'flex-end', paddingInlineEnd: 8, paddingTop: 2 }}>
-                {i % 2 === 0 && <span style={{ fontSize: 11, color: C.textSec, fontWeight: 600, fontFamily: "'Syne', sans-serif", letterSpacing: '-0.01em' }}>{slot}</span>}
+              <div key={slot} className="flex items-start justify-end pe-2 pt-0.5" style={{ height: SLOT_H }}>
+                {i % 2 === 0 && (
+                  <span className="font-display text-caption font-semibold text-content-secondary tabular-nums lining-nums">{slot}</span>
+                )}
               </div>
             ))}
           </div>
@@ -540,17 +570,13 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
               col.id === '__none' ? true : a.doctor_id === col.id
             )
             return (
-              <div key={col.id} style={{ flex: 1, position: 'relative', borderInlineEnd: '1px solid var(--border-subtle)' }}>
+              <div key={col.id} className="flex-1 relative border-e border-stroke-subtle">
                 {/* Slot rows */}
                 {TIME_SLOTS.map((slot, i) => (
                   <div key={slot}
                     onClick={() => onSlotClick(slot, col.id === '__none' ? null : col.id)}
-                    style={{
-                      height: SLOT_H, borderBottom: `1px solid ${i % 2 === 0 ? 'var(--border-subtle)' : 'rgba(255,255,255,0.02)'}`,
-                      cursor: 'pointer', transition: 'background 0.1s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.03)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    className={`cursor-pointer transition-colors duration-fast ease-standard hover:bg-accent-subtle/60 ${i % 2 === 0 ? 'border-b border-stroke-subtle' : 'border-b border-stroke-subtle/30'}`}
+                    style={{ height: SLOT_H }}
                   />
                 ))}
 
@@ -562,8 +588,8 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
                   const topPx = ((startMin - gridStart) / 30) * SLOT_H
                   const heightPx = (duration / 30) * SLOT_H - 2
                   const doc = getDoctorById(apt.doctor_id)
-                  const docColor = doc?.color || '#4DA6FF'
-                  const sc = STATUS_MAP[apt.status] || STATUS_MAP.pending
+                  const docColor = doc?.color
+                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
                   const patientName = apt.contacts?.name || 'Unknown'
                   const typeDef = APT_TYPES.find(t => t.value === apt.type)
                   const typeLabel = typeDef ? (lang === 'ar' ? typeDef.ar : typeDef.en) : apt.type || ''
@@ -573,32 +599,28 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
                   return (
                     <div key={apt.id}
                       onClick={(e) => { e.stopPropagation(); onAptClick(apt) }}
+                      className="absolute start-[3px] end-[3px] rounded-md cursor-pointer overflow-hidden z-raised bg-surface-raised border border-stroke-subtle border-s-[3px] shadow-1 hover:shadow-2 transition-shadow duration-fast ease-standard ps-2 pe-2 py-1"
                       style={{
-                        position: 'absolute', top: topPx, left: 3, right: 3,
-                        height: Math.max(heightPx, 28), borderRadius: 8,
-                        // Spec: rgba([doctor-color], 0.12) — hex 1f ≈ 12% alpha
-                        background: `${docColor}1f`, border: `1px solid ${docColor}40`,
-                        borderInlineStart: `3px solid ${docColor}`,
-                        padding: '4px 8px', cursor: 'pointer', overflow: 'hidden',
-                        zIndex: 2, transition: 'box-shadow 0.15s, transform 0.15s',
+                        top: topPx,
+                        height: Math.max(heightPx, 28),
+                        borderInlineStartColor: docColor || 'rgb(var(--velo-border-default))',
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.boxShadow = `0 4px 16px ${docColor}30`; e.currentTarget.style.transform = 'scale(1.01)' }}
-                      onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'scale(1)' }}
                     >
-                      <div style={{ fontSize: 12, fontWeight: 700, color: C.text, lineHeight: 1.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <div className="text-body-sm font-semibold text-content-primary leading-tight truncate">
                         {patientName}
                       </div>
                       {heightPx > 36 && (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: docColor, flexShrink: 0, boxShadow: `0 0 5px ${docColor}` }} />
-                          <span style={{ fontSize: 10, color: docColor, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{doc?.full_name || ''}</span>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: docColor || 'rgb(var(--velo-text-tertiary))' }} />
+                          <span className="text-[10px] text-content-tertiary truncate">{doc?.full_name || ''}</span>
                         </div>
                       )}
                       {heightPx > 54 && (
-                        <div style={{ fontSize: 10, color: C.textSec, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{typeLabel}</div>
+                        <div className="text-[10px] text-content-secondary mt-0.5 truncate">{typeLabel}</div>
                       )}
                       {heightPx > 70 && (
-                        <span style={{ display: 'inline-block', fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: sc.bg, color: sc.text, marginTop: 3, textTransform: 'uppercase' }}>
+                        <span className={`inline-block text-[9px] font-bold uppercase rounded-sm px-1.5 py-0.5 mt-1 ${ssClass}`}>
                           {apt.status}
                         </span>
                       )}
@@ -628,9 +650,9 @@ function CurrentTimeLine() {
   const top = ((min - gridStart) / 30) * SLOT_H
   if (top < 0) return null
   return (
-    <div style={{ position: 'absolute', top, left: 54, right: 0, zIndex: 10, pointerEvents: 'none', display: 'flex', alignItems: 'center' }}>
-      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00FFB2', flexShrink: 0, boxShadow: '0 0 8px rgba(0,255,178,0.4)' }} />
-      <div style={{ flex: 1, height: 2, background: '#00FFB2', boxShadow: '0 0 8px rgba(0,255,178,0.4)', opacity: 0.85 }} />
+    <div className="absolute z-sticky pointer-events-none flex items-center start-[54px] end-0" style={{ top }}>
+      <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0 shadow-glow-mint" />
+      <div className="flex-1 h-0.5 bg-accent opacity-85 shadow-glow-mint" />
     </div>
   )
 }
@@ -645,64 +667,57 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
   const dayKeys = ['sat','sun','mon','tue','wed','thu','fri']
 
   return (
-    <div style={{ flex: 1, overflowY: 'auto', padding: 12 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8, minHeight: '100%' }}>
+    <div className="flex-1 overflow-y-auto p-3">
+      <div className="grid grid-cols-7 gap-2 min-h-full">
         {days.map((day, i) => {
           const dateStr = fmtDate(day)
           const dayApts = appointments.filter(a => a.appointment_date === dateStr)
           const isTod = dateStr === fmtDate(new Date())
 
           return (
-            <div key={dateStr} style={{
-              ...card, padding: 0, overflow: 'hidden',
-              border: isTod ? '1px solid rgba(0,255,178,0.4)' : '1px solid var(--border-subtle)',
-              display: 'flex', flexDirection: 'column',
-            }}>
+            <div key={dateStr}
+              className={`bg-surface-raised rounded-2xl shadow-1 overflow-hidden flex flex-col ${isTod ? 'border border-accent/60' : 'border border-stroke-subtle'}`}>
               {/* Day Header */}
               <div onClick={() => onDayClick(day)}
-                style={{
-                  padding: '10px 12px', cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)',
-                  background: isTod ? 'rgba(0,255,178,0.06)' : 'var(--bg-surface)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.08)'}
-                onMouseLeave={e => e.currentTarget.style.background = isTod ? 'rgba(0,255,178,0.06)' : 'var(--bg-surface)'}>
+                className={`px-3 py-2.5 cursor-pointer border-b border-stroke-subtle flex items-center justify-between transition-colors duration-fast ease-standard ${isTod ? 'bg-accent-subtle hover:bg-accent-muted' : 'bg-surface-sunken hover:bg-accent-subtle/50'}`}>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: isTod ? C.primary : C.textMuted, textTransform: 'uppercase' }}>
+                  <div className={`text-caption font-bold uppercase ${isTod ? 'text-accent-fg' : 'text-content-tertiary'}`}>
                     {L[dayKeys[i]]}
                   </div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: isTod ? C.primary : C.text }}>{day.getDate()}</div>
+                  <div className={`font-display text-h3 tabular-nums lining-nums ${isTod ? '!text-accent-fg' : '!text-content-primary'}`}>
+                    {day.getDate()}
+                  </div>
                 </div>
                 {dayApts.length > 0 && (
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(0,255,178,0.12)', color: C.primary }}>
+                  <span className="text-caption font-bold px-2 py-0.5 rounded-full bg-accent-subtle text-accent-fg tabular-nums lining-nums">
                     {dayApts.length}
                   </span>
                 )}
               </div>
 
               {/* Appointments */}
-              <div style={{ flex: 1, padding: 6, display: 'flex', flexDirection: 'column', gap: 4, overflowY: 'auto', maxHeight: 400 }}>
+              <div className="flex-1 p-1.5 flex flex-col gap-1 overflow-y-auto max-h-[400px]">
                 {dayApts.length === 0 ? (
-                  <div style={{ padding: 12, textAlign: 'center', color: C.textMuted, fontSize: 11 }}>{L.noApts}</div>
+                  <div className="p-3 text-center text-content-tertiary text-caption">{L.noApts}</div>
                 ) : dayApts.map(apt => {
                   const doc = getDoctorById(apt.doctor_id)
-                  const docColor = doc?.color || '#555'
-                  const sc = STATUS_MAP[apt.status] || STATUS_MAP.pending
+                  const docColor = doc?.color
+                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
                   const patientName = apt.contacts?.name || 'Unknown'
                   return (
                     <div key={apt.id} onClick={(e) => { e.stopPropagation(); onAptClick(apt) }}
-                      style={{
-                        padding: '6px 8px', borderRadius: 6, cursor: 'pointer',
-                        background: `${docColor}12`, borderInlineStart: `3px solid ${docColor}`,
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = `${docColor}22`}
-                      onMouseLeave={e => e.currentTarget.style.background = `${docColor}12`}>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: docColor }}>{apt.appointment_time?.slice(0,5)}</span>
-                        <span style={{ fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 4, background: sc.bg, color: sc.text, textTransform: 'uppercase' }}>{apt.status?.slice(0,4)}</span>
+                      className="px-2 py-1.5 rounded-md cursor-pointer bg-surface-raised border border-stroke-subtle border-s-[3px] hover:bg-surface-canvas hover:shadow-1 transition-[background,box-shadow] duration-fast ease-standard"
+                      style={{ borderInlineStartColor: docColor || 'rgb(var(--velo-border-default))' }}>
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-caption font-bold tabular-nums lining-nums"
+                          style={{ color: docColor || 'rgb(var(--velo-text-secondary))' }}>
+                          {apt.appointment_time?.slice(0,5)}
+                        </span>
+                        <span className={`text-[9px] font-bold uppercase rounded-sm px-1.5 py-0.5 ${ssClass}`}>
+                          {apt.status?.slice(0,4)}
+                        </span>
                       </div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: C.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{patientName}</div>
+                      <div className="text-body-sm font-semibold text-content-primary truncate">{patientName}</div>
                     </div>
                   )
                 })}
@@ -720,7 +735,7 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
 // DETAIL PANEL (right side)
 // ═══════════════════════════════════════════════════════════════════════════
 function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, onGoToPatient, isRTL, lang, L, dir }) {
-  const sc = STATUS_MAP[apt.status] || STATUS_MAP.pending
+  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
   const patientName = apt.contacts?.name || 'Unknown'
   const patientPhone = apt.contacts?.phone || ''
   const typeDef = APT_TYPES.find(t => t.value === apt.type)
@@ -728,95 +743,108 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
   const endTime = apt.end_time || minToTime(timeToMin(apt.appointment_time) + (apt.duration_minutes || 30))
 
   return (
-    <div style={{
-      width: 340, flexShrink: 0, borderInlineStart: '1px solid var(--border-subtle)',
-      background: 'var(--bg-card)', overflowY: 'auto', display: 'flex', flexDirection: 'column',
-      animation: 'slideIn 0.2s ease-out', direction: dir,
-    }}>
+    <div dir={dir}
+      className="w-[340px] flex-shrink-0 border-s border-stroke-subtle bg-surface-raised overflow-y-auto flex flex-col animate-fade shadow-1">
       {/* Header */}
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-subtle)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ fontSize: 15, fontWeight: 700, color: C.text }}>{L.aptDetails}</span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textSec, cursor: 'pointer', padding: 4 }}>{Icons.x(18)}</button>
+      <div className="px-5 py-4 border-b border-stroke-subtle flex items-center justify-between">
+        <span className="font-display text-h3 !text-content-primary">{L.aptDetails}</span>
+        <button onClick={onClose} aria-label="Close"
+          className="bg-transparent border-none text-content-tertiary cursor-pointer p-1 hover:text-content-primary transition-colors duration-fast ease-standard">
+          {Icons.x(18)}
+        </button>
       </div>
 
-      <div style={{ padding: 20, flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div className="px-5 py-5 flex-1 flex flex-col gap-4">
         {/* Status Badge */}
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <span style={{ fontSize: 13, fontWeight: 700, padding: '6px 20px', borderRadius: 20, background: sc.bg, color: sc.text, border: `1px solid ${sc.border}`, textTransform: 'uppercase' }}>
+        <div className="flex justify-center">
+          <span className={`text-body-sm font-bold py-1.5 px-5 rounded-full uppercase ${ssClass}`}>
             {L[apt.status] || apt.status}
           </span>
         </div>
 
         {/* Patient */}
-        <div style={{ ...card, padding: 14, cursor: 'pointer' }} onClick={onGoToPatient}
-          onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(0,255,178,0.3)'}
-          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: C.primary }}>{patientName}</div>
-          {patientPhone && <div style={{ fontSize: 12, color: C.textSec, marginTop: 4 }}>{patientPhone}</div>}
-          <div style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>Click to view profile</div>
+        <div onClick={onGoToPatient}
+          className="bg-surface-canvas border border-stroke-subtle rounded-lg p-3.5 cursor-pointer transition-colors duration-fast ease-standard hover:border-stroke">
+          <div className="font-display text-h2 !text-content-primary">{patientName}</div>
+          {patientPhone && (
+            <div className="text-caption text-content-secondary mt-1 tabular-nums lining-nums">{patientPhone}</div>
+          )}
+          <div className="text-[10px] text-content-tertiary mt-1">Click to view profile</div>
         </div>
 
         {/* Details */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <DetailRow icon={Icons.calendar(14)} label={L.date} value={apt.appointment_date} />
-          <DetailRow icon={Icons.clock(14)} label={L.startTime} value={`${apt.appointment_time?.slice(0,5)} - ${endTime.slice(0,5)}`} />
-          <DetailRow icon={Icons.clock(14)} label={L.duration} value={`${apt.duration_minutes || 30} ${L.mins}`} />
+        <div className="flex flex-col gap-3">
+          <DetailRow icon={Icons.calendar(14)} label={L.date} value={apt.appointment_date} tabular />
+          <DetailRow icon={Icons.clock(14)} label={L.startTime} value={`${apt.appointment_time?.slice(0,5)} - ${endTime.slice(0,5)}`} tabular />
+          <DetailRow icon={Icons.clock(14)} label={L.duration} value={`${apt.duration_minutes || 30} ${L.mins}`} tabular />
           <DetailRow label={L.type} value={typeLabel} />
           {doctor && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: doctor.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 13, color: C.text, fontWeight: 600 }}>{doctor.full_name}</span>
-              <span style={{ fontSize: 11, color: C.textMuted }}>({doctor.specialization})</span>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: doctor.color }} />
+              <span className="text-body-sm text-content-primary font-semibold">{doctor.full_name}</span>
+              <span className="text-caption text-content-tertiary">({doctor.specialization})</span>
             </div>
           )}
-          {(apt.price > 0) && <DetailRow label={L.price} value={`${Number(apt.price).toLocaleString()} ${apt.currency || 'IQD'}`} />}
+          {(apt.price > 0) && (
+            <div className="flex items-center gap-2">
+              <span className="text-caption text-content-tertiary font-semibold uppercase min-w-[70px]">{L.price}:</span>
+              <span className="font-display text-body-lg font-bold text-content-primary tabular-nums lining-nums">
+                {Number(apt.price).toLocaleString()}
+              </span>
+              <span className="text-caption text-content-secondary">{apt.currency || 'IQD'}</span>
+            </div>
+          )}
           {apt.notes && (
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', marginBottom: 4 }}>{L.notes}</div>
-              <div style={{ fontSize: 13, color: C.textSec, lineHeight: 1.5, padding: 10, background: 'var(--bg-void)', borderRadius: 8 }}>{apt.notes}</div>
+              <div className="text-caption font-bold text-content-tertiary uppercase mb-1">{L.notes}</div>
+              <div className="text-body-sm text-content-secondary leading-relaxed p-2.5 bg-surface-canvas rounded-md">
+                {apt.notes}
+              </div>
             </div>
           )}
         </div>
       </div>
 
       {/* Action Buttons */}
-      <div style={{ padding: '16px 20px', borderTop: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="px-5 py-4 border-t border-stroke-subtle flex flex-col gap-2">
         {apt.status === 'pending' && (
-          <button className="velo-btn-primary" onClick={() => onStatusChange(apt.id, 'confirmed')}
-            style={{ ...makeBtn('primary'), width: '100%', justifyContent: 'center', height: 38 }}>
+          <button onClick={() => onStatusChange(apt.id, 'confirmed')}
+            className="w-full justify-center h-[38px] rounded-md bg-surface-canvas hover:bg-accent-subtle border border-stroke-subtle hover:border-accent text-content-primary hover:text-accent-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
             {Icons.check(14)} {L.confirm}
           </button>
         )}
         {(apt.status === 'pending' || apt.status === 'confirmed') && (
           <button onClick={() => onStatusChange(apt.id, 'completed')}
-            style={{ ...makeBtn('success'), width: '100%', justifyContent: 'center', height: 38 }}>
+            className="w-full justify-center h-[38px] rounded-md bg-surface-canvas hover:bg-status-success-bg border border-stroke-subtle hover:border-status-success-border text-content-primary hover:text-status-success-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
             {Icons.check(14)} {L.complete}
           </button>
         )}
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={onEdit} style={{ ...makeBtn('secondary'), flex: 1, justifyContent: 'center', height: 36 }}>
+        <div className="flex gap-2">
+          {/* Single primary mint moment in panel: Reschedule */}
+          <button onClick={onEdit}
+            className="flex-1 justify-center h-[36px] rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body-sm font-semibold border-none cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard hover:shadow-glow-mint">
             {Icons.edit(13)} {L.reschedule}
           </button>
           {apt.status !== 'cancelled' && apt.status !== 'completed' && (
             <button onClick={() => onStatusChange(apt.id, 'cancelled')}
-              style={{ ...makeBtn('danger'), flex: 1, justifyContent: 'center', height: 36 }}>
+              className="flex-1 justify-center h-[36px] rounded-md bg-surface-canvas hover:bg-status-danger-bg border border-stroke-subtle hover:border-status-danger-border text-content-primary hover:text-status-danger-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
               {Icons.x(13)} {L.cancel}
             </button>
           )}
         </div>
         <button onClick={() => onDelete(apt.id)}
-          style={{ ...makeBtn('ghost'), width: '100%', justifyContent: 'center', height: 36, color: '#FF6B6B' }}>
+          className="w-full justify-center h-[36px] rounded-md bg-transparent hover:bg-status-danger-bg border border-stroke-subtle hover:border-status-danger-border text-status-danger-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
           {Icons.trash(13)} {L.delete}
         </button>
 
-        {/* WhatsApp Reminder */}
+        {/* WhatsApp Reminder — neutral outline (NOT WhatsApp brand green) */}
         {apt.contacts?.phone && (
           <button onClick={() => {
             const msg = encodeURIComponent(`Reminder: Your appointment is on ${apt.appointment_date} at ${apt.appointment_time?.slice(0,5)}`)
             const phone = apt.contacts.phone.replace(/[^0-9]/g, '')
             window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')
           }}
-            style={{ ...makeBtn('secondary'), width: '100%', justifyContent: 'center', height: 38, color: '#25d366', borderColor: 'rgba(37,211,102,0.3)' }}>
+            className="w-full justify-center h-[38px] rounded-md bg-transparent hover:bg-surface-canvas border border-stroke-subtle text-content-secondary hover:text-content-primary text-body-sm font-semibold cursor-pointer flex items-center transition-colors duration-fast ease-standard">
             {L.sendReminder}
           </button>
         )}
@@ -825,12 +853,14 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
   )
 }
 
-function DetailRow({ icon, label, value }) {
+function DetailRow({ icon, label, value, tabular }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      {icon && <span style={{ color: C.textMuted, flexShrink: 0 }}>{icon}</span>}
-      <span style={{ fontSize: 12, color: C.textMuted, fontWeight: 600, minWidth: 70 }}>{label}:</span>
-      <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{value}</span>
+    <div className="flex items-center gap-2">
+      {icon && <span className="text-content-tertiary flex-shrink-0">{icon}</span>}
+      <span className="text-caption text-content-tertiary font-bold uppercase min-w-[70px]">{label}:</span>
+      <span className={`text-body-sm text-content-primary font-medium ${tabular ? 'tabular-nums lining-nums' : ''}`}>
+        {value}
+      </span>
     </div>
   )
 }
@@ -919,17 +949,20 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
 
   return (
     <Modal onClose={onClose} dir={dir} width={560}>
-      <div style={{ padding: '20px 24px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{editApt ? L.editApt : L.createApt}</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: C.textSec, cursor: 'pointer' }}>{Icons.x(20)}</button>
+      <div className="px-6 py-5">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="font-display text-h2 !text-content-primary m-0">{editApt ? L.editApt : L.createApt}</h2>
+          <button onClick={onClose} aria-label="Close"
+            className="bg-transparent border-none text-content-tertiary cursor-pointer hover:text-content-primary transition-colors duration-fast ease-standard">
+            {Icons.x(20)}
+          </button>
         </div>
 
         {/* Conflict Warning */}
         {conflict && (
-          <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,179,71,0.1)', border: '1px solid rgba(255,179,71,0.3)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>!</span>
-            <span style={{ fontSize: 13, color: '#FFB347', fontWeight: 600 }}>
+          <div className="ps-3.5 pe-3.5 py-2.5 rounded-md bg-status-warning-bg border border-status-warning-border/30 mb-4 flex items-center gap-2">
+            <span className="text-body-lg text-status-warning-fg font-bold">!</span>
+            <span className="text-body-sm text-status-warning-fg font-semibold">
               {conflictDoctor?.full_name || L.doctor} {L.conflict}
             </span>
           </div>
@@ -937,42 +970,40 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
 
         {/* Patient Search */}
         <FormField label={L.patient} dir={dir}>
-          <div style={{ position: 'relative' }} ref={searchRef}>
+          <div className="relative" ref={searchRef}>
             {selectedContact ? (
-              <div style={{ ...inputStyle(dir), display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}
-                onClick={() => { upd('contact_id', ''); setShowDropdown(true) }}>
+              <div onClick={() => { upd('contact_id', ''); setShowDropdown(true) }}
+                className={`${FIELD_BASE} flex items-center justify-between cursor-pointer`}>
                 <div>
-                  <span style={{ fontWeight: 600 }}>{selectedContact.name}</span>
-                  {selectedContact.phone && <span style={{ color: C.textMuted, marginInlineStart: 8, fontSize: 12 }}>{selectedContact.phone}</span>}
+                  <span className="font-semibold text-content-primary">{selectedContact.name}</span>
+                  {selectedContact.phone && (
+                    <span className="text-content-tertiary ms-2 text-caption tabular-nums lining-nums">
+                      {selectedContact.phone}
+                    </span>
+                  )}
                 </div>
-                <span style={{ color: C.textMuted }}>{Icons.x(14)}</span>
+                <span className="text-content-tertiary">{Icons.x(14)}</span>
               </div>
             ) : (
-              <input
-                type="text" value={patientSearch}
+              <input type="text" value={patientSearch}
                 onChange={e => { setPatientSearch(e.target.value); setShowDropdown(true) }}
                 onFocus={() => setShowDropdown(true)}
                 placeholder={L.searchPatient}
-                style={inputStyle(dir)}
-              />
+                dir={dir}
+                className={FIELD_BASE} />
             )}
             {showDropdown && !selectedContact && (
-              <div style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100,
-                background: 'var(--bg-card)', border: '1px solid var(--border-subtle)',
-                borderRadius: 10, marginTop: 4, maxHeight: 200, overflowY: 'auto',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-              }}>
+              <div className="absolute top-full inset-x-0 z-dropdown bg-surface-raised border border-stroke-subtle rounded-md mt-1 max-h-[200px] overflow-y-auto shadow-3">
                 {filteredContacts.length === 0 ? (
-                  <div style={{ padding: 12, color: C.textMuted, fontSize: 13, textAlign: 'center' }}>No results</div>
+                  <div className="p-3 text-content-tertiary text-body-sm text-center">No results</div>
                 ) : filteredContacts.map(c => (
                   <div key={c.id}
                     onClick={() => { upd('contact_id', c.id); setPatientSearch(''); setShowDropdown(false) }}
-                    style={{ padding: '10px 14px', cursor: 'pointer', borderBottom: '1px solid var(--border-subtle)', transition: 'background 0.1s' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'var(--bg-surface)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{c.name}</div>
-                    {c.phone && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>{c.phone}</div>}
+                    className="ps-3.5 pe-3.5 py-2.5 cursor-pointer border-b border-stroke-subtle transition-colors duration-fast ease-standard hover:bg-surface-canvas">
+                    <div className="text-body font-semibold text-content-primary">{c.name}</div>
+                    {c.phone && (
+                      <div className="text-caption text-content-tertiary mt-0.5 tabular-nums lining-nums">{c.phone}</div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -982,7 +1013,7 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
 
         {/* Doctor */}
         <FormField label={L.doctor} dir={dir}>
-          <select value={form.doctor_id} onChange={e => upd('doctor_id', e.target.value)} style={selectStyle(dir)}>
+          <select value={form.doctor_id} onChange={e => upd('doctor_id', e.target.value)} dir={dir} className={FIELD_BASE}>
             <option value="">--</option>
             {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
           </select>
@@ -990,43 +1021,52 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
 
         {/* Date */}
         <FormField label={L.date} dir={dir}>
-          <input type="date" value={form.appointment_date} onChange={e => upd('appointment_date', e.target.value)} style={inputStyle(dir)} />
+          <input type="date" value={form.appointment_date}
+            onChange={e => upd('appointment_date', e.target.value)} dir={dir}
+            className={`${FIELD_BASE} tabular-nums lining-nums`} />
         </FormField>
 
         {/* Time, Duration, End Time */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-3 gap-3">
           <FormField label={L.startTime} dir={dir}>
-            <select value={form.appointment_time} onChange={e => upd('appointment_time', e.target.value)} style={selectStyle(dir)}>
+            <select value={form.appointment_time}
+              onChange={e => upd('appointment_time', e.target.value)} dir={dir}
+              className={`${FIELD_BASE} tabular-nums lining-nums`}>
               {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </FormField>
           <FormField label={L.duration} dir={dir}>
-            <select value={form.duration_minutes} onChange={e => upd('duration_minutes', Number(e.target.value))} style={selectStyle(dir)}>
+            <select value={form.duration_minutes}
+              onChange={e => upd('duration_minutes', Number(e.target.value))} dir={dir}
+              className={`${FIELD_BASE} tabular-nums lining-nums`}>
               {DURATIONS.map(d => <option key={d} value={d}>{d} {L.mins}</option>)}
             </select>
           </FormField>
           <FormField label={L.endTime} dir={dir}>
-            <input type="text" value={endTime} readOnly style={{ ...inputStyle(dir), background: 'var(--bg-surface)', color: C.textMuted }} />
+            <input type="text" value={endTime} readOnly dir={dir}
+              className={`${FIELD_BASE} bg-surface-sunken text-content-tertiary tabular-nums lining-nums cursor-not-allowed`} />
           </FormField>
         </div>
 
         {/* Type */}
         <FormField label={L.type} dir={dir}>
-          <select value={form.type} onChange={e => upd('type', e.target.value)} style={selectStyle(dir)}>
+          <select value={form.type} onChange={e => upd('type', e.target.value)} dir={dir} className={FIELD_BASE}>
             {APT_TYPES.map(t => <option key={t.value} value={t.value}>{lang === 'ar' ? t.ar : t.en}</option>)}
           </select>
         </FormField>
 
         {/* Price & Currency */}
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: 12 }}>
+        <div className="grid grid-cols-[2fr_1fr] gap-3">
           <FormField label={L.price} dir={dir}>
-            <input type="number" value={form.price} onChange={e => upd('price', e.target.value)} style={inputStyle(dir)} min="0" />
+            <input type="number" value={form.price}
+              onChange={e => upd('price', e.target.value)} min="0" dir={dir}
+              className={`${FIELD_BASE} tabular-nums lining-nums`} />
           </FormField>
           <FormField label="" dir={dir}>
-            <div style={{ display: 'flex', borderRadius: 10, background: 'var(--bg-void)', border: '1px solid var(--border-subtle)', overflow: 'hidden', height: 42, marginTop: 20 }}>
+            <div className="flex rounded-md bg-surface-canvas border border-stroke-subtle overflow-hidden h-[42px] mt-5">
               {['IQD', 'USD'].map(cur => (
                 <button key={cur} onClick={() => upd('currency', cur)}
-                  style={{ flex: 1, border: 'none', background: form.currency === cur ? 'rgba(0,255,178,0.12)' : 'transparent', color: form.currency === cur ? C.primary : C.textSec, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
+                  className={`flex-1 border-none text-body-sm font-semibold cursor-pointer transition-colors duration-fast ease-standard ${form.currency === cur ? 'bg-accent-subtle text-accent-fg' : 'bg-transparent text-content-tertiary hover:text-content-secondary'}`}>
                   {cur}
                 </button>
               ))}
@@ -1036,14 +1076,14 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
 
         {/* Notes */}
         <FormField label={L.notes} dir={dir}>
-          <textarea value={form.notes} onChange={e => upd('notes', e.target.value)}
-            rows={3} style={{ ...inputStyle(dir), height: 'auto', padding: 12, resize: 'vertical' }} />
+          <textarea value={form.notes} onChange={e => upd('notes', e.target.value)} rows={3} dir={dir}
+            className={`${FIELD_BASE} h-auto py-3 resize-y`} />
         </FormField>
 
         {/* Status (edit mode) */}
         {editApt && (
           <FormField label={L.status} dir={dir}>
-            <select value={form.status} onChange={e => upd('status', e.target.value)} style={selectStyle(dir)}>
+            <select value={form.status} onChange={e => upd('status', e.target.value)} dir={dir} className={FIELD_BASE}>
               {['pending','confirmed','completed','cancelled'].map(s => (
                 <option key={s} value={s}>{L[s]}</option>
               ))}
@@ -1052,16 +1092,20 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
         )}
 
         {/* WhatsApp toggle */}
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', padding: '8px 0' }}>
-          <input type="checkbox" checked={form.reminder_sent} onChange={e => upd('reminder_sent', e.target.checked)} style={{ accentColor: '#25d366' }} />
-          <span style={{ fontSize: 13, color: C.text, fontWeight: 500 }}>{L.sendReminder}</span>
+        <label className="flex items-center gap-2.5 cursor-pointer py-2">
+          <input type="checkbox" checked={form.reminder_sent}
+            onChange={e => upd('reminder_sent', e.target.checked)} className="accent-accent" />
+          <span className="text-body-sm text-content-primary font-medium">{L.sendReminder}</span>
         </label>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
-          <button onClick={onClose} style={{ ...makeBtn('secondary'), flex: 1, justifyContent: 'center', height: 42 }}>{L.cancel}</button>
-          <button className="velo-btn-primary" onClick={handleSubmit} disabled={!form.contact_id}
-            style={{ ...makeBtn('primary'), flex: 2, justifyContent: 'center', height: 42, opacity: form.contact_id ? 1 : 0.5 }}>
+        {/* Actions — single mint moment is Save */}
+        <div className="flex gap-2.5 mt-2">
+          <button onClick={onClose}
+            className="flex-1 justify-center h-[42px] rounded-md bg-surface-canvas border border-stroke-subtle text-content-primary text-body font-semibold cursor-pointer hover:bg-surface-sunken hover:border-stroke transition-colors duration-fast ease-standard flex items-center">
+            {L.cancel}
+          </button>
+          <button onClick={handleSubmit} disabled={!form.contact_id}
+            className="flex-[2] justify-center h-[42px] rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body font-semibold border-none cursor-pointer transition-colors duration-fast ease-standard hover:shadow-glow-mint disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center">
             {L.save}
           </button>
         </div>
