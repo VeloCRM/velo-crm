@@ -581,7 +581,7 @@ export default function App() {
   }
 
   if (needsOnboarding && !isSuperAdmin) {
-    return <Suspense fallback={<SkeletonGeneric />}><OnboardingPage user={user} lang={lang} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} /></Suspense>
+    return <Suspense fallback={<SkeletonGeneric />}><OnboardingPage user={user} lang={lang} toast={addToast} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} /></Suspense>
   }
 
   const toggleLang = () => setLang(l => l === 'en' ? 'ar' : 'en')

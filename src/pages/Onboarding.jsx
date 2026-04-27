@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { C } from '../design'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { createInvitation } from '../lib/invitations'
+import { isValidEmail } from '../lib/sanitize'
 
 const COLORS = ['#2563EB', '#7C3AED', '#16A34A', '#DC2626', '#D97706', '#E16F24', '#0D9488', '#6366F1']
 
-export default function OnboardingPage({ user, lang, onComplete }) {
+export default function OnboardingPage({ user, lang, onComplete, toast }) {
   const [step, setStep] = useState(1)
   const [orgName, setOrgName] = useState('')
   const [color, setColor] = useState('#2563EB')
@@ -70,8 +72,33 @@ export default function OnboardingPage({ user, lang, onComplete }) {
   const handleFinish = async () => {
     setLoading(true)
     const stored = localStorage.getItem('velo_tmp_org')
-    if (stored) {
-      onComplete(JSON.parse(stored))
+    const org = stored ? JSON.parse(stored) : null
+
+    // Send invitations in production mode. Skip silently in demo mode
+    // (createInvitation throws on no-Supabase). Use Promise.allSettled
+    // so one bad email doesn't block the rest.
+    const trimmedInvites = invites.map(e => e.trim()).filter(Boolean)
+    if (isSupabaseConfigured() && org?.id && trimmedInvites.length > 0) {
+      const validEmails = trimmedInvites.filter(isValidEmail)
+      const total = trimmedInvites.length
+      const results = await Promise.allSettled(
+        validEmails.map(email => createInvitation({ orgId: org.id, email, role: 'member' }))
+      )
+      const fulfilled = results.filter(r => r.status === 'fulfilled').length
+      results.filter(r => r.status === 'rejected').forEach(r =>
+        console.warn('Onboarding invite create failed:', r.reason?.message)
+      )
+      if (fulfilled === total) {
+        toast?.(isRTL ? `تم إرسال ${fulfilled} دعوة` : `Sent ${fulfilled} invitation${fulfilled === 1 ? '' : 's'}`, 'success')
+      } else if (fulfilled > 0) {
+        toast?.(isRTL ? `تم إرسال ${fulfilled} من ${total} دعوات` : `Sent ${fulfilled} of ${total} invitations`, 'info')
+      } else {
+        toast?.(isRTL ? 'فشل إرسال الدعوات' : 'Failed to send invitations', 'error')
+      }
+    }
+
+    if (org) {
+      onComplete(org)
       localStorage.removeItem('velo_tmp_org')
     } else {
       onComplete({ id: 'demo-org', name: orgName || 'My Company', industry: 'Dental', primary_color: color })
