@@ -110,8 +110,8 @@ body {
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
-  color: var(--text-primary);
-  background: var(--bg-primary);
+  color: rgb(var(--velo-text-primary)) !important;
+  background: rgb(var(--velo-surface-canvas)) !important;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
