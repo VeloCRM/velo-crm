@@ -7,7 +7,7 @@
    Defined per design-system.md §3.5. All values are space-separated RGB
    triplets so Tailwind's `rgb(var(--velo-*) / <alpha-value>)` syntax works.
    Prefixed with --velo-* to avoid collision with legacy vars in theme.css.
-   Theme switch: toggle class="dark" on <html>.                          */
+   Theme switch: toggle [data-theme="dark"] on <html>.                   */
 
 :root {
   /* Surfaces */
@@ -99,6 +99,21 @@
   --velo-status-info-bg:         24  30  41;
   --velo-status-info-border:     61  90 138;
   --velo-status-info-fg:        122 152 196;
+}
+
+/* ─── Velo component utilities ──────────────────────────────────────── */
+/* SettingsPage tab-button. Active bg/color/fontWeight stay in the inline
+   ternary; :hover self-excludes via [data-active] so the active tab
+   doesn't get a hover overlay on top of its accent-subtle fill. */
+.tab-button {
+  background-color: transparent;
+}
+.tab-button:hover:not([data-active="true"]) {
+  background-color: rgb(var(--velo-surface-sunken));
+}
+.tab-button:focus-visible {
+  outline: 2px solid rgb(var(--velo-border-brand));
+  outline-offset: -2px;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

@@ -62,18 +62,19 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
   }
 
   return (
-    <div style={{ direction: dir }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: '0 0 24px' }}>{t.settings}</h1>
+    <div dir={dir} style={{ direction: dir }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, color: 'rgb(var(--velo-text-primary))', margin: '0 0 24px' }}>{t.settings}</h1>
       <div style={{ display: 'flex', gap: 24 }}>
         {/* Sidebar tabs */}
         <div style={{ width: 220, flexShrink: 0 }}>
           <div style={{ ...card, padding: 8 }}>
             {visibleTabs.map(tb => (
               <button key={tb.id} onClick={() => setTab(tb.id)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: 'none', background: tab === tb.id ? C.primaryBg : 'transparent', color: tab === tb.id ? C.primary : C.textSec, cursor: 'pointer', fontSize: 13, fontWeight: tab === tb.id ? 600 : 500, fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'all .15s' }}
-                onMouseEnter={e => { if (tab !== tb.id) e.currentTarget.style.background = C.bg }}
-                onMouseLeave={e => { if (tab !== tb.id) e.currentTarget.style.background = 'transparent' }}>
-                <span style={{ color: tab === tb.id ? C.primary : C.textMuted, display: 'flex' }}>{tb.icon(18)}</span>
+                className="tab-button"
+                data-active={tab === tb.id}
+                aria-current={tab === tb.id ? 'page' : undefined}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: 'none', background: tab === tb.id ? 'rgb(var(--velo-accent-subtle))' : undefined, color: tab === tb.id ? 'rgb(var(--velo-accent-fg))' : 'rgb(var(--velo-text-secondary))', cursor: 'pointer', fontSize: 13, fontWeight: tab === tb.id ? 600 : 500, fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'background-color .15s, color .15s' }}>
+                <span style={{ color: tab === tb.id ? 'rgb(var(--velo-accent-fg))' : 'rgb(var(--velo-text-tertiary))', display: 'flex' }}>{tb.icon(18)}</span>
                 {tabLabels[tb.id]}
               </button>
             ))}
