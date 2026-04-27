@@ -209,7 +209,7 @@ function DentalReportsSection({ lang, dir, isRTL }) {
         // Aggregate locally from raw rows. These are small monthly windows,
         // so pulling and reducing client-side is fine; moving to an RPC
         // becomes worthwhile when row counts cross ~10k/month.
-        const [apptsRes, paymentsRes, doctorsRes, profDoctorsRes] = await Promise.all([
+        const [apptsRes, paymentsRes, profDoctorsRes] = await Promise.all([
           supabase
             .from('appointments')
             .select('id, doctor_id, type, appointment_date')
@@ -219,7 +219,6 @@ function DentalReportsSection({ lang, dir, isRTL }) {
             .select('amount, currency, status, payment_date, created_at')
             .eq('status', 'paid')
             .gte('payment_date', firstDayStr),
-          supabase.from('doctors').select('id, full_name, color'),
           supabase.from('profiles').select('id, full_name, color').eq('role', 'doctor'),
         ])
         if (cancelled) return
@@ -227,9 +226,10 @@ function DentalReportsSection({ lang, dir, isRTL }) {
         const appts = apptsRes.data || []
         const payments = paymentsRes.data || []
 
-        // Doctor lookup: merge both sources (same fix as AddAppointmentModal).
+        // Doctor lookup: profiles with role='doctor' only (legacy doctors
+        // table unified into profiles).
         const doctorMap = new Map()
-        for (const d of [...(doctorsRes.data || []), ...(profDoctorsRes.data || [])]) {
+        for (const d of (profDoctorsRes.data || [])) {
           if (d?.id && !doctorMap.has(d.id)) doctorMap.set(d.id, d)
         }
 

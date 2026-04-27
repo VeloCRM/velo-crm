@@ -84,7 +84,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
         {/* Tab content */}
         <div style={{ flex: 1 }} className="fade-in" key={tab}>
           {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
-          {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} />}
+          {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
           {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} />}
@@ -1204,16 +1204,10 @@ const SPECIALTIES = ['General Dentistry','Orthodontics','Cosmetic Dentistry','Pe
 const WEEK_DAYS_EN = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday']
 const WEEK_DAYS_AR = ['السبت','الاحد','الاثنين','الثلاثاء','الاربعاء','الخميس','الجمعة']
 
-function ClinicTab({ lang, dir, isRTL, toast }) {
+function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
   const [orgId, setOrgId] = useState(() => isSupabaseConfigured() ? null : 'demo-org')
   const [doctors, setDoctors] = useState(() =>
-    isSupabaseConfigured() ? [] : SAMPLE_DENTAL_DOCTORS.map(d => ({
-      id: d.id,
-      name: d.full_name,
-      specialty: d.specialization,
-      color: d.color,
-      is_active: true,
-    }))
+    isSupabaseConfigured() ? [] : SAMPLE_DENTAL_DOCTORS.map(d => ({ ...d, is_active: true }))
   )
   const [loading, setLoading] = useState(() => isSupabaseConfigured())
   const [editDoc, setEditDoc] = useState(null)
@@ -1241,7 +1235,11 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
   const fetchAll = async (oid) => {
     setLoading(true)
     const { data: docs } = await supabase
-      .from('doctors').select('*').eq('org_id', oid).order('created_at')
+      .from('profiles')
+      .select('id, full_name, specialization, color, phone, is_active, role')
+      .eq('org_id', oid)
+      .eq('role', 'doctor')
+      .order('created_at')
     setDoctors(docs || [])
     setLoading(false)
   }
@@ -1251,14 +1249,16 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
       toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
       return
     }
-    if (editDoc?.id) {
-      const { error } = await supabase.from('doctors').update(form).eq('id', editDoc.id)
-      if (error) return toast?.('Error: ' + error.message, 'error')
-    } else {
-      const { error } = await supabase.from('doctors').insert({ ...form, org_id: orgId })
-      if (error) return toast?.('Error: ' + error.message, 'error')
-    }
-    toast?.(editDoc?.id ? 'Doctor updated' : 'Doctor added', 'success')
+    if (!editDoc?.id) return  // safeguard: form should never open without editDoc
+    const { error } = await supabase.from('profiles').update({
+      full_name: form.full_name,
+      specialization: form.specialization,
+      color: form.color,
+      phone: form.phone,
+      is_active: form.is_active,
+    }).eq('id', editDoc.id)
+    if (error) return toast?.('Error: ' + error.message, 'error')
+    toast?.(isRTL ? 'تم تحديث الطبيب' : 'Doctor updated', 'success')
     setShowDocForm(false); setEditDoc(null)
     await fetchAll(orgId)
   }
@@ -1268,9 +1268,9 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
       toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
       return
     }
-    const { error } = await supabase.from('doctors').delete().eq('id', id)
+    const { error } = await supabase.from('profiles').update({ role: 'member' }).eq('id', id)
     if (error) return toast?.('Error: ' + error.message, 'error')
-    toast?.('Doctor deleted', 'success')
+    toast?.(isRTL ? 'تم تنزيل الطبيب إلى عضو' : 'Doctor demoted to member', 'success')
     await fetchAll(orgId)
   }
 
@@ -1278,6 +1278,23 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
     setWorkingHours(h)
     localStorage.setItem('velo_clinic_hours', JSON.stringify(h))
     toast?.('Working hours saved', 'success')
+  }
+
+  // Doctors are Velo users (profiles backed by auth users) — adding one
+  // goes through the Team invite flow with role='doctor', not an INSERT
+  // here. This redirects with an explanatory toast.
+  const handleAddDoctor = () => {
+    if (!isSupabaseConfigured()) {
+      toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإضافة الأطباء' : 'Demo mode: connect Supabase to add doctors', 'info')
+      return
+    }
+    toast?.(
+      isRTL
+        ? 'الأطباء مستخدمو Velo — ادعهم من تبويب الفريق، ثم عد هنا لتعيين التخصص واللون'
+        : 'Doctors are Velo users — invite them from Team tab, then return here to set their specialization and color',
+      'info'
+    )
+    if (setTab) setTab('team')
   }
 
   if (loading) return <div style={{ ...card, padding: 40, textAlign: 'center', color: C.textMuted }}>Loading...</div>
@@ -1291,7 +1308,7 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
             <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'الاطباء' : 'Doctors'}</h3>
             <p style={{ fontSize: 13, color: C.textSec, margin: '4px 0 0' }}>{isRTL ? 'ادارة اطباء العيادة' : 'Manage clinic doctors and providers'}</p>
           </div>
-          <button onClick={() => { setEditDoc(null); setShowDocForm(true) }} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.plus(14)} {isRTL ? 'اضافة طبيب' : 'Add Doctor'}</button>
+          <button onClick={handleAddDoctor} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.plus(14)} {isRTL ? 'اضافة طبيب' : 'Add Doctor'}</button>
         </div>
 
         {doctors.length === 0 ? (
@@ -1305,11 +1322,11 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
                 onMouseEnter={e => e.currentTarget.style.borderColor = doc.color}
                 onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}>
                 <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${doc.color}20`, border: `2px solid ${doc.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: doc.color, fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
-                  {doc.name?.charAt(0)}
+                  {doc.full_name?.charAt(0)}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{doc.name}</div>
-                  <div style={{ fontSize: 12, color: doc.color, fontWeight: 500, marginTop: 1 }}>{doc.specialty}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{doc.full_name}</div>
+                  <div style={{ fontSize: 12, color: doc.color, fontWeight: 500, marginTop: 1 }}>{doc.specialization}</div>
                   {doc.phone && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{doc.phone}</div>}
                 </div>
                 <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 10, background: doc.is_active ? 'rgba(0,255,178,0.1)' : 'rgba(255,107,107,0.1)', color: doc.is_active ? '#00FFB2' : '#FF6B6B' }}>
@@ -1366,8 +1383,8 @@ function ClinicTab({ lang, dir, isRTL, toast }) {
 
 function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
   const [form, setForm] = useState({
-    name: doc?.name || '',
-    specialty: doc?.specialty || 'General Dentistry',
+    full_name: doc?.full_name || '',
+    specialization: doc?.specialization || 'General Dentistry',
     color: doc?.color || '#4DA6FF',
     phone: doc?.phone || '',
     is_active: doc?.is_active ?? true,
@@ -1378,10 +1395,10 @@ function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
     <div style={{ marginTop: 16, padding: 20, borderRadius: 12, border: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <FormField label={isRTL ? 'الاسم' : 'Name'} dir={dir}>
-          <input value={form.name} onChange={e => set('name', e.target.value)} style={inputStyle(dir)} placeholder="Dr. ..." />
+          <input value={form.full_name} onChange={e => set('full_name', e.target.value)} style={inputStyle(dir)} placeholder="Dr. ..." />
         </FormField>
         <FormField label={isRTL ? 'التخصص' : 'Specialty'} dir={dir}>
-          <select value={form.specialty} onChange={e => set('specialty', e.target.value)} style={selectStyle(dir)}>
+          <select value={form.specialization} onChange={e => set('specialization', e.target.value)} style={selectStyle(dir)}>
             {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </FormField>
@@ -1407,7 +1424,7 @@ function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={onCancel} style={makeBtn('secondary')}>{isRTL ? 'الغاء' : 'Cancel'}</button>
-        <button onClick={() => { if (form.name.trim()) onSave(form) }} disabled={!form.name.trim()} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: form.name.trim() ? 1 : 0.5 }}>
+        <button onClick={() => { if (form.full_name.trim()) onSave(form) }} disabled={!form.full_name.trim()} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: form.full_name.trim() ? 1 : 0.5 }}>
           {doc?.id ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'اضافة' : 'Add')}
         </button>
       </div>

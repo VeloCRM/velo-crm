@@ -57,27 +57,13 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
       supabase.from('profiles').select('org_id').eq('id', user.id).single().then(async ({ data }) => {
         if (!data?.org_id) return
         setOrgId(data.org_id)
-        // Pull from BOTH sources so admins see every doctor regardless of
-        // how they were added: (1) user accounts with role='doctor' (via
-        // team invitation flow), (2) the doctors table managed in
-        // Settings → Clinic (may not have a login). Merge + dedupe by id.
-        const [profRes, docRes] = await Promise.all([
-          supabase.from('profiles')
-            .select('id, full_name, color, specialization')
-            .eq('org_id', data.org_id)
-            .eq('role', 'doctor'),
-          supabase.from('doctors')
-            .select('id, full_name, color, specialization')
-            .eq('org_id', data.org_id),
-        ])
-        const merged = []
-        const seen = new Set()
-        for (const d of [...(profRes.data || []), ...(docRes.data || [])]) {
-          if (!d?.id || seen.has(d.id)) continue
-          seen.add(d.id)
-          merged.push(d)
-        }
-        if (merged.length > 0) setDoctors(merged)
+        // Doctors are profiles with role='doctor'. The legacy doctors
+        // table was unified into profiles (Commit 2 — demo-readiness).
+        const { data: docs } = await supabase.from('profiles')
+          .select('id, full_name, color, specialization')
+          .eq('org_id', data.org_id)
+          .eq('role', 'doctor')
+        setDoctors(docs || [])
       })
     })
   }, [])
