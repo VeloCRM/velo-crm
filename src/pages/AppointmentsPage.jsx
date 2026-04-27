@@ -86,7 +86,15 @@ function iraqWeekStart(d) {
   return date
 }
 
-function fmtDate(d) { return d.toISOString().slice(0,10) }
+function fmtDate(d) {
+  // Local YYYY-MM-DD. toISOString() returns UTC; in UTC+3 (Iraq) the
+  // currentDate state (set at local midnight via setHours(0,0,0,0))
+  // becomes yesterday's UTC date string, drifting every consumer below.
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate() + n); return r }
 
 function timeToMin(t) {

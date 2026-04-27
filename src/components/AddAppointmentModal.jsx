@@ -27,12 +27,19 @@ for (let h = 8; h <= 20; h++) {
   if (h !== 20) TIME_SLOTS.push(`${hr}:30`)
 }
 
+// Local YYYY-MM-DD. Avoids toISOString() which returns UTC and drifts
+// to the previous day in UTC+3 (Iraq) between local midnight and 03:00.
+const todayLocal = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
 export default function AddAppointmentModal({ onClose, onSave, contacts, initialDate, editAppointment }) {
   const [form, setForm] = useState({
     contact_id: editAppointment?.contact_id || '',
     doctor_id: editAppointment?.doctor_id || '',
     title: editAppointment?.title || '',
-    appointment_date: editAppointment?.appointment_date || initialDate || new Date().toISOString().slice(0, 10),
+    appointment_date: editAppointment?.appointment_date || initialDate || todayLocal(),
     appointment_time: editAppointment?.appointment_time?.slice(0,5) || '10:00',
     duration_minutes: editAppointment?.duration_minutes || 30,
     type: editAppointment?.type || 'checkup',
