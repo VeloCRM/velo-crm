@@ -34,12 +34,14 @@ export async function fetchContacts(offset = 0, limit = CONTACTS_PAGE_SIZE) {
   return { rows, total, hasMore: offset + rows.length < total }
 }
 
-export async function insertContact(c) {
+export async function insertContact(c, orgId) {
+  if (!orgId) throw new Error('insertContact: orgId is required')
   const userId = (await supabase.auth.getUser()).data.user?.id
   const notesJson = JSON.stringify({ bio: c.notes || '', timeline: [], documents: [] })
   const { data, error } = await supabase
     .from('contacts')
     .insert({
+      org_id: orgId,
       user_id: userId,
       name: c.name,
       email: c.email || '',

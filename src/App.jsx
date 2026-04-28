@@ -614,6 +614,11 @@ export default function App() {
     const c = sanitizeContact(raw)
     const v = validateContactForSave(c, { isRTL })
     if (!v.ok) { addToast(v.error, 'error'); return }
+    const orgId = impersonation?.orgId ?? orgSettings?.id
+    if (useDB && !orgId) {
+      addToast(isRTL ? 'لا يوجد سياق منظمة — يرجى التحديث' : 'No organization context — please refresh.', 'error')
+      return
+    }
     const optimistic = { ...c, id: genId('c'), createdAt: new Date().toISOString().slice(0,10), documents: [], notesTimeline: [], activityHistory: [] }
     setContacts(prev => [...prev, optimistic])
     setContactsTotal(n => n + 1)
@@ -621,7 +626,7 @@ export default function App() {
     pushNotification('contact', isRTL ? 'جهة اتصال جديدة' : 'New contact added', c.name || c.email || '')
     if (useDB) {
       try {
-        const saved = await db.insertContact(c)
+        const saved = await db.insertContact(c, orgId)
         setContacts(prev => prev.map(x => x.id === optimistic.id ? saved : x))
       } catch (err) { console.error('Add contact error:', err); addToast(isRTL ? 'خطأ في إضافة جهة الاتصال' : 'Error adding contact', 'error'); loadAllData() }
     }
