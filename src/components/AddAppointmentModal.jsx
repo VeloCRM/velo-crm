@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Modal, FormField, inputStyle, selectStyle, Icons } from './shared'
 import { makeBtn } from '../design'
 import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { todayLocal } from '../lib/date'
 
 const TYPE_OPTIONS = [
   { value: 'checkup', label: 'Checkup' },
@@ -25,13 +26,6 @@ for (let h = 8; h <= 20; h++) {
   const hr = h.toString().padStart(2, '0')
   TIME_SLOTS.push(`${hr}:00`)
   if (h !== 20) TIME_SLOTS.push(`${hr}:30`)
-}
-
-// Local YYYY-MM-DD. Avoids toISOString() which returns UTC and drifts
-// to the previous day in UTC+3 (Iraq) between local midnight and 03:00.
-const todayLocal = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export default function AddAppointmentModal({ onClose, onSave, contacts, initialDate, editAppointment }) {
