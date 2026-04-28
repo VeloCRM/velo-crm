@@ -41,19 +41,31 @@ export default function OnboardingPage({ user, lang, onComplete, toast }) {
       if (isSupabaseConfigured()) {
         try {
           const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'org-' + Date.now()
-          const { data: org, error: orgErr } = await supabase.from('organizations').insert({
-            name, slug, primary_color: color, industry: 'Dental', plan: 'free',
-          }).select().single()
-          
+          const { data: org, error: orgErr } = await supabase.rpc('create_first_org', {
+            org_name: name,
+            org_slug: slug,
+            org_color: color,
+            org_industry: 'dental',
+          })
+
           if (orgErr) throw orgErr
 
-          await supabase.from('profiles').update({ org_id: org.id, role: 'admin' }).eq('id', user.id)
+          // create_first_org() also linked the caller's profile to the new org
+          // as admin. No separate profiles UPDATE needed.
 
-          await supabase.from('departments').insert([
-            { org_id: org.id, name: isRTL ? 'المبيعات' : 'Sales', color: '#2563EB' },
-            { org_id: org.id, name: isRTL ? 'الدعم' : 'Support', color: '#16A34A' },
-            { org_id: org.id, name: isRTL ? 'التقنية' : 'Technical', color: '#7C3AED' },
-          ])
+          // Default departments — best-effort, non-blocking. Wrapped defensively because
+          // the same unexplained RLS rejection that bit organizations might affect
+          // departments too. If it fails, the user lands in the dashboard anyway and
+          // can create departments manually later.
+          try {
+            await supabase.from('departments').insert([
+              { org_id: org.id, name: isRTL ? 'المبيعات' : 'Sales', color: '#2563EB' },
+              { org_id: org.id, name: isRTL ? 'الدعم' : 'Support', color: '#16A34A' },
+              { org_id: org.id, name: isRTL ? 'التقنية' : 'Technical', color: '#7C3AED' },
+            ])
+          } catch (deptErr) {
+            console.warn('Default departments seed failed (non-blocking):', deptErr.message)
+          }
 
           localStorage.setItem('velo_tmp_org', JSON.stringify(org))
           setStep(2)
@@ -62,7 +74,7 @@ export default function OnboardingPage({ user, lang, onComplete, toast }) {
           setError(err.message || 'Failed to create organization. Check your connection.')
         }
       } else {
-        localStorage.setItem('velo_tmp_org', JSON.stringify({ id: 'demo-org', name, industry: 'Dental', primary_color: color }))
+        localStorage.setItem('velo_tmp_org', JSON.stringify({ id: 'demo-org', name, industry: 'dental', primary_color: color }))
         setStep(2)
       }
       setLoading(false)
@@ -101,7 +113,7 @@ export default function OnboardingPage({ user, lang, onComplete, toast }) {
       onComplete(org)
       localStorage.removeItem('velo_tmp_org')
     } else {
-      onComplete({ id: 'demo-org', name: orgName || 'My Company', industry: 'Dental', primary_color: color })
+      onComplete({ id: 'demo-org', name: orgName || 'My Company', industry: 'dental', primary_color: color })
     }
     setLoading(false)
   }
