@@ -38,6 +38,8 @@ import { MedicalHistoryTab as DentalMedicalHistory, DentalChartTab as DentalChar
 import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
+import * as dental from './lib/dental'
+import { DENTAL_SUPABASE_ENABLED } from './lib/featureFlags'
 import { calculateLeadScore } from './lib/ai'
 import { sanitizeContact, sanitizeDeal, sanitizeTicket, isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, validateContactForSave, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { acceptInvitation, getPendingInvite, clearPendingInvite, rememberPendingInvite } from './lib/invitations'
@@ -174,6 +176,10 @@ export default function App() {
       return stored ? JSON.parse(stored) : null
     } catch { return null }
   })
+  // Effective org id for dental.* calls — survives super-admin impersonation
+  // even if orgSettings re-fetch races. impersonation.orgId is the canonical
+  // override; orgSettings.id is the steady-state value.
+  const dentalOrgId = impersonation?.orgId ?? orgSettings?.id
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1043,7 +1049,7 @@ export default function App() {
                   ? <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} setPage={setPage} /></Suspense>
                   : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />
               )}
-              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} orgId={dentalOrgId} />}
               {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} urlTicketId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
@@ -1677,7 +1683,7 @@ function FinanceSummaryWidget({ t, contacts, allPayments, dir, isRTL }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTACTS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMoreContacts, contactsLoadingMore = false, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate, isSuperAdmin, impersonation }) {
+function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMoreContacts, contactsLoadingMore = false, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate, isSuperAdmin, impersonation, orgId }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
@@ -1735,6 +1741,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMo
     const contactDeals = deals.filter(d => d.contactId === c.id)
     return (
       <ContactProfile
+        key={c.id}
         t={t} dir={dir} isRTL={isRTL} lang={lang}
         contact={c} contactDeals={contactDeals}
         profileTab={profileTab} setProfileTab={setProfileTab}
@@ -1746,6 +1753,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMo
         showDealForm={showDealForm} setShowDealForm={setShowDealForm}
         addDeal={addDeal} contacts={contacts}
         isDental={isDental} updateContact={updateContact} currency={currency}
+        orgId={orgId} toast={toast}
       />
     )
   }
@@ -1959,7 +1967,28 @@ function ContactFormModal({ t, dir, isRTL, contact, onSave, onClose }) {
 }
 
 // ── Contact Profile ─────────────────────────────────────────────────────────
-function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab, setProfileTab, newNote, setNewNote, addNoteToContact, onBack, onEdit, onDelete, showDealForm, setShowDealForm, addDeal, contacts, isDental, updateContact, currency }) {
+function DentalSpinner({ isRTL }) {
+  return (
+    <div style={{ ...card, padding: 48, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
+      {isRTL ? 'جاري التحميل...' : 'Loading...'}
+    </div>
+  )
+}
+
+function DentalErrorBanner({ isRTL }) {
+  return (
+    <div style={{ ...card, padding: 24, textAlign: 'center' }}>
+      <div style={{ fontSize: 13, color: C.danger, fontWeight: 600 }}>
+        {isRTL ? 'تعذر تحميل البيانات' : 'Failed to load data'}
+      </div>
+      <div style={{ fontSize: 12, color: C.textMuted, marginTop: 6 }}>
+        {isRTL ? 'حاول مرة أخرى لاحقاً' : 'Please try again later'}
+      </div>
+    </div>
+  )
+}
+
+function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab, setProfileTab, newNote, setNewNote, addNoteToContact, onBack, onEdit, onDelete, showDealForm, setShowDealForm, addDeal, contacts, isDental, updateContact, currency, orgId, toast }) {
   const cc = CAT_COLORS[contact.category] || CAT_COLORS.other
   const sc = STATUS_COLORS[contact.status] || STATUS_COLORS.lead
   const statusLabel = t[`status${contact.status.charAt(0).toUpperCase()+contact.status.slice(1)}`] || contact.status
@@ -1976,11 +2005,112 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
     setProfileTab('treatments')
   }
 
-  // Dental data stored locally (not sent to Supabase)
-  const [dentalData, setDentalData] = useState(() => {
-    try { const s = localStorage.getItem(`velo_dental_${contact.id}`); return s ? JSON.parse(s) : {} } catch { return {} }
+  // ─── Dental data: localStorage (flag OFF) or Supabase (flag ON) ──────────
+  const [dentalState, setDentalState] = useState({
+    loading: true,
+    error: null,
+    medicalHistory: {},
+    dentalChart: {},
+    treatments: [],
+    prescriptions: [],
+    xrays: [],
   })
-  const dentalContact = { ...contact, ...dentalData }
+
+  // localStorage helpers — used only in flag-OFF branches. Removed (along
+  // with all !DENTAL_SUPABASE_ENABLED guards) in the post-flag-flip cleanup
+  // commit. Read normalizes legacy `_medical/_teeth/_treatments[date]/...`
+  // shape to the dental.js mapper output (treatmentDate, fileName, etc.) so
+  // renderers stay uniform across flag states.
+  const LS_KEY = (id) => `velo_dental_${id}`
+  const readLegacyDental = (id) => {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(LS_KEY(id)) || '{}')
+      return {
+        medicalHistory: parsed._medical || {},
+        dentalChart: parsed._teeth || {},
+        treatments: (parsed._treatments || []).map(t => ({
+          id: t.id,
+          procedure: t.procedure || '',
+          tooth: t.tooth || '',
+          cost: Number(t.cost) || 0,
+          currency: t.currency || 'IQD',
+          status: t.status || 'planned',
+          treatmentDate: t.treatmentDate || t.date || '',
+          notes: t.notes || '',
+        })),
+        prescriptions: (parsed._prescriptions || []).map(rx => ({
+          id: rx.id,
+          medication: rx.medication || '',
+          dosage: rx.dosage || '',
+          duration: rx.duration || '',
+          notes: rx.notes || '',
+          prescribedDate: rx.prescribedDate || rx.date || '',
+        })),
+        xrays: (parsed._xrays || []).map(xr => ({
+          id: xr.id,
+          fileName: xr.fileName || xr.name || '',
+          signedUrl: xr.signedUrl || xr.url || null,
+          storagePath: xr.storagePath || null,
+          takenDate: xr.takenDate || xr.date || '',
+          notes: xr.notes || '',
+        })),
+      }
+    } catch { return null }
+  }
+  const writeLegacyDental = (id, data) => {
+    try {
+      localStorage.setItem(LS_KEY(id), JSON.stringify({
+        _medical: data.medicalHistory,
+        _teeth: data.dentalChart,
+        _treatments: data.treatments,
+        _prescriptions: data.prescriptions,
+        _xrays: data.xrays,
+      }))
+    } catch {}
+  }
+
+  // Initial fetch — runs on mount. key={contact.id} on parent guarantees a
+  // fresh mount per contact, but we keep the deps array honest for safety.
+  useEffect(() => {
+    let cancelled = false
+
+    if (!DENTAL_SUPABASE_ENABLED) {
+      const data = readLegacyDental(contact.id) || {
+        medicalHistory: {}, dentalChart: {}, treatments: [], prescriptions: [], xrays: [],
+      }
+      if (!cancelled) setDentalState({ loading: false, error: null, ...data })
+      return () => { cancelled = true }
+    }
+
+    if (!orgId) {
+      if (!cancelled) setDentalState(s => ({ ...s, loading: false, error: new Error('No org context') }))
+      return () => { cancelled = true }
+    }
+
+    setDentalState(s => ({ ...s, loading: true, error: null }))
+    dental.fetchContactDental(orgId, contact.id)
+      .then(data => {
+        if (cancelled) return
+        setDentalState({ loading: false, error: null, ...data })
+      })
+      .catch(err => {
+        if (cancelled) return
+        console.error('fetchContactDental error:', err)
+        setDentalState(s => ({ ...s, loading: false, error: err }))
+        toast(isRTL ? 'فشل تحميل البيانات السنية' : 'Failed to load dental data', 'error')
+      })
+
+    return () => { cancelled = true }
+  }, [contact.id, orgId])
+
+  const dentalContact = {
+    ...contact,
+    _medical: dentalState.medicalHistory,
+    _teeth: dentalState.dentalChart,
+    _treatments: dentalState.treatments,
+    _prescriptions: dentalState.prescriptions,
+    _xrays: dentalState.xrays,
+  }
 
   // Payments from Supabase
   const [payments, setPayments] = useState([])
@@ -2007,13 +2137,135 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
       setPayments(prev => prev.filter(p => p.id !== id))
     } catch (err) { console.error('Delete payment error:', err) }
   }
-  const onUpdateDentalLocal = (data) => {
-    setDentalData(prev => {
-      const next = { ...prev, ...data }
-      try { localStorage.setItem(`velo_dental_${contact.id}`, JSON.stringify(next)) } catch {}
+  // ─── Per-action dental handlers ───────────────────────────────────────────
+  // All 5 use functional setState to capture rollback state; dentalState is
+  // intentionally NOT in deps so the callback refs stay stable across edits
+  // (prevents subcomponent re-render churn). Optimistic + rollback for blob
+  // updates (medical/chart); pessimistic for adds (treatments/rx/xrays).
+
+  const onUpdateMedicalHistory = useCallback(async (history) => {
+    let previous
+    setDentalState(s => {
+      previous = s.medicalHistory
+      const next = { ...s, medicalHistory: history }
+      if (!DENTAL_SUPABASE_ENABLED) writeLegacyDental(contact.id, next)
       return next
     })
-  }
+    if (!DENTAL_SUPABASE_ENABLED) return
+    try { await dental.updateMedicalHistory(contact.id, history) }
+    catch (err) {
+      console.error('updateMedicalHistory error:', err)
+      setDentalState(s => ({ ...s, medicalHistory: previous }))
+      toast(isRTL ? 'فشل حفظ التاريخ الطبي' : 'Failed to save medical history', 'error')
+    }
+  }, [contact.id, toast, isRTL])
+
+  const onUpdateDentalChart = useCallback(async (teeth) => {
+    let previous
+    setDentalState(s => {
+      previous = s.dentalChart
+      const next = { ...s, dentalChart: teeth }
+      if (!DENTAL_SUPABASE_ENABLED) writeLegacyDental(contact.id, next)
+      return next
+    })
+    if (!DENTAL_SUPABASE_ENABLED) return
+    try { await dental.updateDentalChart(contact.id, teeth) }
+    catch (err) {
+      console.error('updateDentalChart error:', err)
+      setDentalState(s => ({ ...s, dentalChart: previous }))
+      toast(isRTL ? 'فشل حفظ مخطط الأسنان' : 'Failed to save dental chart', 'error')
+    }
+  }, [contact.id, toast, isRTL])
+
+  const onAddTreatment = useCallback(async (t) => {
+    if (!DENTAL_SUPABASE_ENABLED) {
+      const newRow = {
+        id: `tr_${Date.now()}`,
+        procedure: t.procedure,
+        tooth: t.tooth || '',
+        cost: Number(t.cost) || 0,
+        currency: 'IQD',
+        status: t.status || 'planned',
+        treatmentDate: t.treatmentDate || '',
+        notes: '',
+      }
+      setDentalState(s => {
+        const next = { ...s, treatments: [newRow, ...s.treatments] }
+        writeLegacyDental(contact.id, next)
+        return next
+      })
+      return
+    }
+    try {
+      const newRow = await dental.addTreatment(orgId, contact.id, t)
+      setDentalState(s => ({ ...s, treatments: [newRow, ...s.treatments] }))
+    } catch (err) {
+      console.error('addTreatment error:', err)
+      toast(isRTL ? 'فشل إضافة العلاج' : 'Failed to add treatment', 'error')
+      throw err
+    }
+  }, [orgId, contact.id, toast, isRTL])
+
+  const onAddPrescription = useCallback(async (rx) => {
+    if (!DENTAL_SUPABASE_ENABLED) {
+      const newRow = {
+        id: `rx_${Date.now()}`,
+        medication: rx.medication,
+        dosage: rx.dosage || '',
+        duration: rx.duration || '',
+        notes: rx.notes || '',
+        prescribedDate: rx.prescribedDate || new Date().toISOString().slice(0, 10),
+      }
+      setDentalState(s => {
+        const next = { ...s, prescriptions: [newRow, ...s.prescriptions] }
+        writeLegacyDental(contact.id, next)
+        return next
+      })
+      return
+    }
+    try {
+      const newRow = await dental.addPrescription(orgId, contact.id, rx)
+      setDentalState(s => ({ ...s, prescriptions: [newRow, ...s.prescriptions] }))
+    } catch (err) {
+      console.error('addPrescription error:', err)
+      toast(isRTL ? 'فشل إضافة الوصفة' : 'Failed to add prescription', 'error')
+      throw err
+    }
+  }, [orgId, contact.id, toast, isRTL])
+
+  const onUploadXray = useCallback(async (file) => {
+    if (!DENTAL_SUPABASE_ENABLED) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader()
+        reader.onload = (ev) => {
+          const newRow = {
+            id: `xr_${Date.now()}`,
+            fileName: file.name,
+            signedUrl: ev.target.result,
+            storagePath: null,
+            takenDate: new Date().toISOString().slice(0, 10),
+            notes: '',
+          }
+          setDentalState(s => {
+            const next = { ...s, xrays: [newRow, ...s.xrays] }
+            writeLegacyDental(contact.id, next)
+            return next
+          })
+          resolve()
+        }
+        reader.onerror = () => reject(new Error('FileReader failed'))
+        reader.readAsDataURL(file)
+      })
+    }
+    try {
+      const newRow = await dental.uploadXray(orgId, contact.id, file)
+      setDentalState(s => ({ ...s, xrays: [newRow, ...s.xrays] }))
+    } catch (err) {
+      console.error('uploadXray error:', err)
+      toast(isRTL ? 'فشل رفع الصورة' : 'Failed to upload x-ray', 'error')
+      throw err
+    }
+  }, [orgId, contact.id, toast, isRTL])
 
   const baseTabs = [
     { id: 'details', label: t.contactDetails },
@@ -2283,11 +2535,31 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
         {profileTab === 'payments' && <PaymentsTab payments={payments} addPayment={addPayment} updatePayment={updatePayment} deletePayment={deletePayment} contactDeals={contactDeals} currency={currency||'USD'} dir={dir} isRTL={isRTL} />}
 
         {/* Dental tabs */}
-        {isDental && profileTab === 'medical' && <DentalMedicalHistory contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} />}
-        {isDental && profileTab === 'dental_chart' && <DentalChartWrapper contact={dentalContact} onUpdate={onUpdateDentalLocal} onAddToTreatmentPlan={handleAddToTreatmentPlan} lang={lang} />}
-        {isDental && profileTab === 'treatments' && <DentalTreatments contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} prefill={treatmentPrefill} onPrefillConsumed={() => setTreatmentPrefill(null)} />}
-        {isDental && profileTab === 'prescriptions' && <DentalPrescriptions contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} />}
-        {isDental && profileTab === 'xrays' && <DentalXRays contact={dentalContact} onUpdate={onUpdateDentalLocal} lang={lang} dir={dir} />}
+        {isDental && profileTab === 'medical' && (
+          dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
+          dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
+          <DentalMedicalHistory contact={dentalContact} onUpdateMedicalHistory={onUpdateMedicalHistory} lang={lang} dir={dir} />
+        )}
+        {isDental && profileTab === 'dental_chart' && (
+          dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
+          dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
+          <DentalChartWrapper contact={dentalContact} onUpdateDentalChart={onUpdateDentalChart} onAddToTreatmentPlan={handleAddToTreatmentPlan} lang={lang} />
+        )}
+        {isDental && profileTab === 'treatments' && (
+          dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
+          dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
+          <DentalTreatments contact={dentalContact} onAddTreatment={onAddTreatment} lang={lang} dir={dir} prefill={treatmentPrefill} onPrefillConsumed={() => setTreatmentPrefill(null)} />
+        )}
+        {isDental && profileTab === 'prescriptions' && (
+          dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
+          dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
+          <DentalPrescriptions contact={dentalContact} onAddPrescription={onAddPrescription} lang={lang} dir={dir} />
+        )}
+        {isDental && profileTab === 'xrays' && (
+          dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
+          dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
+          <DentalXRays contact={dentalContact} onUploadXray={onUploadXray} lang={lang} dir={dir} />
+        )}
       </div>
 
       {/* Quick Deal Form */}

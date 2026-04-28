@@ -1,10 +1,43 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import DentalChart from './DentalChart'
+import { getXraySignedUrl } from '../lib/dental'
+
+// Internal: 600ms debounce with onBlur and unmount flush. Wraps an async
+// callback so per-keystroke writes (medical history) coalesce into one.
+function useDebouncedFlush(callback, delay = 600) {
+  const callbackRef = useRef(callback)
+  const timerRef = useRef(null)
+  const pendingRef = useRef(null)
+  const hasPendingRef = useRef(false)
+
+  useEffect(() => { callbackRef.current = callback }, [callback])
+
+  const debounced = useCallback((value) => {
+    pendingRef.current = value
+    hasPendingRef.current = true
+    clearTimeout(timerRef.current)
+    timerRef.current = setTimeout(() => {
+      hasPendingRef.current = false
+      callbackRef.current(pendingRef.current)
+    }, delay)
+  }, [delay])
+
+  const flush = useCallback(() => {
+    if (!hasPendingRef.current) return
+    clearTimeout(timerRef.current)
+    hasPendingRef.current = false
+    callbackRef.current(pendingRef.current)
+  }, [])
+
+  useEffect(() => () => flush(), [flush])
+
+  return [debounced, flush]
+}
 
 // ─── Medical History Tab ────────────────────────────────────────────────────
-export function MedicalHistoryTab({ contact, onUpdate, lang, dir }) {
+export function MedicalHistoryTab({ contact, onUpdateMedicalHistory, lang, dir }) {
   const isRTL = lang === 'ar'
   const med = contact._medical || { allergies: '', medications: '', bloodType: '', conditions: [] }
 
@@ -20,7 +53,8 @@ export function MedicalHistoryTab({ contact, onUpdate, lang, dir }) {
   ]
 
   const [form, setForm] = useState(med)
-  const set = (k, v) => { const n = { ...form, [k]: v }; setForm(n); onUpdate({ _medical: n }) }
+  const [debouncedSave, flush] = useDebouncedFlush(onUpdateMedicalHistory, 600)
+  const set = (k, v) => { const n = { ...form, [k]: v }; setForm(n); debouncedSave(n) }
   const toggleCondition = (e, id) => {
     e.preventDefault()
     const conds = form.conditions.includes(id) ? form.conditions.filter(c => c !== id) : [...form.conditions, id]
@@ -32,13 +66,13 @@ export function MedicalHistoryTab({ contact, onUpdate, lang, dir }) {
       <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 16px' }}>{isRTL ? 'التاريخ الطبي' : 'Medical History'}</h3>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
         <FormField label={isRTL ? 'الحساسية' : 'Allergies'} dir={dir}>
-          <input value={form.allergies} onChange={e => set('allergies', e.target.value)} placeholder={isRTL ? 'مثال: بنسلين' : 'e.g. Penicillin, Latex'} style={inputStyle(dir)} />
+          <input value={form.allergies} onChange={e => set('allergies', e.target.value)} onBlur={flush} placeholder={isRTL ? 'مثال: بنسلين' : 'e.g. Penicillin, Latex'} style={inputStyle(dir)} />
         </FormField>
         <FormField label={isRTL ? 'الأدوية الحالية' : 'Current Medications'} dir={dir}>
-          <input value={form.medications} onChange={e => set('medications', e.target.value)} placeholder={isRTL ? 'الأدوية المستخدمة' : 'e.g. Aspirin, Metformin'} style={inputStyle(dir)} />
+          <input value={form.medications} onChange={e => set('medications', e.target.value)} onBlur={flush} placeholder={isRTL ? 'الأدوية المستخدمة' : 'e.g. Aspirin, Metformin'} style={inputStyle(dir)} />
         </FormField>
         <FormField label={isRTL ? 'فصيلة الدم' : 'Blood Type'} dir={dir}>
-          <select value={form.bloodType} onChange={e => set('bloodType', e.target.value)} style={selectStyle(dir)}>
+          <select value={form.bloodType} onChange={e => set('bloodType', e.target.value)} onBlur={flush} style={selectStyle(dir)}>
             <option value="">—</option>
             {['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'].map(bt => <option key={bt} value={bt}>{bt}</option>)}
           </select>
@@ -66,11 +100,11 @@ export function MedicalHistoryTab({ contact, onUpdate, lang, dir }) {
 }
 
 // ─── Dental Chart Tab ───────────────────────────────────────────────────────
-export function DentalChartTab({ contact, onUpdate, onAddToTreatmentPlan, lang }) {
+export function DentalChartTab({ contact, onUpdateDentalChart, onAddToTreatmentPlan, lang }) {
   const teeth = contact._teeth || {}
   const handleUpdateTooth = (num, status) => {
     const updated = { ...teeth, [num]: status }
-    onUpdate({ _teeth: updated })
+    onUpdateDentalChart(updated)
   }
   return <DentalChart teeth={teeth} onUpdateTooth={handleUpdateTooth} onAddToTreatmentPlan={onAddToTreatmentPlan} lang={lang} />
 }
@@ -87,11 +121,12 @@ const CONDITION_PROCEDURE = {
   missing: 'Implant or Bridge',
 }
 
-export function TreatmentPlanTab({ contact, onUpdate, lang, dir, prefill, onPrefillConsumed }) {
+export function TreatmentPlanTab({ contact, onAddTreatment, lang, dir, prefill, onPrefillConsumed }) {
   const isRTL = lang === 'ar'
   const treatments = contact._treatments || []
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ procedure: '', tooth: '', cost: '', status: 'planned', date: '' })
+  const [form, setForm] = useState({ procedure: '', tooth: '', cost: '', status: 'planned', treatmentDate: '' })
+  const [submitting, setSubmitting] = useState(false)
 
   // When the dental chart hands us a tooth, auto-open the form with the
   // tooth and a suggested procedure. Consume the prefill so it doesn't loop.
@@ -102,18 +137,24 @@ export function TreatmentPlanTab({ contact, onUpdate, lang, dir, prefill, onPref
       tooth: String(prefill.tooth),
       cost: '',
       status: 'planned',
-      date: '',
+      treatmentDate: '',
     })
     setShowForm(true)
     if (onPrefillConsumed) onPrefillConsumed()
   }, [prefill?.tooth, prefill?.condition])
 
-  const addTreatment = () => {
+  const addTreatment = async () => {
     if (!form.procedure) return
-    const updated = [...treatments, { ...form, id: `tr_${Date.now()}`, cost: Number(form.cost) || 0 }]
-    onUpdate({ _treatments: updated })
-    setForm({ procedure: '', tooth: '', cost: '', status: 'planned', date: '' })
-    setShowForm(false)
+    setSubmitting(true)
+    try {
+      await onAddTreatment(form)
+      setForm({ procedure: '', tooth: '', cost: '', status: 'planned', treatmentDate: '' })
+      setShowForm(false)
+    } catch {
+      // Parent toasted; keep modal open with form values intact
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   const statusColors = { planned: { bg: 'rgba(0,255,178,0.1)', text: '#00FFB2' }, in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' }, completed: { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' } }
@@ -141,7 +182,7 @@ export function TreatmentPlanTab({ contact, onUpdate, lang, dir, prefill, onPref
                 <td style={{ padding: '10px 12px', color: C.textSec }}>#{tr.tooth || '—'}</td>
                 <td style={{ padding: '10px 12px', fontWeight: 600 }}>${tr.cost}</td>
                 <td style={{ padding: '10px 12px' }}><span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: sc.bg, color: sc.text, textTransform: 'capitalize' }}>{tr.status.replace('_', ' ')}</span></td>
-                <td style={{ padding: '10px 12px', color: C.textMuted, fontSize: 12 }}>{tr.date || '—'}</td>
+                <td style={{ padding: '10px 12px', color: C.textMuted, fontSize: 12 }}>{tr.treatmentDate || '—'}</td>
               </tr>
             )
           })}</tbody>
@@ -162,11 +203,13 @@ export function TreatmentPlanTab({ contact, onUpdate, lang, dir, prefill, onPref
                   <option value="completed">{isRTL ? 'مكتمل' : 'Completed'}</option>
                 </select>
               </FormField>
-              <FormField label={isRTL ? 'التاريخ' : 'Date'} dir={dir}><input value={form.date} onChange={e => setForm(p => ({ ...p, date: e.target.value }))} type="date" style={inputStyle(dir)} /></FormField>
+              <FormField label={isRTL ? 'التاريخ' : 'Date'} dir={dir}><input value={form.treatmentDate} onChange={e => setForm(p => ({ ...p, treatmentDate: e.target.value }))} type="date" style={inputStyle(dir)} /></FormField>
             </div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
               <button type="button" onClick={() => setShowForm(false)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-              <button type="submit" style={makeBtn('primary')}>{isRTL ? 'إضافة' : 'Add'}</button>
+              <button type="submit" disabled={submitting} style={makeBtn('primary', submitting ? { opacity: 0.6, cursor: 'wait' } : {})}>
+                {submitting ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'إضافة' : 'Add')}
+              </button>
             </div>
           </form>
         </Modal>
@@ -176,17 +219,25 @@ export function TreatmentPlanTab({ contact, onUpdate, lang, dir, prefill, onPref
 }
 
 // ─── Prescriptions Tab ──────────────────────────────────────────────────────
-export function PrescriptionsTab({ contact, onUpdate, lang, dir }) {
+export function PrescriptionsTab({ contact, onAddPrescription, lang, dir }) {
   const isRTL = lang === 'ar'
   const prescriptions = contact._prescriptions || []
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ medication: '', dosage: '', duration: '', notes: '', date: new Date().toISOString().slice(0, 10) })
+  const [form, setForm] = useState({ medication: '', dosage: '', duration: '', notes: '', prescribedDate: new Date().toISOString().slice(0, 10) })
+  const [submitting, setSubmitting] = useState(false)
 
-  const addPrescription = () => {
+  const addPrescription = async () => {
     if (!form.medication) return
-    onUpdate({ _prescriptions: [...prescriptions, { ...form, id: `rx_${Date.now()}` }] })
-    setForm({ medication: '', dosage: '', duration: '', notes: '', date: new Date().toISOString().slice(0, 10) })
-    setShowForm(false)
+    setSubmitting(true)
+    try {
+      await onAddPrescription(form)
+      setForm({ medication: '', dosage: '', duration: '', notes: '', prescribedDate: new Date().toISOString().slice(0, 10) })
+      setShowForm(false)
+    } catch {
+      // Parent toasted; keep modal open
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -201,7 +252,7 @@ export function PrescriptionsTab({ contact, onUpdate, lang, dir }) {
         <div key={rx.id} style={{ padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{rx.medication}</span>
-            <span style={{ fontSize: 11, color: C.textMuted }}>{rx.date}</span>
+            <span style={{ fontSize: 11, color: C.textMuted }}>{rx.prescribedDate}</span>
           </div>
           <div style={{ fontSize: 12, color: C.textSec }}>{rx.dosage} &middot; {rx.duration}</div>
           {rx.notes && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4, fontStyle: 'italic' }}>{rx.notes}</div>}
@@ -219,7 +270,9 @@ export function PrescriptionsTab({ contact, onUpdate, lang, dir }) {
             <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}><textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} style={{ ...inputStyle(dir), resize: 'vertical' }} /></FormField>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
               <button type="button" onClick={() => setShowForm(false)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-              <button type="submit" style={makeBtn('primary')}>{isRTL ? 'إضافة' : 'Add'}</button>
+              <button type="submit" disabled={submitting} style={makeBtn('primary', submitting ? { opacity: 0.6, cursor: 'wait' } : {})}>
+                {submitting ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'إضافة' : 'Add')}
+              </button>
             </div>
           </form>
         </Modal>
@@ -229,20 +282,22 @@ export function PrescriptionsTab({ contact, onUpdate, lang, dir }) {
 }
 
 // ─── X-Rays Tab ─────────────────────────────────────────────────────────────
-export function XRaysTab({ contact, onUpdate, lang, dir }) {
+export function XRaysTab({ contact, onUploadXray, lang, dir }) {
   const isRTL = lang === 'ar'
   const xrays = contact._xrays || []
   const [lightbox, setLightbox] = useState(null)
   const fileRef = useRef(null)
+  const [uploading, setUploading] = useState(false)
 
-  const handleUpload = (e) => {
+  const handleUpload = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const reader = new FileReader()
-    reader.onload = (ev) => {
-      onUpdate({ _xrays: [...xrays, { id: `xr_${Date.now()}`, name: file.name, url: ev.target.result, date: new Date().toISOString().slice(0, 10), notes: '' }] })
+    setUploading(true)
+    try { await onUploadXray(file) } catch {}
+    finally {
+      setUploading(false)
+      if (fileRef.current) fileRef.current.value = ''
     }
-    reader.readAsDataURL(file)
   }
 
   return (
@@ -250,19 +305,22 @@ export function XRaysTab({ contact, onUpdate, lang, dir }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>{isRTL ? 'صور الأشعة' : 'X-Rays'}</h3>
         <div><input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleUpload} />
-          <button type="button" onClick={() => fileRef.current?.click()} style={makeBtn('primary', { gap: 6, fontSize: 12 })}>{Icons.upload(14)} {isRTL ? 'رفع صورة' : 'Upload X-Ray'}</button>
+          <button type="button" disabled={uploading} onClick={() => fileRef.current?.click()} style={makeBtn('primary', uploading ? { gap: 6, fontSize: 12, opacity: 0.6, cursor: 'wait' } : { gap: 6, fontSize: 12 })}>
+            {Icons.upload(14)} {uploading ? (isRTL ? 'جاري الرفع...' : 'Uploading...') : (isRTL ? 'رفع صورة' : 'Upload X-Ray')}
+          </button>
         </div>
       </div>
-      {xrays.length === 0 ? (
+      {xrays.length === 0 && !uploading ? (
         <p style={{ fontSize: 13, color: C.textMuted, textAlign: 'center', padding: 24 }}>{isRTL ? 'لا توجد صور أشعة' : 'No x-rays uploaded'}</p>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
+          {uploading && <UploadingPlaceholder isRTL={isRTL} />}
           {xrays.map(xr => (
             <div key={xr.id} onClick={() => setLightbox(xr)} style={{ cursor: 'pointer', borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
-              <img src={xr.url} alt={xr.name} style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }} />
+              <XrayThumbnail xr={xr} isRTL={isRTL} />
               <div style={{ padding: '8px 10px', background: C.white }}>
-                <div style={{ fontSize: 11, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{xr.name}</div>
-                <div style={{ fontSize: 10, color: C.textMuted }}>{xr.date}</div>
+                <div style={{ fontSize: 11, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{xr.fileName}</div>
+                <div style={{ fontSize: 10, color: C.textMuted }}>{xr.takenDate}</div>
               </div>
             </div>
           ))}
@@ -272,17 +330,83 @@ export function XRaysTab({ contact, onUpdate, lang, dir }) {
       {lightbox && (
         <div onClick={() => setLightbox(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
           <div onClick={e => e.stopPropagation()} style={{ maxWidth: '90vw', maxHeight: '85vh', position: 'relative' }}>
-            <img src={lightbox.url} alt={lightbox.name} style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 8, display: 'block' }} />
+            <img src={lightbox.signedUrl} alt={lightbox.fileName} style={{ maxWidth: '100%', maxHeight: '80vh', borderRadius: 8, display: 'block' }} />
             <div style={{ position: 'absolute', top: -40, right: 0 }}>
               <button type="button" onClick={() => setLightbox(null)} style={{ width: 32, height: 32, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,.2)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18 }}>&times;</button>
             </div>
             <div style={{ textAlign: 'center', marginTop: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{lightbox.name}</div>
-              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>{lightbox.date}</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>{lightbox.fileName}</div>
+              <div style={{ fontSize: 12, color: 'rgba(255,255,255,.6)' }}>{lightbox.takenDate}</div>
             </div>
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// Two-step error recovery for x-ray thumbnails: signed-URL expiry triggers a
+// refresh via getXraySignedUrl; if that also fails, fall back to a plain
+// "unavailable" div. Legacy localStorage rows have storagePath=null and skip
+// straight to the fallback (their data-URL signedUrl is never expirable).
+function XrayThumbnail({ xr, isRTL }) {
+  const [src, setSrc] = useState(xr.signedUrl)
+  const [errorStage, setErrorStage] = useState(0)
+
+  useEffect(() => {
+    setSrc(xr.signedUrl)
+    setErrorStage(0)
+  }, [xr.signedUrl])
+
+  const handleError = async () => {
+    if (errorStage === 0 && xr.storagePath) {
+      try {
+        const fresh = await getXraySignedUrl(xr.storagePath)
+        setSrc(fresh)
+        setErrorStage(1)
+      } catch {
+        setErrorStage(2)
+      }
+    } else {
+      setErrorStage(2)
+    }
+  }
+
+  if (errorStage === 2 || !src) return <FallbackDiv isRTL={isRTL} />
+
+  return (
+    <img
+      src={src}
+      onError={handleError}
+      loading="lazy"
+      alt={xr.fileName || ''}
+      style={{ width: '100%', height: 120, objectFit: 'cover', display: 'block' }}
+    />
+  )
+}
+
+function FallbackDiv({ isRTL }) {
+  return (
+    <div style={{
+      background: C.bg, color: C.textMuted, height: 120,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontSize: 11, padding: '0 12px', textAlign: 'center',
+    }}>
+      {isRTL ? 'الصورة غير متاحة' : 'X-ray unavailable'}
+    </div>
+  )
+}
+
+function UploadingPlaceholder({ isRTL }) {
+  return (
+    <div style={{ borderRadius: 10, overflow: 'hidden', border: `1px dashed ${C.border}`, background: C.bg, opacity: 0.7 }}>
+      <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.textMuted, fontSize: 12 }}>
+        {isRTL ? 'جاري الرفع...' : 'Uploading...'}
+      </div>
+      <div style={{ padding: '8px 10px', background: C.white }}>
+        <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted }}>—</div>
+        <div style={{ fontSize: 10, color: C.textMuted }}>—</div>
+      </div>
     </div>
   )
 }
