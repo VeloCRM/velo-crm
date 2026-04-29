@@ -2272,6 +2272,66 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
     }
   }, [orgId, contact.id, toast, isRTL])
 
+  const onDeleteTreatment = useCallback(async (treatmentId) => {
+    if (!DENTAL_SUPABASE_ENABLED) {
+      setDentalState(s => {
+        const next = { ...s, treatments: s.treatments.filter(tr => tr.id !== treatmentId) }
+        writeLegacyDental(contact.id, next)
+        return next
+      })
+      return
+    }
+    try {
+      await dental.deleteTreatment(treatmentId)
+      setDentalState(s => ({ ...s, treatments: s.treatments.filter(tr => tr.id !== treatmentId) }))
+    } catch (err) {
+      console.error('deleteTreatment error:', err)
+      toast(isRTL ? 'فشل حذف العلاج' : 'Failed to delete treatment', 'error')
+      throw err
+    }
+  }, [contact.id, toast, isRTL])
+
+  const onDeletePrescription = useCallback(async (prescriptionId) => {
+    if (!DENTAL_SUPABASE_ENABLED) {
+      setDentalState(s => {
+        const next = { ...s, prescriptions: s.prescriptions.filter(rx => rx.id !== prescriptionId) }
+        writeLegacyDental(contact.id, next)
+        return next
+      })
+      return
+    }
+    try {
+      await dental.deletePrescription(prescriptionId)
+      setDentalState(s => ({ ...s, prescriptions: s.prescriptions.filter(rx => rx.id !== prescriptionId) }))
+    } catch (err) {
+      console.error('deletePrescription error:', err)
+      toast(isRTL ? 'فشل حذف الوصفة' : 'Failed to delete prescription', 'error')
+      throw err
+    }
+  }, [contact.id, toast, isRTL])
+
+  // dental.deleteXray is strict storage-first: if Storage delete fails, the
+  // DB row is preserved (so we never end up with an orphan row pointing at a
+  // deleted file). Surface the error so the user knows to retry.
+  const onDeleteXray = useCallback(async (xray) => {
+    if (!DENTAL_SUPABASE_ENABLED) {
+      setDentalState(s => {
+        const next = { ...s, xrays: s.xrays.filter(xr => xr.id !== xray.id) }
+        writeLegacyDental(contact.id, next)
+        return next
+      })
+      return
+    }
+    try {
+      await dental.deleteXray(xray.id, xray.storagePath)
+      setDentalState(s => ({ ...s, xrays: s.xrays.filter(xr => xr.id !== xray.id) }))
+    } catch (err) {
+      console.error('deleteXray error:', err)
+      toast(isRTL ? 'فشل حذف الصورة' : 'Failed to delete x-ray', 'error')
+      throw err
+    }
+  }, [contact.id, toast, isRTL])
+
   const baseTabs = [
     { id: 'details', label: t.contactDetails },
     { id: 'notes', label: t.notesHistory },
@@ -2553,17 +2613,17 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
         {isDental && profileTab === 'treatments' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalTreatments contact={dentalContact} onAddTreatment={onAddTreatment} lang={lang} dir={dir} prefill={treatmentPrefill} onPrefillConsumed={() => setTreatmentPrefill(null)} />
+          <DentalTreatments contact={dentalContact} onAddTreatment={onAddTreatment} onDeleteTreatment={onDeleteTreatment} lang={lang} dir={dir} prefill={treatmentPrefill} onPrefillConsumed={() => setTreatmentPrefill(null)} />
         )}
         {isDental && profileTab === 'prescriptions' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalPrescriptions contact={dentalContact} onAddPrescription={onAddPrescription} lang={lang} dir={dir} />
+          <DentalPrescriptions contact={dentalContact} onAddPrescription={onAddPrescription} onDeletePrescription={onDeletePrescription} lang={lang} dir={dir} />
         )}
         {isDental && profileTab === 'xrays' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalXRays contact={dentalContact} onUploadXray={onUploadXray} lang={lang} dir={dir} />
+          <DentalXRays contact={dentalContact} onUploadXray={onUploadXray} onDeleteXray={onDeleteXray} lang={lang} dir={dir} />
         )}
       </div>
 

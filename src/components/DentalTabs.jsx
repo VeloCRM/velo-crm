@@ -121,12 +121,14 @@ const CONDITION_PROCEDURE = {
   missing: 'Implant or Bridge',
 }
 
-export function TreatmentPlanTab({ contact, onAddTreatment, lang, dir, prefill, onPrefillConsumed }) {
+export function TreatmentPlanTab({ contact, onAddTreatment, onDeleteTreatment, lang, dir, prefill, onPrefillConsumed }) {
   const isRTL = lang === 'ar'
   const treatments = contact._treatments || []
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ procedure: '', tooth: '', cost: '', status: 'planned', treatmentDate: '' })
   const [submitting, setSubmitting] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   // When the dental chart hands us a tooth, auto-open the form with the
   // tooth and a suggested procedure. Consume the prefill so it doesn't loop.
@@ -157,6 +159,19 @@ export function TreatmentPlanTab({ contact, onAddTreatment, lang, dir, prefill, 
     }
   }
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await onDeleteTreatment(deleteTarget.id)
+      setDeleteTarget(null)
+    } catch {
+      // Parent toasted; keep modal open
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const statusColors = { planned: { bg: 'rgba(0,255,178,0.1)', text: '#00FFB2' }, in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' }, completed: { bg: 'rgba(0,255,136,0.1)', text: '#00ff88' } }
 
   return (
@@ -173,6 +188,7 @@ export function TreatmentPlanTab({ contact, onAddTreatment, lang, dir, prefill, 
             {[isRTL ? 'الإجراء' : 'Procedure', isRTL ? 'السن' : 'Tooth', isRTL ? 'التكلفة' : 'Cost', isRTL ? 'الحالة' : 'Status', isRTL ? 'التاريخ' : 'Date'].map((h, i) =>
               <th key={i} style={{ padding: '8px 12px', textAlign: isRTL ? 'right' : 'left', fontWeight: 600, color: C.textSec, fontSize: 11 }}>{h}</th>
             )}
+            <th style={{ padding: '8px 12px', width: 36 }} aria-label={isRTL ? 'إجراءات' : 'Actions'} />
           </tr></thead>
           <tbody>{treatments.map(tr => {
             const sc = statusColors[tr.status] || statusColors.planned
@@ -183,6 +199,16 @@ export function TreatmentPlanTab({ contact, onAddTreatment, lang, dir, prefill, 
                 <td style={{ padding: '10px 12px', fontWeight: 600 }}>${tr.cost}</td>
                 <td style={{ padding: '10px 12px' }}><span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: sc.bg, color: sc.text, textTransform: 'capitalize' }}>{tr.status.replace('_', ' ')}</span></td>
                 <td style={{ padding: '10px 12px', color: C.textMuted, fontSize: 12 }}>{tr.treatmentDate || '—'}</td>
+                <td style={{ padding: '10px 8px', textAlign: 'center' }}>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(tr)}
+                    aria-label={isRTL ? 'حذف' : 'Delete'}
+                    style={{ background: 'transparent', border: 'none', color: C.danger, opacity: 0.7, cursor: 'pointer', padding: 4, display: 'inline-flex', alignItems: 'center', borderRadius: 4 }}
+                  >
+                    {Icons.trash(14)}
+                  </button>
+                </td>
               </tr>
             )
           })}</tbody>
@@ -214,17 +240,33 @@ export function TreatmentPlanTab({ contact, onAddTreatment, lang, dir, prefill, 
           </form>
         </Modal>
       )}
+      {deleteTarget && (
+        <Modal onClose={() => { if (!deleting) setDeleteTarget(null) }} dir={dir} width={400}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 12px' }}>{isRTL ? 'حذف العلاج' : 'Delete Treatment'}</h3>
+          <p style={{ fontSize: 13, color: C.textSec, lineHeight: 1.5, margin: '0 0 20px' }}>
+            {isRTL ? 'هل تريد حذف هذا العلاج؟ لا يمكن التراجع عن هذا الإجراء.' : 'Delete this treatment? This cannot be undone.'}
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
+            <button type="button" disabled={deleting} onClick={confirmDelete} style={makeBtn('danger', deleting ? { opacity: 0.6, cursor: 'wait' } : {})}>
+              {deleting ? (isRTL ? 'جاري الحذف...' : 'Deleting...') : (isRTL ? 'حذف' : 'Delete')}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
 
 // ─── Prescriptions Tab ──────────────────────────────────────────────────────
-export function PrescriptionsTab({ contact, onAddPrescription, lang, dir }) {
+export function PrescriptionsTab({ contact, onAddPrescription, onDeletePrescription, lang, dir }) {
   const isRTL = lang === 'ar'
   const prescriptions = contact._prescriptions || []
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ medication: '', dosage: '', duration: '', notes: '', prescribedDate: new Date().toISOString().slice(0, 10) })
   const [submitting, setSubmitting] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const addPrescription = async () => {
     if (!form.medication) return
@@ -240,6 +282,19 @@ export function PrescriptionsTab({ contact, onAddPrescription, lang, dir }) {
     }
   }
 
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await onDeletePrescription(deleteTarget.id)
+      setDeleteTarget(null)
+    } catch {
+      // Parent toasted; keep modal open
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   return (
     <div style={{ ...card, padding: 24 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
@@ -250,9 +305,19 @@ export function PrescriptionsTab({ contact, onAddPrescription, lang, dir }) {
         <p style={{ fontSize: 13, color: C.textMuted, textAlign: 'center', padding: 24 }}>{isRTL ? 'لا توجد وصفات' : 'No prescriptions'}</p>
       ) : prescriptions.map(rx => (
         <div key={rx.id} style={{ padding: '14px 0', borderBottom: `1px solid ${C.border}` }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
             <span style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{rx.medication}</span>
-            <span style={{ fontSize: 11, color: C.textMuted }}>{rx.prescribedDate}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontSize: 11, color: C.textMuted }}>{rx.prescribedDate}</span>
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(rx)}
+                aria-label={isRTL ? 'حذف' : 'Delete'}
+                style={{ background: 'transparent', border: 'none', color: C.danger, opacity: 0.7, cursor: 'pointer', padding: 2, display: 'inline-flex', alignItems: 'center' }}
+              >
+                {Icons.trash(14)}
+              </button>
+            </div>
           </div>
           <div style={{ fontSize: 12, color: C.textSec }}>{rx.dosage} &middot; {rx.duration}</div>
           {rx.notes && <div style={{ fontSize: 12, color: C.textMuted, marginTop: 4, fontStyle: 'italic' }}>{rx.notes}</div>}
@@ -277,17 +342,33 @@ export function PrescriptionsTab({ contact, onAddPrescription, lang, dir }) {
           </form>
         </Modal>
       )}
+      {deleteTarget && (
+        <Modal onClose={() => { if (!deleting) setDeleteTarget(null) }} dir={dir} width={400}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 12px' }}>{isRTL ? 'حذف الوصفة' : 'Delete Prescription'}</h3>
+          <p style={{ fontSize: 13, color: C.textSec, lineHeight: 1.5, margin: '0 0 20px' }}>
+            {isRTL ? 'هل تريد حذف هذه الوصفة؟ لا يمكن التراجع عن هذا الإجراء.' : 'Delete this prescription? This cannot be undone.'}
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
+            <button type="button" disabled={deleting} onClick={confirmDelete} style={makeBtn('danger', deleting ? { opacity: 0.6, cursor: 'wait' } : {})}>
+              {deleting ? (isRTL ? 'جاري الحذف...' : 'Deleting...') : (isRTL ? 'حذف' : 'Delete')}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
 }
 
 // ─── X-Rays Tab ─────────────────────────────────────────────────────────────
-export function XRaysTab({ contact, onUploadXray, lang, dir }) {
+export function XRaysTab({ contact, onUploadXray, onDeleteXray, lang, dir }) {
   const isRTL = lang === 'ar'
   const xrays = contact._xrays || []
   const [lightbox, setLightbox] = useState(null)
   const fileRef = useRef(null)
   const [uploading, setUploading] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState(null)
+  const [deleting, setDeleting] = useState(false)
 
   const handleUpload = async (e) => {
     const file = e.target.files?.[0]
@@ -297,6 +378,19 @@ export function XRaysTab({ contact, onUploadXray, lang, dir }) {
     finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await onDeleteXray(deleteTarget)
+      setDeleteTarget(null)
+    } catch {
+      // Parent toasted; keep modal open
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -316,8 +410,21 @@ export function XRaysTab({ contact, onUploadXray, lang, dir }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 12 }}>
           {uploading && <UploadingPlaceholder isRTL={isRTL} />}
           {xrays.map(xr => (
-            <div key={xr.id} onClick={() => setLightbox(xr)} style={{ cursor: 'pointer', borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000' }}>
+            <div key={xr.id} onClick={() => setLightbox(xr)} style={{ cursor: 'pointer', borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}`, background: '#000', position: 'relative' }}>
               <XrayThumbnail xr={xr} isRTL={isRTL} />
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setDeleteTarget(xr) }}
+                aria-label={isRTL ? 'حذف الصورة' : 'Delete x-ray'}
+                style={{
+                  position: 'absolute', top: 8, [isRTL ? 'left' : 'right']: 8,
+                  width: 28, height: 28, borderRadius: 6,
+                  background: 'rgba(0,0,0,0.55)', color: '#fff', border: 'none',
+                  cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {Icons.trash(14)}
+              </button>
               <div style={{ padding: '8px 10px', background: C.white }}>
                 <div style={{ fontSize: 11, fontWeight: 600, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{xr.fileName}</div>
                 <div style={{ fontSize: 10, color: C.textMuted }}>{xr.takenDate}</div>
@@ -340,6 +447,21 @@ export function XRaysTab({ contact, onUploadXray, lang, dir }) {
             </div>
           </div>
         </div>
+      )}
+
+      {deleteTarget && (
+        <Modal onClose={() => { if (!deleting) setDeleteTarget(null) }} dir={dir} width={420}>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 12px' }}>{isRTL ? 'حذف الصورة' : 'Delete X-Ray'}</h3>
+          <p style={{ fontSize: 13, color: C.textSec, lineHeight: 1.5, margin: '0 0 20px' }}>
+            {isRTL ? 'هل تريد حذف هذه الصورة؟ سيتم حذف الملف وسجل قاعدة البيانات نهائياً.' : 'Delete this x-ray? The image file and database record will be permanently removed.'}
+          </p>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <button type="button" disabled={deleting} onClick={() => setDeleteTarget(null)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
+            <button type="button" disabled={deleting} onClick={confirmDelete} style={makeBtn('danger', deleting ? { opacity: 0.6, cursor: 'wait' } : {})}>
+              {deleting ? (isRTL ? 'جاري الحذف...' : 'Deleting...') : (isRTL ? 'حذف' : 'Delete')}
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   )
