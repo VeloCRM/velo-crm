@@ -27,6 +27,7 @@ const GrowthIntelligence = lazy(() => import('./pages/growth/GrowthIntelligence'
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
 import NotificationCenter from './components/NotificationCenter'
+import TestAccountBanner from './components/TestAccountBanner'
 import { SkeletonDashboard, SkeletonContacts, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
 import { useToast, ToastContainer } from './components/Toast'
 import ConfirmDialog from './components/ConfirmDialog'
@@ -89,6 +90,11 @@ const Icons = {
 const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', GBP:'£', IQD:'IQD ', AED:'AED ', SAR:'SAR ' }
 const fmtMoney = (n, currency) => (CURRENCY_SYMBOLS[currency] || '$') + Number(n||0).toLocaleString()
 const fmt$ = (n) => '$' + Number(n||0).toLocaleString()
+
+// Demo mode is opt-in via ?demo=1. Loads SAMPLE_* stub data. Never writes to Supabase.
+const isDemoMode = () =>
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('demo') === '1'
 const WIDGET_IDS = ['stats','chart','tasks','recentContacts','activity','inboxPreview','appointments','topLeads','pendingPayments','financeSummary']
 const DEFAULT_LAYOUT = {
   order: WIDGET_IDS,
@@ -161,7 +167,7 @@ export default function App() {
   const [notifOpen, setNotifOpen] = useState(false)
   const [needsOnboarding, setNeedsOnboarding] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
-  const [orgSettings, setOrgSettings] = useState(() => isSupabaseConfigured() ? {} : { industry: 'dental' })
+  const [orgSettings, setOrgSettings] = useState(() => isDemoMode() ? { industry: 'dental', status: 'demo' } : {})
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false)
   const [inboxUnread, setInboxUnread] = useState(0)
   const [isMobile, setIsMobile] = useState(false)
@@ -226,7 +232,8 @@ export default function App() {
   }, [])
   const closeConfirm = () => setConfirmDialog(null)
 
-  const useDB = isSupabaseConfigured()
+  const demoMode = isDemoMode()
+  const useDB = isSupabaseConfigured() && !demoMode
   const t = T[lang]
   const isRTL = lang === 'ar'
   const dir = isRTL ? 'rtl' : 'ltr'
@@ -311,8 +318,14 @@ export default function App() {
 
   // Fetch data from Supabase when user logs in
   const loadAllData = async () => {
-    if (!useDB) {
+    if (demoMode) {
+      // Read-only sample data for the ?demo=1 path.
       setContacts(SAMPLE_CONTACTS); setContactsTotal(SAMPLE_CONTACTS.length); setTasks(SAMPLE_TASKS)
+      return
+    }
+    if (!useDB) {
+      // No Supabase configured (dev only). Show empty state.
+      setContacts([]); setContactsTotal(0); setTasks([]); setAllPayments([])
       return
     }
     setDataLoading(true)
@@ -877,6 +890,16 @@ export default function App() {
           </div>
         </header>
 
+        {/* Test-account banner — sticky, shows when current org is in test status */}
+        <TestAccountBanner
+          org={orgSettings}
+          lang={lang}
+          onContactOperator={() => {
+            const url = import.meta.env.VITE_OPERATOR_CONTACT
+            if (url) window.open(url, '_blank', 'noopener,noreferrer')
+          }}
+        />
+
         {/* Impersonation Banner */}
         {impersonation && (
           <div style={{
@@ -1246,9 +1269,9 @@ function DashboardPage({ t, lang, isRTL, dir, contacts, contactsTotal = 0, deals
     recentContacts: () => <RecentContactsWidget t={t} contacts={contacts} dir={dir} setPage={setPage} />,
     pipeline: () => <PipelineSummaryWidget t={t} deals={deals} dir={dir} lang={lang} />,
     ticketStats: () => <TicketStatsWidget t={t} tickets={tickets} dir={dir} />,
-    activity: () => <ActivityWidget t={t} dir={dir} useDB={isSupabaseConfigured()} />,
-    inboxPreview: () => <InboxWidget t={t} dir={dir} useDB={isSupabaseConfigured()} />,
-    appointments: () => <AppointmentsWidget t={t} dir={dir} useDB={isSupabaseConfigured()} />,
+    activity: () => <ActivityWidget t={t} dir={dir} demoMode={demoMode} />,
+    inboxPreview: () => <InboxWidget t={t} dir={dir} demoMode={demoMode} />,
+    appointments: () => <AppointmentsWidget t={t} dir={dir} demoMode={demoMode} />,
     topLeads: () => <TopLeadsWidget t={t} contacts={contacts} deals={deals} dir={dir} isRTL={isRTL} />,
     pendingPayments: () => <PendingPaymentsWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
     financeSummary: () => <FinanceSummaryWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
@@ -1383,8 +1406,8 @@ function RecentContactsWidget({ t, contacts, dir, setPage }) {
   )
 }
 
-function ActivityWidget({ t, dir, useDB }) {
-  const activities = useDB ? [] : SAMPLE_ACTIVITIES
+function ActivityWidget({ t, dir, demoMode }) {
+  const activities = demoMode ? SAMPLE_ACTIVITIES : []
   const iconMap={deal:Icons.dollar,contact:Icons.user,message:Icons.mail,task:Icons.check,automation:Icons.automations}
   return (
     <div style={{...card,padding:20,direction:dir}}>
@@ -1411,8 +1434,8 @@ function ActivityWidget({ t, dir, useDB }) {
   )
 }
 
-function InboxWidget({ t, dir, useDB }) {
-  const messages = useDB ? [] : SAMPLE_MESSAGES.slice(0,4)
+function InboxWidget({ t, dir, demoMode }) {
+  const messages = demoMode ? SAMPLE_MESSAGES.slice(0,4) : []
   return (
     <div style={{...card,padding:20,direction:dir}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
@@ -1440,8 +1463,8 @@ function InboxWidget({ t, dir, useDB }) {
   )
 }
 
-function AppointmentsWidget({ t, dir, useDB }) {
-  const appointments = useDB ? [] : SAMPLE_APPOINTMENTS.slice(0,4)
+function AppointmentsWidget({ t, dir, demoMode }) {
+  const appointments = demoMode ? SAMPLE_APPOINTMENTS.slice(0,4) : []
   const typeColors={call:{bg:C.primaryBg,color:C.primary},demo:{bg:C.purpleBg,color:C.purple},meeting:{bg:C.successBg,color:C.success}}
   return (
     <div style={{...card,padding:20,direction:dir}}>
@@ -2760,7 +2783,11 @@ const FILTER_TABS = [
 
 function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate, teamMembers, isSuperAdmin, impersonation }) {
   if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
-  const [conversations, setConversations] = useState(() => isSupabaseConfigured() ? [] : SAMPLE_CONVERSATIONS)
+  const [conversations, setConversations] = useState(() => {
+    const isDemo = typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('demo') === '1'
+    return isDemo ? SAMPLE_CONVERSATIONS : []
+  })
   const [_activeConvId, _setActiveConvId] = useState(urlConvId || null)
 
   useEffect(() => { _setActiveConvId(urlConvId || null) }, [urlConvId])

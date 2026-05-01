@@ -365,3 +365,160 @@ export async function fetchPaymentsForOrg(userIds) {
   if (error) throw error
   return (data || []).map(mapPayment)
 }
+
+
+// ─── Test Account Limits ───────────────────────────────────────────────────
+// Test orgs (status='test') get a sandbox-sized cap on records and a hard
+// block on org_secrets writes. Real clinic accounts (status='active') are
+// unconstrained by these helpers.
+
+export const TEST_ACCOUNT_LIMITS = {
+  patients: 50,
+  appointments: 100,
+  profiles: 1,
+}
+
+export class TestAccountLimitError extends Error {
+  constructor(kind, max) {
+    super(`Test account limit reached: ${kind} cap is ${max}. Contact the operator for a real clinic account.`)
+    this.name = 'TestAccountLimitError'
+    this.kind = kind
+    this.max = max
+  }
+}
+
+/**
+ * Read the org's status. Returns null if not signed in or org not found.
+ * Used by the test-limit guards. Cheap query (single row, indexed PK).
+ */
+export async function fetchOrgStatus(orgId) {
+  if (!orgId) return null
+  const { data, error } = await supabase
+    .from('orgs')
+    .select('status')
+    .eq('id', orgId)
+    .maybeSingle()
+  if (error) return null
+  return data?.status || null
+}
+
+/**
+ * Throws TestAccountLimitError if the org is in 'test' status and the named
+ * collection is at or above its cap. Caller passes one of:
+ *   - 'patients'      (capped at 50)
+ *   - 'appointments'  (capped at 100)
+ *   - 'profiles'      (capped at 1)
+ *
+ * No-op for non-test orgs.
+ */
+export async function assertTestAccountLimit(orgId, kind) {
+  const max = TEST_ACCOUNT_LIMITS[kind]
+  if (max === undefined) {
+    throw new Error(`assertTestAccountLimit: unknown kind "${kind}"`)
+  }
+  const status = await fetchOrgStatus(orgId)
+  if (status !== 'test') return // non-test orgs: unlimited
+
+  const { count, error } = await supabase
+    .from(kind)
+    .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId)
+  if (error) throw error
+  if ((count ?? 0) >= max) {
+    throw new TestAccountLimitError(kind, max)
+  }
+}
+
+// ── New-schema write helpers (Sprint 0+). Each one enforces test-account
+// limits before issuing the insert. Call sites are wired up incrementally
+// as Phase 4+ migrates pages to the new schema.
+
+export async function insertPatient(patient, orgId) {
+  if (!orgId) throw new Error('insertPatient: orgId is required')
+  await assertTestAccountLimit(orgId, 'patients')
+  const { data, error } = await supabase
+    .from('patients')
+    .insert({
+      org_id: orgId,
+      full_name: patient.full_name || patient.fullName || '',
+      phone: patient.phone || '',
+      email: patient.email || null,
+      dob: patient.dob || null,
+      gender: patient.gender || null,
+      medical_history: patient.medical_history || patient.medicalHistory || {},
+      allergies: patient.allergies || [],
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+export async function insertAppointment(appt, orgId) {
+  if (!orgId) throw new Error('insertAppointment: orgId is required')
+  await assertTestAccountLimit(orgId, 'appointments')
+  const { data, error } = await supabase
+    .from('appointments')
+    .insert({
+      org_id: orgId,
+      patient_id: appt.patient_id || appt.patientId,
+      doctor_id: appt.doctor_id || appt.doctorId || null,
+      type: appt.type,
+      status: appt.status || 'scheduled',
+      scheduled_at: appt.scheduled_at || appt.scheduledAt,
+      duration_minutes: appt.duration_minutes || appt.durationMinutes || 30,
+      chair_id: appt.chair_id || appt.chairId || null,
+      notes: appt.notes || null,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+/**
+ * Create a new clinic-user profile. Test orgs are capped at 1 profile (the
+ * owner created by the test-account endpoint) — no team-member invites.
+ *
+ * Real onboarding goes through a SECURITY DEFINER RPC; this helper is for
+ * operator-side or RPC-internal use after the limit check.
+ */
+export async function insertProfile(profile, orgId) {
+  if (!orgId) throw new Error('insertProfile: orgId is required')
+  await assertTestAccountLimit(orgId, 'profiles')
+  const { data, error } = await supabase
+    .from('profiles')
+    .insert({
+      id: profile.id,
+      org_id: orgId,
+      role: profile.role || 'assistant',
+      full_name: profile.full_name || profile.fullName || null,
+      avatar_url: profile.avatar_url || profile.avatarUrl || null,
+      locale: profile.locale || 'en',
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
+/**
+ * Set / upsert an org-level secret. Operator-only at the RLS layer; this
+ * helper additionally refuses to write secrets for test orgs at the
+ * application layer, so even an operator acting on a test org cannot wire
+ * up real WhatsApp / Anthropic credentials.
+ */
+export async function setOrgSecret(orgId, kind, value) {
+  if (!orgId) throw new Error('setOrgSecret: orgId is required')
+  const status = await fetchOrgStatus(orgId)
+  if (status === 'test') {
+    throw new Error('Refusing to write org_secrets for a test org. Promote the org to "active" first.')
+  }
+  const { data, error } = await supabase
+    .from('org_secrets')
+    .upsert({ org_id: orgId, kind, value }, { onConflict: 'org_id,kind' })
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}

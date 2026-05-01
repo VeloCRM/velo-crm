@@ -4,9 +4,15 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 if (!supabaseUrl || !supabaseAnonKey) {
+  if (import.meta.env.PROD) {
+    throw new Error(
+      '[Velo CRM] Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. ' +
+      'Production builds require Supabase to be configured.'
+    )
+  }
   console.warn(
-    '[Velo CRM] Supabase not configured. Running in demo mode with sample data.\n' +
-    'To connect: copy .env.example → .env and add your Supabase credentials.'
+    '[Velo CRM] Supabase env vars missing. Dev build will run with empty data. ' +
+    'Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to .env, or append ?demo=1 to the URL for read-only sample data.'
   )
 }
 

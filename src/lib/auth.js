@@ -1,25 +1,31 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 
+function requireSupabase() {
+  if (!isSupabaseConfigured()) {
+    throw new Error('Supabase is not configured. Auth is unavailable in this environment.')
+  }
+}
+
 /**
  * Sign in with email and password.
  * @returns {{ data, error }}
  */
 export async function signIn(email, password) {
-  if (!isSupabaseConfigured()) {
-    return { data: { user: { id: 'demo', email } }, error: null }
-  }
+  requireSupabase()
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   return { data, error }
 }
 
 /**
  * Sign up with email and password.
+ *
+ * Note: clinic-owner signup is disabled in Sprint 0+. Real clinics are created
+ * by the operator. The only client-facing signup path is the
+ * /api/auth/create-test-account endpoint (test accounts only).
  * @returns {{ data, error }}
  */
 export async function signUp(email, password, fullName = '') {
-  if (!isSupabaseConfigured()) {
-    return { data: { user: { id: 'demo', email } }, error: null }
-  }
+  requireSupabase()
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -34,9 +40,7 @@ export async function signUp(email, password, fullName = '') {
  * Sign out the current user.
  */
 export async function signOut() {
-  if (!isSupabaseConfigured()) {
-    return { error: null }
-  }
+  if (!isSupabaseConfigured()) return { error: null }
   const { error } = await supabase.auth.signOut()
   return { error }
 }
@@ -46,9 +50,7 @@ export async function signOut() {
  * @returns {object|null}
  */
 export async function getCurrentUser() {
-  if (!isSupabaseConfigured()) {
-    return null
-  }
+  if (!isSupabaseConfigured()) return null
   const { data: { user } } = await supabase.auth.getUser()
   return user
 }
@@ -70,9 +72,7 @@ export function onAuthStateChange(callback) {
  * @returns {{ data, error }}
  */
 export async function resetPassword(email) {
-  if (!isSupabaseConfigured()) {
-    return { data: {}, error: null }
-  }
+  requireSupabase()
   const { data, error } = await supabase.auth.resetPasswordForEmail(email)
   return { data, error }
 }
