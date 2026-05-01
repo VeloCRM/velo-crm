@@ -24,6 +24,7 @@ const DocsPage = lazy(() => import('./pages/DocsPage'))
 const AgencyDashboard = lazy(() => import('./pages/AgencyDashboard'))
 const DentalDashboard = lazy(() => import('./pages/DentalDashboard'))
 const GrowthIntelligence = lazy(() => import('./pages/growth/GrowthIntelligence'))
+const ClinicCredentialsPage = lazy(() => import('./pages/operator/ClinicCredentials'))
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
 import NotificationCenter from './components/NotificationCenter'
@@ -43,6 +44,7 @@ import { calculateLeadScore } from './lib/ai'
 import { sanitizeContact, isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, validateContactForSave, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { acceptInvitation, getPendingInvite, clearPendingInvite, rememberPendingInvite } from './lib/invitations'
 import { can, canWrite, canDelete, normalizeRole, isReadOnlyRole } from './lib/permissions'
+import { useIsOperator } from './lib/operator'
 import './App.css'
 
 // ─── SVG Icons ──────────────────────────────────────────────────────────────
@@ -234,6 +236,7 @@ export default function App() {
 
   const demoMode = isDemoMode()
   const useDB = isSupabaseConfigured() && !demoMode
+  const { isOperator } = useIsOperator()
   const t = T[lang]
   const isRTL = lang === 'ar'
   const dir = isRTL ? 'rtl' : 'ltr'
@@ -715,11 +718,24 @@ export default function App() {
 
   // Filter non-agency nav items by role (super admin + impersonation keep
   // everything; the page gate still enforces permissions for direct URLs).
-  const visibleNavGroups = isAgencyMode
+  // Operator-only entries are appended separately so the role-based filter
+  // doesn't drop them (they aren't in the permissions config by design).
+  const baseVisibleGroups = isAgencyMode
     ? navGroups
     : navGroups
         .map(g => ({ ...g, items: g.items.filter(item => can(effectiveRole, item.id, 'r')) }))
         .filter(g => g.items.length > 0)
+  const visibleNavGroups = isOperator
+    ? [
+        ...baseVisibleGroups,
+        {
+          label: isRTL ? 'المشغل' : 'Operator',
+          items: [
+            { id: 'operator/credentials', icon: Icons.settings, label: isRTL ? 'بيانات اعتماد العيادات' : 'Clinic Credentials' },
+          ],
+        },
+      ]
+    : baseVisibleGroups
 
   const widgetNames = {
     stats: t.statsOverview, chart: t.monthlyRevenue||'Monthly Growth', tasks: t.tasksToday,
@@ -960,10 +976,10 @@ export default function App() {
                 ? <SkeletonDashboard />
                 : orgSettings?.industry === 'dental'
                   ? <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} setPage={setPage} /></Suspense>
-                  : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />
+                  : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} demoMode={demoMode} />
               )}
               {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} orgId={dentalOrgId} />}
-              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} orgId={dentalOrgId} demoMode={demoMode} />}
               {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><AppointmentsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} setPage={setPage} /></Suspense>}
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
@@ -979,6 +995,7 @@ export default function App() {
               {page === 'billing' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الفواتير' : 'Billing'} description={isRTL ? 'إدارة الفواتير والمدفوعات قريباً' : 'Billing management coming soon.'} icon={Icons.file} />}
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
               {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isSuperAdmin={isSuperAdmin} /></Suspense>}
+              {page === 'operator' && pageSubId === 'credentials' && isOperator && <Suspense fallback={<SkeletonGeneric />}><ClinicCredentialsPage lang={lang} /></Suspense>}
             </>
           )}
         </div>
@@ -1256,7 +1273,7 @@ function AgencyDashboardView({ t, lang, isRTL, dir, setPage }) {
   )
 }
 
-function DashboardPage({ t, lang, isRTL, dir, contacts, contactsTotal = 0, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments, isSuperAdmin, impersonation }) {
+function DashboardPage({ t, lang, isRTL, dir, contacts, contactsTotal = 0, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments, isSuperAdmin, impersonation, demoMode }) {
   // Agency mode — show agency-level stats instead of regular dashboard
   if (isSuperAdmin && !impersonation) {
     return <AgencyDashboardView t={t} lang={lang} isRTL={isRTL} dir={dir} setPage={setPage} />
@@ -2781,7 +2798,7 @@ const FILTER_TABS = [
   { id: 'sms', key: 'sms' },
 ]
 
-function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate, teamMembers, isSuperAdmin, impersonation }) {
+function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate, teamMembers, isSuperAdmin, impersonation, orgId, demoMode, toast }) {
   if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
   const [conversations, setConversations] = useState(() => {
     const isDemo = typeof window !== 'undefined' &&
@@ -2830,16 +2847,50 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
 
   const totalUnread = conversations.reduce((s, c) => s + c.unread, 0)
 
-  const sendMessage = () => {
+  const sendMessage = async () => {
     if (!msgInput.trim() || !activeConvId) return
+    const trimmed = msgInput.trim()
     const now = new Date()
     const timeStr = now.toLocaleTimeString(lang === 'ar' ? 'ar-SA' : 'en-US', { hour: 'numeric', minute: '2-digit' })
-    const newMsg = { id: `msg_${Date.now()}`, sender: 'me', text: msgInput.trim(), time: timeStr, date: now.toISOString().slice(0,10) }
+    const tempId = `msg_${Date.now()}`
+    const newMsg = { id: tempId, sender: 'me', text: trimmed, time: timeStr, date: now.toISOString().slice(0,10), pending: true }
     setConversations(prev => prev.map(c =>
-      c.id === activeConvId ? { ...c, messages: [...c.messages, newMsg], lastMessage: newMsg.text, lastTime: timeStr } : c
+      c.id === activeConvId ? { ...c, messages: [...(c.messages || []), newMsg], lastMessage: trimmed, lastTime: timeStr } : c
     ))
     setMsgInput('')
     setShowAiSuggestion(false)
+
+    // Real WhatsApp send only when we have an org context, a patient/contact id,
+    // a WhatsApp channel, and we're not in demo mode. Anything else stays
+    // local-only (legacy demo behavior).
+    const conv = conversations.find(c => c.id === activeConvId)
+    const canRealSend = !demoMode && orgId && conv?.contactId && conv?.channel === 'whatsapp'
+    if (!canRealSend) {
+      // Mark optimistic message as not-pending so UI doesn't show indefinite spinner.
+      setConversations(prev => prev.map(c =>
+        c.id === activeConvId
+          ? { ...c, messages: (c.messages || []).map(m => m.id === tempId ? { ...m, pending: false } : m) }
+          : c
+      ))
+      return
+    }
+
+    try {
+      const { sendWhatsAppMessage } = await import('./lib/whatsapp')
+      await sendWhatsAppMessage(orgId, conv.contactId, trimmed)
+      setConversations(prev => prev.map(c =>
+        c.id === activeConvId
+          ? { ...c, messages: (c.messages || []).map(m => m.id === tempId ? { ...m, pending: false } : m) }
+          : c
+      ))
+    } catch (err) {
+      if (toast) toast(`${isRTL ? 'فشل الإرسال:' : 'Send failed:'} ${err.message}`, 'error')
+      setConversations(prev => prev.map(c =>
+        c.id === activeConvId
+          ? { ...c, messages: (c.messages || []).map(m => m.id === tempId ? { ...m, pending: false, failed: true } : m) }
+          : c
+      ))
+    }
   }
 
   const handleAttach = (e) => {

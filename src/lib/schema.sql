@@ -1180,3 +1180,15 @@ CREATE TABLE ai_usage (id uuid primary key default gen_random_uuid(), org_id uui
 CREATE INDEX idx_ai_usage_org_time ON ai_usage(org_id, requested_at DESC);
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
 CREATE POLICY ai_usage_operator ON ai_usage FOR ALL USING (is_operator()) WITH CHECK (is_operator());
+
+
+-- ============================================================================
+-- MIGRATION — Phase 5 (Sprint 0): whatsapp_usage rate-limit table
+-- ----------------------------------------------------------------------------
+-- Append-only migration. Same shape as ai_usage (timestamped row per send).
+-- Powers the 1000 messages / day cap enforced by /api/whatsapp/send.
+-- ============================================================================
+CREATE TABLE whatsapp_usage (id uuid primary key default gen_random_uuid(), org_id uuid not null references orgs(id) on delete cascade, sent_at timestamptz not null default now());
+CREATE INDEX idx_whatsapp_usage_org_time ON whatsapp_usage(org_id, sent_at DESC);
+ALTER TABLE whatsapp_usage ENABLE ROW LEVEL SECURITY;
+CREATE POLICY whatsapp_usage_operator ON whatsapp_usage FOR ALL USING (is_operator()) WITH CHECK (is_operator());
