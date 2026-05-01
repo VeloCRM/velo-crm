@@ -3,12 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom'
 import { T } from './translations'
 import { C, CAT_COLORS, STAGE_COLORS, makeBtn, card } from './design'
 import {
-  SAMPLE_CONTACTS, SAMPLE_DEALS, SAMPLE_TASKS,
+  SAMPLE_CONTACTS, SAMPLE_TASKS,
   SAMPLE_MESSAGES, SAMPLE_APPOINTMENTS, SAMPLE_ACTIVITIES,
-  SAMPLE_CONVERSATIONS, SAMPLE_TICKETS,
+  SAMPLE_CONVERSATIONS,
 } from './sampleData'
 import AuthPage from './pages/Auth'
-const CalendarPage = lazy(() => import('./pages/CalendarPage'))
 const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'))
 const AutomationsPage = lazy(() => import('./pages/AutomationsPage'))
 const IntegrationsPage = lazy(() => import('./pages/IntegrationsPage'))
@@ -20,7 +19,6 @@ const FormsPage = lazy(() => import('./pages/FormsPage'))
 const SocialPage = lazy(() => import('./pages/SocialPage'))
 const FinancePage = lazy(() => import('./pages/FinancePage'))
 const TasksPage = lazy(() => import('./pages/TasksPage'))
-const ProjectsPage = lazy(() => import('./pages/ProjectsPage'))
 const GoalsPage = lazy(() => import('./pages/GoalsPage'))
 const DocsPage = lazy(() => import('./pages/DocsPage'))
 const AgencyDashboard = lazy(() => import('./pages/AgencyDashboard'))
@@ -29,7 +27,7 @@ const GrowthIntelligence = lazy(() => import('./pages/growth/GrowthIntelligence'
 import CommandPalette from './components/CommandPalette'
 import AIAssistant from './components/AIAssistant'
 import NotificationCenter from './components/NotificationCenter'
-import { SkeletonDashboard, SkeletonContacts, SkeletonPipeline, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
+import { SkeletonDashboard, SkeletonContacts, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
 import { useToast, ToastContainer } from './components/Toast'
 import ConfirmDialog from './components/ConfirmDialog'
 import EmptyState from './components/EmptyState'
@@ -41,7 +39,7 @@ import * as db from './lib/database'
 import * as dental from './lib/dental'
 import { DENTAL_SUPABASE_ENABLED } from './lib/featureFlags'
 import { calculateLeadScore } from './lib/ai'
-import { sanitizeContact, sanitizeDeal, sanitizeTicket, isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, validateContactForSave, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
+import { sanitizeContact, isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, validateContactForSave, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { acceptInvitation, getPendingInvite, clearPendingInvite, rememberPendingInvite } from './lib/invitations'
 import { can, canWrite, canDelete, normalizeRole, isReadOnlyRole } from './lib/permissions'
 import './App.css'
@@ -91,7 +89,7 @@ const Icons = {
 const CURRENCY_SYMBOLS = { USD:'$', EUR:'€', GBP:'£', IQD:'IQD ', AED:'AED ', SAR:'SAR ' }
 const fmtMoney = (n, currency) => (CURRENCY_SYMBOLS[currency] || '$') + Number(n||0).toLocaleString()
 const fmt$ = (n) => '$' + Number(n||0).toLocaleString()
-const WIDGET_IDS = ['stats','chart','tasks','recentContacts','pipeline','ticketStats','activity','inboxPreview','appointments','topLeads','pendingPayments','financeSummary']
+const WIDGET_IDS = ['stats','chart','tasks','recentContacts','activity','inboxPreview','appointments','topLeads','pendingPayments','financeSummary']
 const DEFAULT_LAYOUT = {
   order: WIDGET_IDS,
   visible: Object.fromEntries(WIDGET_IDS.map(id => [id, true])),
@@ -150,7 +148,6 @@ function Modal({ children, onClose, dir, width = 520 }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // APP
 // ═══════════════════════════════════════════════════════════════════════════
-const SUPER_ADMIN_EMAIL = 'alialjobory89@gmail.com'
 
 export default function App() {
   const [lang, setLang] = useState(() => localStorage.getItem('velo_lang') || 'en')
@@ -199,9 +196,7 @@ export default function App() {
   const [contacts, setContacts] = useState([])
   const [contactsTotal, setContactsTotal] = useState(0)
   const [contactsLoadingMore, setContactsLoadingMore] = useState(false)
-  const [deals, setDeals] = useState([])
   const [tasks, setTasks] = useState([])
-  const [tickets, setTickets] = useState([])
   const [allPayments, setAllPayments] = useState([])
   const [teamMembers, setTeamMembers] = useState([])
   const [dragWidget, setDragWidget] = useState(null)
@@ -254,14 +249,12 @@ export default function App() {
       const token = sanitizePathParam(rawToken)
       if (token) rememberPendingInvite(token)
       if (user) {
-        if (user.email === SUPER_ADMIN_EMAIL && !impersonation) navigate('/agency', { replace: true })
-        else navigate('/dashboard', { replace: true })
+        navigate('/dashboard', { replace: true })
       }
       return
     }
     if (path === '/') {
-      if (user?.email === SUPER_ADMIN_EMAIL && !impersonation) navigate('/agency', { replace: true })
-      else navigate('/dashboard', { replace: true })
+      navigate('/dashboard', { replace: true })
     }
   }, [location.pathname, location.search, navigate, user, impersonation])
 
@@ -291,8 +284,6 @@ export default function App() {
         e.preventDefault()
         // "N" triggers new item based on current page
         if (page === 'contacts') { document.querySelector('[data-action="new-contact"]')?.click() }
-        else if (page === 'pipeline') { document.querySelector('[data-action="new-deal"]')?.click() }
-        else if (page === 'tickets') { document.querySelector('[data-action="new-ticket"]')?.click() }
         else if (page === 'calendar') { document.querySelector('[data-action="new-event"]')?.click() }
         return
       }
@@ -300,7 +291,7 @@ export default function App() {
       if (e.key === 'g') { gPending = true; setTimeout(() => gPending = false, 800); return }
       if (gPending) {
         gPending = false
-        const map = { d: 'dashboard', c: 'contacts', p: 'pipeline', i: 'inbox', t: 'tickets', a: 'calendar' }
+        const map = { d: 'dashboard', c: 'contacts', i: 'inbox', a: 'calendar' }
         if (map[e.key]) { e.preventDefault(); setPage(map[e.key]) }
       }
     }
@@ -320,10 +311,8 @@ export default function App() {
 
   // Fetch data from Supabase when user logs in
   const loadAllData = async () => {
-    const isSA = user?.email === SUPER_ADMIN_EMAIL
     if (!useDB) {
-      if (isSA) { setContacts([]); setContactsTotal(0); setDeals([]); setTickets([]); setTasks([]); setAllPayments([]) }
-      else { setContacts(SAMPLE_CONTACTS); setContactsTotal(SAMPLE_CONTACTS.length); setDeals(SAMPLE_DEALS); setTickets(SAMPLE_TICKETS); setTasks(SAMPLE_TASKS) }
+      setContacts(SAMPLE_CONTACTS); setContactsTotal(SAMPLE_CONTACTS.length); setTasks(SAMPLE_TASKS)
       return
     }
     setDataLoading(true)
@@ -353,27 +342,13 @@ export default function App() {
         }
       }
 
-      if (isSA) {
-        // Super admin without impersonation — don't fetch org data (would leak all orgs' data)
-        setContacts([])
-        setContactsTotal(0)
-        setDeals([])
-        setTickets([])
-        setAllPayments([])
-      } else {
-        const [contactsPage, rawDeals, rawTickets, rawPayments] = await Promise.all([
-          db.fetchContacts(),
-          db.fetchDeals(),
-          db.fetchTickets(),
-          db.fetchAllPayments().catch(() => []),
-        ])
-        const hydrated = db.hydrateReferences(contactsPage.rows, rawDeals, rawTickets)
-        setContacts(hydrated.contacts)
-        setContactsTotal(contactsPage.total)
-        setDeals(hydrated.deals)
-        setTickets(hydrated.tickets)
-        setAllPayments(rawPayments)
-      }
+      const [contactsPage, rawPayments] = await Promise.all([
+        db.fetchContacts(),
+        db.fetchAllPayments().catch(() => []),
+      ])
+      setContacts(contactsPage.rows)
+      setContactsTotal(contactsPage.total)
+      setAllPayments(rawPayments)
     } catch (err) {
       console.error('Data load error:', err)
       setDataError(err.message || 'Failed to load data')
@@ -392,17 +367,12 @@ export default function App() {
       const org = await db.fetchOrg(orgId)
       if (org) setOrgSettings(org)
       const userIds = await db.fetchOrgUserIds(orgId)
-      const [contactsPage, rawDeals, rawTickets, rawPayments] = await Promise.all([
+      const [contactsPage, rawPayments] = await Promise.all([
         db.fetchContactsForOrg(orgId, userIds),
-        db.fetchDealsForOrg(userIds),
-        db.fetchTicketsForOrg(userIds),
         db.fetchPaymentsForOrg(userIds),
       ])
-      const hydrated = db.hydrateReferences(contactsPage.rows, rawDeals, rawTickets)
-      setContacts(hydrated.contacts)
+      setContacts(contactsPage.rows)
       setContactsTotal(contactsPage.total)
-      setDeals(hydrated.deals)
-      setTickets(hydrated.tickets)
       setAllPayments(rawPayments)
     } catch (err) {
       console.error('Impersonation data load error:', err)
@@ -429,11 +399,7 @@ export default function App() {
       const page = impersonation
         ? await db.fetchContactsForOrg(impersonation.orgId, await db.fetchOrgUserIds(impersonation.orgId), offset)
         : await db.fetchContacts(offset)
-      const merged = [...contacts, ...page.rows]
-      const hydrated = db.hydrateReferences(merged, deals, tickets)
-      setContacts(hydrated.contacts)
-      setDeals(hydrated.deals)
-      setTickets(hydrated.tickets)
+      setContacts([...contacts, ...page.rows])
       setContactsTotal(page.total)
     } catch (err) {
       console.error('Load more contacts error:', err)
@@ -441,7 +407,7 @@ export default function App() {
     } finally {
       setContactsLoadingMore(false)
     }
-  }, [useDB, contactsLoadingMore, contacts, contactsTotal, deals, tickets, impersonation, addToast, isRTL])
+  }, [useDB, contactsLoadingMore, contacts, contactsTotal, impersonation, addToast, isRTL])
 
   // Initial data load on sign-in (or impersonation switch).
   // Skip when a pending invite exists — the invite-apply effect will
@@ -493,8 +459,6 @@ export default function App() {
     setUser(null)
     setContacts([])
     setContactsTotal(0)
-    setDeals([])
-    setTickets([])
     setOrgSettings({})
     setShowUserMenu(false)
     setImpersonation(null)
@@ -526,8 +490,6 @@ export default function App() {
       setOrgSettings({})
       setContacts([])
       setContactsTotal(0)
-      setDeals([])
-      setTickets([])
       setAllPayments([])
       loadAllData()
       navigate('/agency')
@@ -550,8 +512,8 @@ export default function App() {
     return <AuthPage onAuth={(u) => setUser(u)} lang={lang} setLang={setLang} />
   }
 
-  // Super Admin check
-  const isSuperAdmin = user?.email === SUPER_ADMIN_EMAIL
+  // Super Admin check — TODO: replace with role-based check post-Sprint 0
+  const isSuperAdmin = false
 
   // Effective role for permission checks. Super admin and agency-mode
   // impersonation always get full admin access; org users use their own role.
@@ -579,8 +541,6 @@ export default function App() {
     setOrgSettings({})
     setContacts([])
     setContactsTotal(0)
-    setDeals([])
-    setTickets([])
     setAllPayments([])
     loadAllData()
     navigate('/agency')
@@ -663,7 +623,6 @@ export default function App() {
     if (!requirePerm('contacts', 'd')) return
     setContacts(prev => prev.filter(c => c.id !== id))
     setContactsTotal(n => Math.max(0, n - 1))
-    setDeals(prev => prev.filter(d => d.contactId !== id))
     addToast(isRTL ? 'تم حذف جهة الاتصال' : 'Contact deleted', 'success')
     if (useDB) {
       try { await db.removeContact(id) }
@@ -688,77 +647,6 @@ export default function App() {
         const saved = await db.addContactNote(contactId, newNote)
         setContacts(prev => prev.map(c => c.id === contactId ? saved : c))
       } catch (err) { console.error('Add note error:', err) }
-    }
-  }
-
-  const addDeal = async (raw) => {
-    if (!requirePerm('pipeline', 'w')) return
-    const d = sanitizeDeal(raw)
-    const optimistic = { ...d, id: genId('d'), createdAt: new Date().toISOString().slice(0,10), name: d.name || d.title || '' }
-    setDeals(prev => [...prev, optimistic])
-    addToast(isRTL ? 'تمت إضافة الصفقة' : 'Deal created', 'success')
-    pushNotification('deal', isRTL ? 'صفقة جديدة' : 'New deal created', d.name || d.title || '')
-    if (useDB) {
-      try {
-        const saved = await db.insertDeal(d, contacts)
-        setDeals(prev => prev.map(x => x.id === optimistic.id ? saved : x))
-      } catch (err) { console.error('Add deal error:', err); addToast(isRTL ? 'خطأ في إنشاء الصفقة' : 'Error creating deal', 'error'); loadAllData() }
-    }
-  }
-  const updateDeal = async (id, data) => {
-    if (!requirePerm('pipeline', 'w')) return
-    const prev = deals.find(d => d.id === id)
-    setDeals(prevDeals => prevDeals.map(d => d.id === id ? { ...d, ...data } : d))
-    addToast(isRTL ? 'تم تحديث الصفقة' : 'Deal updated', 'success')
-    if (data.stage && prev && data.stage !== prev.stage) {
-      pushNotification('deal', isRTL ? 'تغيير مرحلة الصفقة' : 'Deal stage changed', `${prev.name}: ${prev.stage} → ${data.stage}`)
-    }
-    if (useDB) {
-      try { await db.patchDeal(id, data) }
-      catch (err) { console.error('Update deal error:', err); addToast(isRTL ? 'خطأ في التحديث' : 'Error updating deal', 'error'); loadAllData() }
-    }
-  }
-  const deleteDeal = async (id) => {
-    if (!requirePerm('pipeline', 'd')) return
-    setDeals(prev => prev.filter(d => d.id !== id))
-    addToast(isRTL ? 'تم حذف الصفقة' : 'Deal deleted', 'success')
-    if (useDB) {
-      try { await db.removeDeal(id) }
-      catch (err) { console.error('Delete deal error:', err); addToast(isRTL ? 'خطأ في الحذف' : 'Error deleting deal', 'error'); loadAllData() }
-    }
-  }
-
-  const addTicket = async (raw) => {
-    if (!requirePerm('tickets', 'w')) return
-    const tk = sanitizeTicket(raw)
-    const nums = tickets.map(t => parseInt((t.ticketId||'').replace('VLO-',''))).filter(n => !isNaN(n))
-    const nextNum = 'VLO-' + String(Math.max(0, ...nums) + 1).padStart(3, '0')
-    const optimistic = { ...tk, id: genId('tkt'), ticketId: nextNum, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), timeline: [{ id: genId('tl'), type: 'created', text: t.ticketCreatedLabel, author: t.adminUser, date: new Date().toISOString() }] }
-    setTickets(prev => [...prev, optimistic])
-    addToast(isRTL ? 'تم إنشاء التذكرة' : 'Ticket created', 'success')
-    pushNotification('ticket', isRTL ? 'تذكرة جديدة' : 'New ticket created', `${nextNum}: ${tk.subject || ''}`)
-    if (useDB) {
-      try {
-        const saved = await db.insertTicket(tk, contacts)
-        setTickets(prev => prev.map(x => x.id === optimistic.id ? saved : x))
-      } catch (err) { console.error('Add ticket error:', err); addToast(isRTL ? 'خطأ في إنشاء التذكرة' : 'Error creating ticket', 'error'); loadAllData() }
-    }
-  }
-  const updateTicket = async (id, data) => {
-    if (!requirePerm('tickets', 'w')) return
-    setTickets(prev => prev.map(tk => tk.id === id ? { ...tk, ...data, updatedAt: new Date().toISOString() } : tk))
-    addToast(isRTL ? 'تم تحديث التذكرة' : 'Ticket updated', 'success')
-    if (useDB) {
-      try {
-        const withMarkers = { ...data }
-        if (data.timeline) {
-          const existing = tickets.find(tk => tk.id === id)
-          const existingIds = new Set((existing?.timeline || []).map(e => e.id))
-          withMarkers.timeline = data.timeline.map(e => existingIds.has(e.id) ? e : { ...e, _new: true })
-        }
-        const saved = await db.patchTicket(id, withMarkers)
-        setTickets(prev => prev.map(tk => tk.id === id ? { ...saved, contactName: tk.contactName, company: tk.company } : tk))
-      } catch (err) { console.error('Update ticket error:', err); addToast(isRTL ? 'خطأ في التحديث' : 'Error updating ticket', 'error'); loadAllData() }
     }
   }
 
@@ -792,9 +680,7 @@ export default function App() {
     { label: t.workspace, items: [
       { id: 'dashboard', icon: Icons.dashboard, label: t.dashboard },
       { id: 'contacts', icon: Icons.contacts, label: orgSettings.industry === 'dental' ? (isRTL ? 'المرضى' : 'Patients') : t.contacts },
-      { id: 'pipeline', icon: Icons.pipeline, label: t.pipeline },
       { id: 'inbox', icon: Icons.inbox, label: t.inbox, badge: inboxUnread || undefined },
-      { id: 'tickets', icon: Icons.ticket, label: t.tickets, badge: tickets.filter(tk => tk.status === 'open').length || undefined },
       { id: 'calendar', icon: Icons.calendar, label: t.calendar },
       { id: 'tasks', icon: Icons.check, label: isRTL ? 'المهام' : 'Tasks' },
     ]},
@@ -824,7 +710,7 @@ export default function App() {
 
   const widgetNames = {
     stats: t.statsOverview, chart: t.monthlyRevenue||'Monthly Growth', tasks: t.tasksToday,
-    recentContacts: t.contactsWidget, pipeline: t.pipelineSummary, ticketStats: t.ticketsByStatus, activity: t.recentActivity,
+    recentContacts: t.contactsWidget, activity: t.recentActivity,
     inboxPreview: t.inboxPreview, appointments: t.upcomingAppointments,
     topLeads: isRTL?'أفضل العملاء المحتملين':'Top Leads by Score', pendingPayments: isRTL?'مدفوعات مستحقة':'Pending Payments', financeSummary: isRTL?'ملخص مالي':'Finance Summary',
   }
@@ -1041,7 +927,6 @@ export default function App() {
           {/* Loading skeleton — page-specific */}
           {dataLoading ? (
             page === 'contacts' ? <SkeletonContacts /> :
-            page === 'pipeline' ? <SkeletonPipeline /> :
             page === 'inbox' ? <SkeletonInbox /> :
             page === 'calendar' ? <SkeletonCalendar /> :
             page === 'dashboard' ? <SkeletonDashboard /> :
@@ -1054,21 +939,19 @@ export default function App() {
                   ? <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} setPage={setPage} /></Suspense>
                   : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />
               )}
-              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} deals={deals} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addDeal={addDeal} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} orgId={dentalOrgId} />}
-              {page === 'pipeline' && <PipelinePage t={t} lang={lang} dir={dir} isRTL={isRTL} deals={deals} contacts={contacts} updateDeal={updateDeal} addDeal={addDeal} deleteDeal={deleteDeal} setPage={setPage} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
-              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} tickets={tickets} addTicket={addTicket} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
-              {page === 'tickets' && <TicketsPage t={t} lang={lang} dir={dir} isRTL={isRTL} tickets={tickets} contacts={contacts} addTicket={addTicket} updateTicket={updateTicket} setPage={setPage} toast={addToast} urlTicketId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
+              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} orgId={dentalOrgId} />}
+              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} />}
               {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><AppointmentsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} setPage={setPage} /></Suspense>}
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
               {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} /></Suspense>}
               {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin && !impersonation} orgPayments={impersonation ? allPayments : null} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
-              {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
-              {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} tickets={tickets} onBack={() => setPage('reports')} /></Suspense>}
-              {page === 'tasks' && <Suspense fallback={<SkeletonGeneric />}><TasksPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} user={user} toast={addToast} showConfirm={showConfirm} /></Suspense>}
-              {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
-              {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} deals={deals} toast={addToast} /></Suspense>}
+              {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
+              {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} onBack={() => setPage('reports')} /></Suspense>}
+              {page === 'tasks' && <Suspense fallback={<SkeletonGeneric />}><TasksPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} user={user} toast={addToast} showConfirm={showConfirm} /></Suspense>}
+              {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
+              {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
               {page === 'agency' && isSuperAdmin && !impersonation && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
               {page === 'billing' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الفواتير' : 'Billing'} description={isRTL ? 'إدارة الفواتير والمدفوعات قريباً' : 'Billing management coming soon.'} icon={Icons.file} />}
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
@@ -1117,7 +1000,7 @@ export default function App() {
               { id:'dashboard', icon: Icons.dashboard, label: t.dashboard },
               { id:'contacts', icon: Icons.contacts, label: t.contacts },
               { id:'inbox', icon: Icons.inbox, label: t.inbox },
-              { id:'pipeline', icon: Icons.pipeline, label: t.pipeline },
+              { id:'calendar', icon: Icons.calendar, label: t.calendar },
               { id:'_more', icon: (s) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>, label: isRTL?'المزيد':'More' },
             ]).map(item => {
               const active = item.id === '_more' ? mobileMoreOpen : page === item.id
@@ -1142,8 +1025,7 @@ export default function App() {
                   { id:'settings', icon: Icons.settings, label: isRTL?'الإعدادات':'Settings' },
                   { id:'agency-profile', icon: Icons.user, label: isRTL?'ملف الوكالة':'Agency Profile' },
                 ] : [
-                  { id:'tickets', icon: Icons.ticket, label: t.tickets },
-                  { id:'calendar', icon: Icons.calendar, label: t.calendar },
+                  { id:'tasks', icon: Icons.check, label: isRTL?'المهام':'Tasks' },
                   { id:'automations', icon: Icons.automations, label: t.automations },
                   { id:'forms', icon: Icons.file, label: isRTL?'النماذج':'Forms' },
                   { id:'social', icon: Icons.globe, label: isRTL?'التواصل':'Social' },
@@ -1170,14 +1052,10 @@ export default function App() {
       )}
 
       {/* Command Palette */}
-      <CommandPalette open={cmdPaletteOpen} onClose={(action) => action === 'toggle' ? setCmdPaletteOpen(v => !v) : setCmdPaletteOpen(false)} contacts={contacts} deals={deals} tickets={tickets} onNavigate={setPage} onAction={(action, id) => {
+      <CommandPalette open={cmdPaletteOpen} onClose={(action) => action === 'toggle' ? setCmdPaletteOpen(v => !v) : setCmdPaletteOpen(false)} contacts={contacts} onNavigate={setPage} onAction={(action, id) => {
         if (action === 'add-contact') setPage('contacts')
-        else if (action === 'create-deal') setPage('pipeline')
-        else if (action === 'new-ticket') setPage('tickets')
         else if (action === 'new-event') setPage('calendar')
         else if (action === 'view-contact') setPage('contacts')
-        else if (action === 'view-deal') setPage('pipeline')
-        else if (action === 'view-ticket') setPage('tickets')
       }} lang={lang} />
 
       {/* Notification Center */}
@@ -1200,7 +1078,7 @@ export default function App() {
       />
 
       {/* AI Assistant */}
-      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts, ${deals.length} deals, ${tickets.length} tickets.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} deals={deals} tickets={tickets} onNavigateToApiKeys={() => navigate('/settings/apikeys')} />
+      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} onNavigateToApiKeys={() => navigate('/settings/apikeys')} />
 
       {/* AI Floating Button */}
       {!aiOpen && (
@@ -1500,31 +1378,6 @@ function RecentContactsWidget({ t, contacts, dir, setPage }) {
             </div>
           )
         })}
-      </div>
-    </div>
-  )
-}
-
-function PipelineSummaryWidget({ t, deals, dir, lang }) {
-  const stages=['lead','qualified','proposal','negotiation','won','lost']
-  const stageKeys={lead:'stageLead',qualified:'stageQualified',proposal:'stageProposal',negotiation:'stageNegotiation',won:'stageWon',lost:'stageLost'}
-  const stageCounts=stages.map(s=>({id:s,label:t[stageKeys[s]]||s,count:deals.filter(d=>d.stage===s).length,value:deals.filter(d=>d.stage===s).reduce((sum,d)=>sum+d.value,0),color:STAGE_COLORS[s]}))
-  const maxCount=Math.max(...stageCounts.map(s=>s.count),1)
-  return (
-    <div style={{...card,padding:20,direction:dir}}>
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
-        <h3 style={{fontSize:15,fontWeight:600,color:C.text,margin:0}}>{t.pipelineSummary}</h3>
-        <span style={{fontSize:13,color:C.textSec,fontWeight:500}}>{t.totalPipelineValue}: {fmt$(deals.reduce((s,d)=>s+d.value,0))}</span>
-      </div>
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(120px, 1fr))',gap:10}}>
-        {stageCounts.map(s=>(
-          <div key={s.id} style={{padding:14,borderRadius:10,background:s.color.bg,border:`1px solid ${s.color.accent}22`,textAlign:'center'}}>
-            <div style={{fontSize:22,fontWeight:700,color:s.color.text}}>{s.count}</div>
-            <div style={{fontSize:11,fontWeight:600,color:s.color.text,marginTop:4}}>{s.label}</div>
-            <div style={{fontSize:11,color:s.color.text,opacity:.7,marginTop:2}}>{fmt$(s.value)}</div>
-            <div style={{marginTop:8,height:4,borderRadius:2,background:`${s.color.accent}33`}}><div style={{height:'100%',borderRadius:2,background:s.color.accent,width:`${(s.count/maxCount)*100}%`,transition:'width .4s ease'}}/></div>
-          </div>
-        ))}
       </div>
     </div>
   )
@@ -2870,377 +2723,6 @@ function ComposeModal({ type, contact, dir, isRTL, onClose }) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════
-// PIPELINE PAGE — Kanban Board
-// ═══════════════════════════════════════════════════════════════════════════
-const DEFAULT_PIPELINE = {
-  id: 'default', name: 'Sales Pipeline', stages: [
-    { id: 'lead', name: 'Lead', color: '#64748b' },
-    { id: 'qualified', name: 'Qualified', color: '#00FFB2' },
-    { id: 'proposal', name: 'Proposal', color: '#D29922' },
-    { id: 'negotiation', name: 'Negotiation', color: '#A78BFA' },
-    { id: 'won', name: 'Won', color: '#00FFB2' },
-    { id: 'lost', name: 'Lost', color: '#FF6B6B' },
-  ]
-}
-const STAGE_PRESET_COLORS = ['#64748b','#00FFB2','#D29922','#A78BFA','#00FFB2','#FF6B6B','#E16F24','#0D9488','#6366F1','#EC4899']
-
-function PipelineBuilderModal({ t, dir, isRTL, pipeline, onSave, onClose }) {
-  const [name, setName] = useState(pipeline?.name || '')
-  const [stages, setStages] = useState(pipeline?.stages || [{ id: `s${Date.now()}`, name: '', color: '#00FFB2' }])
-  const [dragIdx, setDragIdx] = useState(null)
-
-  const addStage = () => setStages(prev => [...prev, { id: `s${Date.now()}`, name: '', color: STAGE_PRESET_COLORS[prev.length % STAGE_PRESET_COLORS.length] }])
-  const removeStage = (idx) => setStages(prev => prev.filter((_, i) => i !== idx))
-  const updateStage = (idx, key, val) => setStages(prev => prev.map((s, i) => i === idx ? { ...s, [key]: val } : s))
-
-  const handleDragStart = (idx) => setDragIdx(idx)
-  const handleDragOver = (e, idx) => {
-    e.preventDefault()
-    if (dragIdx !== null && dragIdx !== idx) {
-      setStages(prev => { const n = [...prev]; const item = n.splice(dragIdx, 1)[0]; n.splice(idx, 0, item); return n })
-      setDragIdx(idx)
-    }
-  }
-
-  return (
-    <Modal onClose={onClose} dir={dir} width={520}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-        <h2 style={{ fontSize:18, fontWeight:700, color:C.text, margin:0 }}>{pipeline ? (isRTL?'تعديل':'Edit Pipeline') : (isRTL?'خط أنابيب جديد':'New Pipeline')}</h2>
-        <button onClick={onClose} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex' }}>{Icons.x(20)}</button>
-      </div>
-      <FormField label={isRTL?'اسم خط الأنابيب':'Pipeline Name'} dir={dir}>
-        <input value={name} onChange={e => setName(e.target.value)} placeholder={isRTL?'مثال: مبيعات':'e.g. Sales Pipeline'} style={inputStyle(dir)} />
-      </FormField>
-      <div style={{ fontSize:12, fontWeight:600, color:C.textSec, marginBottom:8 }}>{isRTL?'المراحل (اسحب لإعادة الترتيب)':'Stages (drag to reorder)'}</div>
-      <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:16 }}>
-        {stages.map((stage, idx) => (
-          <div key={stage.id} draggable onDragStart={() => handleDragStart(idx)} onDragOver={e => handleDragOver(e, idx)} onDragEnd={() => setDragIdx(null)}
-            style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', borderRadius:8, border:`1px solid ${C.border}`, background: dragIdx===idx?C.primaryBg:C.white, cursor:'grab' }}>
-            <span style={{ color:C.textMuted, cursor:'grab', display:'flex' }}>{Icons.grip()}</span>
-            <input value={stage.name} onChange={e => updateStage(idx, 'name', e.target.value)} placeholder={`${isRTL?'مرحلة':'Stage'} ${idx+1}`} style={{ ...inputStyle(dir), flex:1, padding:'6px 10px' }} />
-            <div style={{ display:'flex', gap:3, flexShrink:0 }}>
-              {STAGE_PRESET_COLORS.slice(0,6).map(c => (
-                <button key={c} onClick={() => updateStage(idx, 'color', c)} style={{ width:20, height:20, borderRadius:6, background:c, border: stage.color===c?'2px solid #1F2328':'2px solid transparent', cursor:'pointer', padding:0 }} />
-              ))}
-            </div>
-            {stages.length > 2 && <button onClick={() => removeStage(idx)} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex' }}>{Icons.x(14)}</button>}
-          </div>
-        ))}
-      </div>
-      <button onClick={addStage} style={{ ...makeBtn('ghost'), fontSize:12, gap:4, marginBottom:16 }}>{Icons.plus(14)} {isRTL?'إضافة مرحلة':'Add Stage'}</button>
-      <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-        <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={() => { if(name.trim() && stages.filter(s=>s.name.trim()).length>=2) onSave({ id: pipeline?.id || `pl_${Date.now()}`, name, stages: stages.filter(s=>s.name.trim()).map(s=>({...s, id: s.id || s.name.toLowerCase().replace(/\s+/g,'_')})) }) }} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
-      </div>
-    </Modal>
-  )
-}
-
-function PipelinePage({ t, lang, dir, isRTL, deals, contacts, updateDeal, addDeal, deleteDeal, setPage, toast, showConfirm, isSuperAdmin, impersonation }) {
-  if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
-  const [pipelines, setPipelines] = useState(() => {
-    try { const s = localStorage.getItem('velo_pipelines'); return s ? JSON.parse(s) : [DEFAULT_PIPELINE] } catch { return [DEFAULT_PIPELINE] }
-  })
-  const [activePipelineId, setActivePipelineId] = useState(() => pipelines[0]?.id || 'default')
-  const [dragDealId, setDragDealId] = useState(null)
-  const [dragOverStage, setDragOverStage] = useState(null)
-  const [showForm, setShowForm] = useState(false)
-  const [showPipelineBuilder, setShowPipelineBuilder] = useState(false)
-  const [editingPipeline, setEditingPipeline] = useState(null)
-  const [editingDeal, setEditingDeal] = useState(null)
-  const [selectedDeal, setSelectedDeal] = useState(null)
-  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
-
-  useEffect(() => { localStorage.setItem('velo_pipelines', JSON.stringify(pipelines)) }, [pipelines])
-
-  const activePipeline = pipelines.find(p => p.id === activePipelineId) || pipelines[0] || DEFAULT_PIPELINE
-  const STAGES = activePipeline.stages.map(s => s.id)
-  const stageLabel = (s) => {
-    const stage = activePipeline.stages.find(st => st.id === s)
-    return stage?.name || t[`stage${s.charAt(0).toUpperCase()+s.slice(1)}`] || s
-  }
-  const stageColor = (s) => {
-    const stage = activePipeline.stages.find(st => st.id === s)
-    const c = stage?.color || '#64748b'
-    return { bg: `${c}18`, text: c, accent: c }
-  }
-
-  const savePipeline = (pl) => {
-    setPipelines(prev => {
-      const exists = prev.find(p => p.id === pl.id)
-      return exists ? prev.map(p => p.id === pl.id ? pl : p) : [...prev, pl]
-    })
-    setActivePipelineId(pl.id)
-    setShowPipelineBuilder(false)
-    setEditingPipeline(null)
-  }
-  const deletePipeline = (id) => {
-    if (pipelines.length <= 1) return
-    setPipelines(prev => prev.filter(p => p.id !== id))
-    setActivePipelineId(pipelines.find(p => p.id !== id)?.id || 'default')
-  }
-
-  const handleDragStart = (dealId) => setDragDealId(dealId)
-  const handleDragOverCol = (e, stage) => { e.preventDefault(); setDragOverStage(stage) }
-  const handleDrop = (stage) => {
-    if (dragDealId) updateDeal(dragDealId, { stage })
-    setDragDealId(null); setDragOverStage(null)
-  }
-  const handleDragEnd = () => { setDragDealId(null); setDragOverStage(null) }
-
-  const pipelineDeals = deals.filter(d => !['won','lost'].includes(d.stage))
-  const pipelineTotal = pipelineDeals.reduce((s,d) => s+d.value, 0)
-  const weightedTotal = pipelineDeals.reduce((s,d) => s + d.value * d.probability / 100, 0)
-
-  // Deal detail view
-  if (selectedDeal) {
-    const deal = deals.find(d => d.id === selectedDeal)
-    if (!deal) { setSelectedDeal(null); return null }
-    const contact = contacts.find(c => c.id === deal.contactId)
-    const stageColor = STAGE_COLORS[deal.stage] || STAGE_COLORS.lead
-    const daysIn = daysBetween(deal.createdAt || deal.closeDate, new Date().toISOString().slice(0,10))
-
-    return (
-      <div>
-        <button onClick={() => setSelectedDeal(null)} style={{ ...makeBtn('ghost'), marginBottom:16, gap:6, fontSize:13 }}>
-          {isRTL ? Icons.arrowRight(16) : Icons.arrowLeft(16)} {t.back}
-        </button>
-        <div style={{ ...card, padding:28, direction:dir }}>
-          <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24 }}>
-            <div>
-              <h2 style={{ fontSize:22, fontWeight:700, color:C.text, margin:0 }}>{deal.name}</h2>
-              <div style={{ display:'flex', gap:10, marginTop:8, alignItems:'center' }}>
-                <span style={{ fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:6, background:stageColor.bg, color:stageColor.text }}>{stageLabel(deal.stage)}</span>
-                <span style={{ fontSize:13, color:C.textSec }}>{daysIn} {t.daysInStage}</span>
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:8 }}>
-              <button onClick={() => { setEditingDeal(deal); setShowForm(true); setSelectedDeal(null) }} style={makeBtn('secondary', { gap:6 })}>{Icons.edit(14)} {t.edit}</button>
-              <button onClick={() => setConfirmDeleteId(deal.id)} style={makeBtn('danger', { gap:6 })}>{Icons.trash(14)} {t.delete}</button>
-            </div>
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:24 }}>
-            <div style={{ padding:20, background:C.bg, borderRadius:10 }}>
-              <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:4 }}>{t.value}</div>
-              <div style={{ fontSize:24, fontWeight:700, color:C.text }}>{fmt$(deal.value)}</div>
-            </div>
-            <div style={{ padding:20, background:C.bg, borderRadius:10 }}>
-              <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:4 }}>{t.probability}</div>
-              <div style={{ fontSize:24, fontWeight:700, color:C.text }}>{deal.probability}%</div>
-            </div>
-          </div>
-
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-            {[
-              [t.dealContact, deal.contact],
-              [t.dealCompany, deal.company],
-              [t.dealCloseDate, deal.closeDate],
-              [t.dealStage, stageLabel(deal.stage)],
-            ].map(([label, value], i) => (
-              <div key={i}>
-                <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:4 }}>{label}</div>
-                <div style={{ fontSize:14, color:C.text }}>{value}</div>
-              </div>
-            ))}
-          </div>
-
-          {deal.notes && (
-            <div style={{ marginTop:20, padding:16, background:C.bg, borderRadius:8 }}>
-              <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:6 }}>{t.notes}</div>
-              <div style={{ fontSize:13, color:C.text, lineHeight:1.6 }}>{deal.notes}</div>
-            </div>
-          )}
-
-          {/* Stage progress */}
-          <div style={{ marginTop:24 }}>
-            <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:10 }}>{t.dealStage}</div>
-            <div style={{ display:'flex', gap:4 }}>
-              {STAGES.filter(s => s !== 'lost').map(s => {
-                const reached = STAGES.indexOf(deal.stage) >= STAGES.indexOf(s) || deal.stage === 'lost'
-                const isCurrent = deal.stage === s
-                const sc = STAGE_COLORS[s]
-                return (
-                  <div key={s} style={{ flex:1, textAlign:'center' }}>
-                    <div style={{ height:6, borderRadius:3, background: reached ? sc.accent : `${sc.accent}22`, transition:'background .3s', marginBottom:6 }} />
-                    <div style={{ fontSize:10, fontWeight: isCurrent?700:500, color: isCurrent?sc.text:C.textMuted }}>{stageLabel(s)}</div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-
-          {contact && (
-            <div style={{ marginTop:24, padding:16, border:`1px solid ${C.border}`, borderRadius:10, display:'flex', alignItems:'center', gap:12 }}>
-              <div style={{ width:40, height:40, borderRadius:'50%', background:C.primaryBg, color:C.primary, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16, fontWeight:600 }}>{contact.name.charAt(0)}</div>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:14, fontWeight:600, color:C.text }}>{contact.name}</div>
-                <div style={{ fontSize:12, color:C.textMuted }}>{contact.email} &middot; {contact.company}</div>
-              </div>
-              <button onClick={() => { setPage('contacts') }} style={makeBtn('secondary', { fontSize:12 })}>{t.viewContact}</button>
-            </div>
-          )}
-        </div>
-
-        {confirmDeleteId && (
-          <Modal onClose={() => setConfirmDeleteId(null)} dir={dir} width={400}>
-            <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 12px' }}>{t.confirmDeleteTitle || 'Confirm'}</h3>
-            <p style={{ fontSize:13, color:C.textSec, marginBottom:20 }}>{t.confirmDelete}</p>
-            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-              <button onClick={() => setConfirmDeleteId(null)} style={makeBtn('secondary')}>{t.cancel}</button>
-              <button onClick={() => { deleteDeal(confirmDeleteId); setConfirmDeleteId(null); setSelectedDeal(null) }} style={makeBtn('danger')}>{t.delete}</button>
-            </div>
-          </Modal>
-        )}
-      </div>
-    )
-  }
-
-  return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column' }}>
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexShrink:0 }}>
-        <div>
-          <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{t.pipeline}</h1>
-          <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>
-            {t.pipelineTotal}: {fmt$(pipelineDeals.reduce((s,d)=>s+d.value,0))} &middot; {t.weightedValue}: {fmt$(Math.round(pipelineDeals.reduce((s,d)=>s+d.value*d.probability/100,0)))}
-          </p>
-        </div>
-        <div style={{ display:'flex', gap:8 }}>
-          <button onClick={() => { setEditingPipeline(null); setShowPipelineBuilder(true) }} style={makeBtn('secondary', { gap:6 })}>{Icons.plus(14)} {isRTL?'خط أنابيب جديد':'New Pipeline'}</button>
-          <button data-action="new-deal" onClick={() => { setEditingDeal(null); setShowForm(true) }} className="velo-btn-primary" style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.addDeal}</button>
-        </div>
-      </div>
-
-      {/* Pipeline tabs */}
-      <div style={{ display:'flex', alignItems:'center', gap:0, marginBottom:14, borderBottom:`2px solid ${C.border}`, flexShrink:0 }}>
-        {pipelines.map(pl => (
-          <div key={pl.id} style={{ display:'flex', alignItems:'center', position:'relative' }}>
-            <button onClick={() => setActivePipelineId(pl.id)}
-              style={{ padding:'8px 16px', border:'none', background:'transparent', cursor:'pointer', fontSize:13, fontFamily:'inherit', fontWeight: activePipelineId===pl.id?700:500, color: activePipelineId===pl.id?C.primary:C.textSec, borderBottom: activePipelineId===pl.id?`2px solid ${C.primary}`:'2px solid transparent', marginBottom:-2, transition:'all .15s' }}>
-              {pl.name}
-            </button>
-            {activePipelineId===pl.id && (
-              <div style={{ display:'flex', gap:2 }}>
-                <button onClick={e => { e.stopPropagation(); setEditingPipeline(pl); setShowPipelineBuilder(true) }} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:2 }}>{Icons.edit(12)}</button>
-                {pipelines.length > 1 && <button onClick={e => { e.stopPropagation(); showConfirm(isRTL ? 'حذف خط الأنابيب؟' : 'Delete this pipeline?', isRTL ? 'سيتم حذف خط الأنابيب وجميع المراحل الخاصة به' : 'This will delete the pipeline and all its stages', () => deletePipeline(pl.id)) }} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:2 }}>{Icons.x(12)}</button>}
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      <p style={{ fontSize:12, color:C.textMuted, marginBottom:10 }}>{t.dragDealHint}</p>
-
-      {/* Kanban Board */}
-      <div style={{ display:'flex', gap:14, flex:1, overflow:'auto', paddingBottom:12 }}>
-        {STAGES.map(stage => {
-          const stageDeals = deals.filter(d => d.stage === stage)
-          const stageTotal = stageDeals.reduce((s,d) => s + d.value, 0)
-          const sc = stageColor(stage)
-          const isOver = dragOverStage === stage
-          return (
-            <div key={stage} onDragOver={e => handleDragOverCol(e, stage)} onDrop={() => handleDrop(stage)} onDragLeave={() => setDragOverStage(null)}
-              style={{ minWidth:220, width:220, flexShrink:0, background: isOver?`${sc.accent}08`:C.bg, borderRadius:12, border: isOver?`2px dashed ${sc.accent}`:`1px solid ${C.border}`, display:'flex', flexDirection:'column', transition:'all .2s' }}>
-              <div style={{ padding:'12px 12px 8px', borderBottom:`2px solid ${sc.accent}`, display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ width:8, height:8, borderRadius:'50%', background:sc.accent }} />
-                  <span style={{ fontSize:13, fontWeight:700, color:C.text }}>{stageLabel(stage)}</span>
-                  <span style={{ fontSize:11, fontWeight:600, color:sc.text, background:sc.bg, padding:'1px 6px', borderRadius:10 }}>{stageDeals.length}</span>
-                </div>
-                <span style={{ fontSize:10, color:C.textMuted }}>{fmt$(stageTotal)}</span>
-              </div>
-              <div style={{ flex:1, overflow:'auto', padding:6, display:'flex', flexDirection:'column', gap:6 }}>
-                {stageDeals.length===0 ? (
-                  <div style={{ padding:16, textAlign:'center', fontSize:11, color:C.textMuted, border:`1px dashed ${C.border}`, borderRadius:8 }}>{t.noDealInStage}</div>
-                ) : stageDeals.map(deal => {
-                  const daysIn = daysBetween(deal.createdAt||deal.closeDate, new Date().toISOString().slice(0,10))
-                  return (
-                    <div key={deal.id} draggable onDragStart={()=>handleDragStart(deal.id)} onDragEnd={handleDragEnd} onClick={()=>setSelectedDeal(deal.id)}
-                      style={{ ...card, padding:12, cursor:'pointer', opacity:dragDealId===deal.id?.5:1, transition:'opacity .2s, box-shadow .2s', borderLeft:isRTL?'none':`3px solid ${sc.accent}`, borderRight:isRTL?`3px solid ${sc.accent}`:'none' }}
-                      onMouseEnter={e=>e.currentTarget.style.boxShadow='0 2px 8px rgba(0,0,0,.08)'} onMouseLeave={e=>e.currentTarget.style.boxShadow='none'}>
-                      <div style={{ fontSize:12, fontWeight:600, color:C.text, marginBottom:4 }}>{deal.name}</div>
-                      <div style={{ fontSize:16, fontWeight:700, color:C.text, marginBottom:6 }}>{fmt$(deal.value)}</div>
-                      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:10, color:C.textMuted }}>
-                        <span style={{ display:'flex', alignItems:'center', gap:3 }}>{Icons.user(10)} {deal.contact}</span>
-                        <span>{daysIn}d</span>
-                      </div>
-                      {deal.probability>0 && deal.probability<100 && <div style={{ marginTop:6, height:3, borderRadius:2, background:`${sc.accent}22` }}><div style={{ height:'100%', borderRadius:2, background:sc.accent, width:`${deal.probability}%` }}/></div>}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      {showForm && <DealFormModal t={t} dir={dir} contacts={contacts} deal={editingDeal} stages={activePipeline.stages} onSave={(data)=>{if(editingDeal)updateDeal(editingDeal.id,data);else addDeal(data);setShowForm(false);setEditingDeal(null)}} onClose={()=>{setShowForm(false);setEditingDeal(null)}} />}
-      {showPipelineBuilder && <PipelineBuilderModal t={t} dir={dir} isRTL={isRTL} pipeline={editingPipeline} onSave={savePipeline} onClose={()=>{setShowPipelineBuilder(false);setEditingPipeline(null)}} />}
-    </div>
-  )
-}
-
-// ── Deal Form Modal ─────────────────────────────────────────────────────────
-function DealFormModal({ t, dir, contacts, deal, defaultContactId, stages, onSave, onClose }) {
-  const [form, setForm] = useState({
-    name: deal?.name || '',
-    contactId: deal?.contactId || defaultContactId || '',
-    contact: deal?.contact || '',
-    company: deal?.company || '',
-    value: deal?.value || '',
-    stage: deal?.stage || 'lead',
-    probability: deal?.probability ?? 20,
-    closeDate: deal?.closeDate || '',
-    notes: deal?.notes || '',
-  })
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
-
-  // Auto-fill contact info
-  const handleContactChange = (cId) => {
-    const c = contacts.find(x => x.id === cId)
-    if (c) { set('contactId', cId); set('contact', c.name || ''); set('company', c.company || '') }
-  }
-
-  const handleSubmit = () => {
-    if (!form.name.trim()) return
-    onSave({ ...form, value: Number(form.value) || 0, probability: Number(form.probability) || 0 })
-  }
-
-  return (
-    <Modal onClose={onClose} dir={dir} width={520}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-        <h2 style={{ fontSize:18, fontWeight:700, color:C.text, margin:0 }}>{deal ? t.editDeal : t.addDeal}</h2>
-        <button onClick={onClose} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex' }}>{Icons.x(20)}</button>
-      </div>
-      <FormField label={t.dealName} dir={dir}><input value={form.name} onChange={e=>set('name',e.target.value)} style={inputStyle(dir)}/></FormField>
-      <FormField label={t.dealContact} dir={dir}>
-        <select value={form.contactId} onChange={e => handleContactChange(e.target.value)} style={selectStyle(dir)}>
-          <option value="">— {t.dealContact} —</option>
-          {contacts.map(c => <option key={c.id} value={c.id}>{c.name} ({c.company})</option>)}
-        </select>
-      </FormField>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-        <FormField label={t.dealValue} dir={dir}><input value={form.value} onChange={e=>set('value',e.target.value)} type="number" style={inputStyle(dir)}/></FormField>
-        <FormField label={t.dealProbability} dir={dir}><input value={form.probability} onChange={e=>set('probability',e.target.value)} type="number" min="0" max="100" style={inputStyle(dir)}/></FormField>
-        <FormField label={t.dealStage} dir={dir}>
-          <select value={form.stage} onChange={e=>set('stage',e.target.value)} style={selectStyle(dir)}>
-            {(stages || [{id:'lead',name:'Lead'},{id:'qualified',name:'Qualified'},{id:'proposal',name:'Proposal'},{id:'negotiation',name:'Negotiation'},{id:'won',name:'Won'},{id:'lost',name:'Lost'}]).map(s=><option key={s.id} value={s.id}>{s.name || t[`stage${s.id.charAt(0).toUpperCase()+s.id.slice(1)}`] || s.id}</option>)}
-          </select>
-        </FormField>
-        <FormField label={t.dealCloseDate} dir={dir}><input value={form.closeDate} onChange={e=>set('closeDate',e.target.value)} type="date" style={inputStyle(dir)}/></FormField>
-      </div>
-      <FormField label={t.dealNotes} dir={dir}><textarea value={form.notes} onChange={e=>set('notes',e.target.value)} rows={3} style={{...inputStyle(dir),resize:'vertical'}}/></FormField>
-      <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
-        <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={handleSubmit} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
-      </div>
-    </Modal>
-  )
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════
 // INBOX PAGE — Unified Messaging
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -3737,424 +3219,6 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket,
           onClose={() => setShowTicketForm(false)} />
       )}
     </div>
-  )
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TICKETS CONSTANTS
-// ═══════════════════════════════════════════════════════════════════════════
-
-const TICKET_PRIORITY_COLORS = {
-  low:    { bg: 'rgba(0,255,136,0.1)', text: '#00FFB2', accent: '#00FFB2' },
-  medium: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b', accent: '#D29922' },
-  high:   { bg: '#FFF1E5', text: '#BC4C00', accent: '#E16F24' },
-  urgent: { bg: 'rgba(239,68,68,0.1)', text: '#FF6B6B', accent: '#FF6B6B' },
-}
-const TICKET_STATUS_COLORS = {
-  open:        { bg: 'rgba(0,255,178,0.09)', text: '#00FFB2' },
-  in_progress: { bg: 'rgba(245,158,11,0.1)', text: '#f59e0b' },
-  pending:     { bg: 'rgba(124,58,237,0.1)', text: '#A78BFA' },
-  resolved:    { bg: 'rgba(0,255,136,0.1)', text: '#00FFB2' },
-  closed:      { bg: 'rgba(255,255,255,0.04)', text: '#64748b' },
-}
-const DEPARTMENTS = ['sales','support','technical','billing']
-const TEAM_MEMBERS = ['Ahmed Hassan', 'Sarah Kim', 'Maria Lopez', 'Admin User']
-const PRIORITIES = ['low','medium','high','urgent']
-const TICKET_STATUSES = ['open','in_progress','pending','resolved','closed']
-
-function ticketPriorityLabel(t, p) { return t[`priority${p.charAt(0).toUpperCase()+p.slice(1)}`] || p }
-function ticketStatusLabel(t, s) { return t[`status${s.split('_').map(w=>w[0].toUpperCase()+w.slice(1)).join('')}`] || s }
-function deptLabel(t, d) { return t[`dept${d.charAt(0).toUpperCase()+d.slice(1)}`] || d }
-
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TICKET STATS WIDGET (Dashboard)
-// ═══════════════════════════════════════════════════════════════════════════
-function TicketStatsWidget({ t, tickets, dir }) {
-  const statuses = TICKET_STATUSES
-  const maxCount = Math.max(...statuses.map(s => tickets.filter(tk => tk.status === s).length), 1)
-  return (
-    <div style={{ ...card, padding: 20, direction: dir }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:0 }}>{t.ticketsByStatus}</h3>
-        <span style={{ fontSize:13, color:C.textSec, fontWeight:500 }}>{tickets.length} {t.tickets?.toLowerCase?.() || 'tickets'}</span>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:`repeat(${statuses.length},1fr)`, gap:10 }}>
-        {statuses.map(s => {
-          const count = tickets.filter(tk => tk.status === s).length
-          const sc = TICKET_STATUS_COLORS[s]
-          return (
-            <div key={s} style={{ padding:12, borderRadius:10, background:sc.bg, textAlign:'center' }}>
-              <div style={{ fontSize:20, fontWeight:700, color:sc.text }}>{count}</div>
-              <div style={{ fontSize:10, fontWeight:600, color:sc.text, marginTop:4 }}>{ticketStatusLabel(t, s)}</div>
-              <div style={{ marginTop:6, height:3, borderRadius:2, background:`${sc.text}22` }}>
-                <div style={{ height:'100%', borderRadius:2, background:sc.text, width:`${(count/maxCount)*100}%`, transition:'width .3s' }} />
-              </div>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-
-// ═══════════════════════════════════════════════════════════════════════════
-// TICKETS PAGE
-// ═══════════════════════════════════════════════════════════════════════════
-function TicketsPage({ t, lang, dir, isRTL, tickets, contacts, addTicket, updateTicket, setPage, urlTicketId, navigate, teamMembers, isSuperAdmin, impersonation }) {
-  if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
-  const [search, setSearch] = useState('')
-  const [filterStatus, setFilterStatus] = useState('all')
-  const [filterPriority, setFilterPriority] = useState('all')
-  const [filterDept, setFilterDept] = useState('all')
-  const [filterAssignee, setFilterAssignee] = useState('all')
-  const [showForm, setShowForm] = useState(false)
-  const [_selectedTicket, _setSelectedTicket] = useState(urlTicketId || null)
-
-  useEffect(() => { _setSelectedTicket(urlTicketId || null) }, [urlTicketId])
-
-  const selectedTicket = _selectedTicket
-  const setSelectedTicket = (id) => {
-    if (id) navigate('/tickets/' + id)
-    else navigate('/tickets')
-  }
-
-  const filtered = tickets.filter(tk => {
-    const q = search.toLowerCase()
-    const matchSearch = !q || (tk.ticketId||'').toLowerCase().includes(q) || (tk.subject||'').toLowerCase().includes(q) || (tk.contactName||'').toLowerCase().includes(q)
-    const matchStatus = filterStatus === 'all' || tk.status === filterStatus
-    const matchPriority = filterPriority === 'all' || tk.priority === filterPriority
-    const matchDept = filterDept === 'all' || tk.department === filterDept
-    const matchAssignee = filterAssignee === 'all' || tk.assignee === filterAssignee
-    return matchSearch && matchStatus && matchPriority && matchDept && matchAssignee
-  })
-
-  if (selectedTicket) {
-    const tk = tickets.find(x => x.id === selectedTicket)
-    if (!tk) { setSelectedTicket(null); return null }
-    return <TicketDetailPage t={t} dir={dir} isRTL={isRTL} lang={lang} ticket={tk} contacts={contacts} updateTicket={updateTicket} onBack={() => setSelectedTicket(null)} setPage={setPage} teamMembers={teamMembers} />
-  }
-
-  return (
-    <div>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
-        <div>
-          <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{t.tickets}</h1>
-          <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>{filtered.length} {t.tickets?.toLowerCase?.() || 'tickets'}</p>
-        </div>
-        <button data-action="new-ticket" onClick={() => setShowForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap:6 })}>{Icons.plus(16)} {t.newTicket}</button>
-      </div>
-
-      {/* Filters */}
-      <div style={{ ...card, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap', direction:dir }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8, background:C.bg, borderRadius:8, padding:'6px 12px', border:`1px solid ${C.border}`, flex:1, maxWidth:280 }}>
-          <span style={{color:C.textMuted,display:'flex'}}>{Icons.search(14)}</span>
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder={t.searchTickets} style={{ border:'none', background:'transparent', outline:'none', fontSize:12, color:C.text, flex:1, fontFamily:'inherit', direction:dir }} />
-        </div>
-        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
-          <option value="all">{t.allStatuses || 'All Statuses'}</option>
-          {TICKET_STATUSES.map(s=><option key={s} value={s}>{ticketStatusLabel(t,s)}</option>)}
-        </select>
-        <select value={filterPriority} onChange={e=>setFilterPriority(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
-          <option value="all">{t.allPriorities}</option>
-          {PRIORITIES.map(p=><option key={p} value={p}>{ticketPriorityLabel(t,p)}</option>)}
-        </select>
-        <select value={filterDept} onChange={e=>setFilterDept(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
-          <option value="all">{t.allDepartments}</option>
-          {DEPARTMENTS.map(d=><option key={d} value={d}>{deptLabel(t,d)}</option>)}
-        </select>
-        <select value={filterAssignee} onChange={e=>setFilterAssignee(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
-          <option value="all">{t.allAssignees}</option>
-          {(teamMembers && teamMembers.length > 0 ? teamMembers.map(m => m.name) : TEAM_MEMBERS).map(m=><option key={m} value={m}>{m}</option>)}
-        </select>
-      </div>
-
-      {/* Tickets Table */}
-      <div style={{ ...card, overflow:'hidden' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-          <thead>
-            <tr style={{ background:C.bg, borderBottom:`1px solid ${C.border}` }}>
-              {[t.ticketId, t.ticketSubject, t.ticketContact, t.ticketPriority, t.ticketStatus, t.ticketAssignee, t.ticketDepartment, t.ticketCreated].map((h,i)=>(
-                <th key={i} style={{ padding:'10px 14px', textAlign:isRTL?'right':'left', fontWeight:600, color:C.textSec, fontSize:11, whiteSpace:'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={8} style={{ padding:0 }}>
-                <EmptyState type="tickets" title={tickets.length === 0 ? (isRTL ? 'لا توجد تذاكر بعد' : 'No tickets yet') : (isRTL ? 'لا توجد نتائج' : 'No matching tickets')} message={tickets.length === 0 ? (isRTL ? 'أنشئ تذكرة لتتبع طلبات الدعم' : 'Create a ticket to start tracking support requests') : (isRTL ? 'جرب تعديل البحث أو الفلاتر' : 'Try adjusting your search or filters')} actionLabel={tickets.length === 0 ? t.newTicket : null} onAction={tickets.length === 0 ? () => setShowForm(true) : null} dir={dir} />
-              </td></tr>
-            ) : filtered.map(tk => {
-              const pc = TICKET_PRIORITY_COLORS[tk.priority]
-              const sc = TICKET_STATUS_COLORS[tk.status]
-              return (
-                <tr key={tk.id} onClick={()=>setSelectedTicket(tk.id)}
-                  style={{ borderBottom:`1px solid ${C.border}`, cursor:'pointer', transition:'background .1s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background=C.bg}
-                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <td style={{ padding:'12px 14px', fontWeight:600, color:C.primary, fontFamily:'monospace', fontSize:12 }}>#{tk.ticketId}</td>
-                  <td style={{ padding:'12px 14px', fontWeight:500, color:C.text, maxWidth:250, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{tk.subject}</td>
-                  <td style={{ padding:'12px 14px', color:C.textSec }}>{tk.contactName}</td>
-                  <td style={{ padding:'12px 14px' }}><span style={{ fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:6, background:pc.bg, color:pc.text }}>{ticketPriorityLabel(t,tk.priority)}</span></td>
-                  <td style={{ padding:'12px 14px' }}><span style={{ fontSize:11, fontWeight:600, padding:'3px 8px', borderRadius:6, background:sc.bg, color:sc.text }}>{ticketStatusLabel(t,tk.status)}</span></td>
-                  <td style={{ padding:'12px 14px', color:C.textSec, fontSize:12 }}>{tk.assignee}</td>
-                  <td style={{ padding:'12px 14px', color:C.textSec, fontSize:12 }}>{deptLabel(t,tk.department)}</td>
-                  <td style={{ padding:'12px 14px', color:C.textMuted, fontSize:11 }}>{new Date(tk.createdAt).toLocaleDateString(lang==='ar'?'ar-SA':'en-US',{month:'short',day:'numeric'})}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {showForm && (
-        <TicketFormModal t={t} dir={dir} contacts={contacts} teamMembers={teamMembers}
-          onSave={(tk) => { addTicket(tk); setShowForm(false) }}
-          onClose={() => setShowForm(false)} />
-      )}
-    </div>
-  )
-}
-
-
-// ── Ticket Detail Page ──────────────────────────────────────────────────────
-function TicketDetailPage({ t, dir, isRTL, lang, ticket, contacts, updateTicket, onBack, setPage, teamMembers }) {
-  const [comment, setComment] = useState('')
-  const pc = TICKET_PRIORITY_COLORS[ticket.priority]
-  const sc = TICKET_STATUS_COLORS[ticket.status]
-  const contact = contacts.find(c => c.id === ticket.contactId)
-
-  const addComment = () => {
-    if (!comment.trim()) return
-    const newEntry = { id: genId('tl'), type: 'comment', text: comment.trim(), author: t.adminUser, date: new Date().toISOString() }
-    updateTicket(ticket.id, { timeline: [...(ticket.timeline||[]), newEntry] })
-    setComment('')
-  }
-
-  const changeStatus = (newStatus) => {
-    const entry = { id: genId('tl'), type: 'status', text: `${t.statusChanged}: ${ticketStatusLabel(t,ticket.status)} → ${ticketStatusLabel(t,newStatus)}`, author: t.adminUser, date: new Date().toISOString() }
-    updateTicket(ticket.id, { status: newStatus, timeline: [...(ticket.timeline||[]), entry] })
-  }
-
-  const changeAssignee = (newAssignee) => {
-    const entry = { id: genId('tl'), type: 'assignee', text: `${t.assigneeChanged}: ${ticket.assignee} → ${newAssignee}`, author: t.adminUser, date: new Date().toISOString() }
-    updateTicket(ticket.id, { assignee: newAssignee, timeline: [...(ticket.timeline||[]), entry] })
-  }
-
-  const timelineIcons = { created: Icons.plus, comment: Icons.edit, status: Icons.activity, assignee: Icons.user }
-
-  return (
-    <div>
-      <button onClick={onBack} style={{ ...makeBtn('ghost'), marginBottom:16, gap:6, fontSize:13 }}>
-        {isRTL ? Icons.arrowRight(16) : Icons.arrowLeft(16)} {t.backToTickets}
-      </button>
-
-      {/* Header */}
-      <div style={{ ...card, padding:24, marginBottom:20, direction:dir }}>
-        <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
-          <div style={{ flex:1 }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8, flexWrap:'wrap' }}>
-              <span style={{ fontSize:14, fontWeight:700, color:C.primary, fontFamily:'monospace' }}>#{ticket.ticketId}</span>
-              <span style={{ fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:6, background:sc.bg, color:sc.text }}>{ticketStatusLabel(t,ticket.status)}</span>
-              <span style={{ fontSize:11, fontWeight:600, padding:'3px 10px', borderRadius:6, background:pc.bg, color:pc.text }}>{ticketPriorityLabel(t,ticket.priority)}</span>
-              <span style={{ fontSize:11, fontWeight:500, padding:'3px 10px', borderRadius:6, background:C.bg, border:`1px solid ${C.border}`, color:C.textSec }}>{deptLabel(t,ticket.department)}</span>
-            </div>
-            <h2 style={{ fontSize:20, fontWeight:700, color:C.text, margin:0 }}>{ticket.subject}</h2>
-            <div style={{ fontSize:12, color:C.textMuted, marginTop:6 }}>
-              {t.ticketCreated}: {new Date(ticket.createdAt).toLocaleString(lang==='ar'?'ar-SA':'en-US')} &middot; {t.ticketUpdated}: {new Date(ticket.updatedAt).toLocaleString(lang==='ar'?'ar-SA':'en-US')}
-            </div>
-          </div>
-          <div style={{ display:'flex', gap:8, alignItems:'center', flexWrap:'wrap' }}>
-            <select value={ticket.status} onChange={e=>changeStatus(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12, fontWeight:600 }}>
-              {TICKET_STATUSES.map(s=><option key={s} value={s}>{ticketStatusLabel(t,s)}</option>)}
-            </select>
-            <select value={ticket.assignee} onChange={e=>changeAssignee(e.target.value)} style={{ ...selectStyle(dir), width:'auto', padding:'6px 10px', borderRadius:8, fontSize:12 }}>
-              {(teamMembers && teamMembers.length > 0 ? teamMembers.map(m => m.name) : TEAM_MEMBERS).map(m=><option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'2fr 1fr', gap:20 }}>
-        {/* Left: Description + Timeline */}
-        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-          {/* Description */}
-          <div style={{ ...card, padding:20 }}>
-            <h3 style={{ fontSize:14, fontWeight:600, color:C.text, margin:'0 0 10px' }}>{t.ticketDescription}</h3>
-            <p style={{ fontSize:13, color:C.text, lineHeight:1.7, margin:0, whiteSpace:'pre-wrap' }}>{ticket.description}</p>
-          </div>
-
-          {/* Activity Timeline */}
-          <div style={{ ...card, padding:20 }}>
-            <h3 style={{ fontSize:14, fontWeight:600, color:C.text, margin:'0 0 16px' }}>{t.ticketActivity}</h3>
-            <div style={{ display:'flex', flexDirection:'column', gap:0 }}>
-              {(ticket.timeline||[]).map((entry, idx) => {
-                const IconFn = timelineIcons[entry.type] || Icons.activity
-                const isComment = entry.type === 'comment'
-                return (
-                  <div key={entry.id} style={{ display:'flex', gap:12, paddingBottom:16, position:'relative' }}>
-                    {idx < (ticket.timeline||[]).length - 1 && (
-                      <div style={{ position:'absolute', left:15, top:32, bottom:0, width:2, background:C.border }} />
-                    )}
-                    <div style={{ width:32, height:32, borderRadius:8, background: isComment ? C.primaryBg : C.bg, color: isComment ? C.primary : C.textMuted, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, zIndex:1 }}>
-                      {IconFn(14)}
-                    </div>
-                    <div style={{ flex:1 }}>
-                      {isComment ? (
-                        <div style={{ padding:12, background:C.bg, borderRadius:8, border:`1px solid ${C.border}` }}>
-                          <div style={{ fontSize:13, color:C.text, lineHeight:1.5 }}>{entry.text}</div>
-                          <div style={{ fontSize:11, color:C.textMuted, marginTop:6 }}>{entry.author} &middot; {new Date(entry.date).toLocaleString(lang==='ar'?'ar-SA':'en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</div>
-                        </div>
-                      ) : (
-                        <div style={{ paddingTop:6 }}>
-                          <div style={{ fontSize:12, color:C.textSec }}>{entry.text}</div>
-                          <div style={{ fontSize:11, color:C.textMuted, marginTop:2 }}>{entry.author} &middot; {new Date(entry.date).toLocaleString(lang==='ar'?'ar-SA':'en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Add Comment */}
-            <div style={{ display:'flex', gap:8, marginTop:8, paddingTop:12, borderTop:`1px solid ${C.border}` }}>
-              <input value={comment} onChange={e=>setComment(e.target.value)} placeholder={t.commentPlaceholder}
-                style={{ ...inputStyle(dir), flex:1 }}
-                onKeyDown={e=>{ if(e.key==='Enter') addComment() }} />
-              <button onClick={addComment} className="velo-btn-primary" style={makeBtn('primary', { flexShrink:0 })}>{t.addComment}</button>
-            </div>
-          </div>
-        </div>
-
-        {/* Right: Sidebar info */}
-        <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
-          {/* Contact card */}
-          {contact && (
-            <div style={{ ...card, padding:18 }}>
-              <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:10 }}>{t.ticketContact}</div>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ width:36, height:36, borderRadius:'50%', background:C.primaryBg, color:C.primary, display:'flex', alignItems:'center', justifyContent:'center', fontSize:14, fontWeight:600 }}>{contact.name.charAt(0)}</div>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:C.text }}>{contact.name}</div>
-                  <div style={{ fontSize:11, color:C.textMuted }}>{contact.company}</div>
-                </div>
-              </div>
-              <button onClick={()=>setPage('contacts')} style={{ ...makeBtn('secondary', { fontSize:11, width:'100%', justifyContent:'center', marginTop:10 }) }}>{t.viewProfile}</button>
-            </div>
-          )}
-
-          {/* Info fields */}
-          <div style={{ ...card, padding:18 }}>
-            {[
-              [t.ticketPriority, <span key="p" style={{ fontSize:12, fontWeight:600, padding:'2px 8px', borderRadius:5, background:pc.bg, color:pc.text }}>{ticketPriorityLabel(t,ticket.priority)}</span>],
-              [t.ticketStatus, <span key="s" style={{ fontSize:12, fontWeight:600, padding:'2px 8px', borderRadius:5, background:sc.bg, color:sc.text }}>{ticketStatusLabel(t,ticket.status)}</span>],
-              [t.ticketDepartment, <span key="d" style={{ fontSize:13, color:C.text }}>{deptLabel(t,ticket.department)}</span>],
-              [t.ticketAssignee, <span key="a" style={{ fontSize:13, color:C.text }}>{ticket.assignee}</span>],
-            ].map(([label, value], i) => (
-              <div key={i} style={{ padding:'10px 0', borderBottom: i < 3 ? `1px solid ${C.border}` : 'none' }}>
-                <div style={{ fontSize:11, color:C.textMuted, fontWeight:600, marginBottom:4 }}>{label}</div>
-                {value}
-              </div>
-            ))}
-          </div>
-
-          {/* Linked conversation */}
-          {ticket.conversationId && (
-            <div style={{ ...card, padding:18 }}>
-              <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:10 }}>{t.linkedConversation}</div>
-              <button onClick={()=>setPage('inbox')} style={{ ...makeBtn('secondary', { fontSize:11, width:'100%', justifyContent:'center', gap:6 }) }}>
-                {Icons.inbox(14)} {t.inbox}
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
-// ── Ticket Form Modal ───────────────────────────────────────────────────────
-function TicketFormModal({ t, dir, contacts, defaultContactId, defaultContactName, defaultConversationId, defaultSubject, onSave, onClose, teamMembers }) {
-  const memberNames = teamMembers && teamMembers.length > 0 ? teamMembers.map(m => m.name) : TEAM_MEMBERS
-  const [form, setForm] = useState({
-    subject: defaultSubject || '',
-    description: '',
-    contactId: defaultContactId || '',
-    contactName: defaultContactName || '',
-    company: '',
-    priority: 'medium',
-    status: 'open',
-    department: 'support',
-    assignee: memberNames[0],
-    conversationId: defaultConversationId || null,
-  })
-
-  // Auto-fill company from contact
-  useEffect(() => {
-    if (form.contactId) {
-      const c = contacts.find(x => x.id === form.contactId)
-      if (c) setForm(prev => ({ ...prev, contactName: c.name, company: c.company }))
-    }
-  }, [form.contactId])
-
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
-  const handleSubmit = () => {
-    if (!form.subject.trim()) return
-    onSave(form)
-  }
-
-  return (
-    <Modal onClose={onClose} dir={dir} width={560}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-        <h2 style={{ fontSize:18, fontWeight:700, color:C.text, margin:0 }}>{t.newTicket}</h2>
-        <button onClick={onClose} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex' }}>{Icons.x(20)}</button>
-      </div>
-      <FormField label={t.ticketSubject} dir={dir}><input value={form.subject} onChange={e=>set('subject',e.target.value)} style={inputStyle(dir)} /></FormField>
-      <FormField label={t.ticketDescription} dir={dir}><textarea value={form.description} onChange={e=>set('description',e.target.value)} rows={4} style={{...inputStyle(dir),resize:'vertical'}} /></FormField>
-      <FormField label={t.ticketContact} dir={dir}>
-        <select value={form.contactId} onChange={e=>set('contactId',e.target.value)} style={selectStyle(dir)}>
-          <option value="">— {t.ticketContact} —</option>
-          {contacts.map(c=><option key={c.id} value={c.id}>{c.name} ({c.company})</option>)}
-        </select>
-      </FormField>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-        <FormField label={t.ticketPriority} dir={dir}>
-          <div style={{ display:'flex', gap:6 }}>
-            {PRIORITIES.map(p => {
-              const pc = TICKET_PRIORITY_COLORS[p]
-              const active = form.priority === p
-              return (
-                <button key={p} onClick={()=>set('priority',p)} style={{
-                  flex:1, padding:'7px 4px', borderRadius:8, border: active ? `2px solid ${pc.accent}` : `1px solid ${C.border}`,
-                  background: active ? pc.bg : C.white, color: active ? pc.text : C.textSec,
-                  fontSize:11, fontWeight:600, cursor:'pointer', fontFamily:'inherit', textAlign:'center',
-                }}>
-                  {ticketPriorityLabel(t,p)}
-                </button>
-              )
-            })}
-          </div>
-        </FormField>
-        <FormField label={t.ticketDepartment} dir={dir}>
-          <select value={form.department} onChange={e=>set('department',e.target.value)} style={selectStyle(dir)}>
-            {DEPARTMENTS.map(d=><option key={d} value={d}>{deptLabel(t,d)}</option>)}
-          </select>
-        </FormField>
-      </div>
-      <FormField label={t.ticketAssignee} dir={dir}>
-        <select value={form.assignee} onChange={e=>set('assignee',e.target.value)} style={selectStyle(dir)}>
-          {memberNames.map(m=><option key={m} value={m}>{m}</option>)}
-        </select>
-      </FormField>
-      <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
-        <button onClick={onClose} style={makeBtn('secondary')}>{t.cancel}</button>
-        <button onClick={handleSubmit} className="velo-btn-primary" style={makeBtn('primary')}>{t.save}</button>
-      </div>
-    </Modal>
   )
 }
 
