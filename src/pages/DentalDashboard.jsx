@@ -7,6 +7,10 @@ import {
   SAMPLE_DENTAL_PAYMENTS,
   SAMPLE_DENTAL_STATS,
 } from '../sampleData'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { fetchDentalDashboardStats } from '../lib/dental_dashboard'
+import { listDoctorsInOrg } from '../lib/profiles'
+import { updateAppointmentStatus } from '../lib/appointments'
 
 const Ico = (s, children) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
 const Icons = {
@@ -63,7 +67,6 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
     let mounted = true
     const fetchData = async () => {
       try {
-        const { supabase, isSupabaseConfigured } = await import('../lib/supabase.js')
         if (!isSupabaseConfigured()) {
           if (mounted) {
             const today = new Date().toISOString().slice(0, 10)
@@ -82,38 +85,27 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
           }
           return
         }
-        const { data: userData } = await supabase.auth.getUser()
-        if (!userData?.user) return
-        let orgId = null
-        const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', userData.user.id).single()
-        if (profile?.org_id) orgId = profile.org_id
-        const nd = { appointmentsCount: 0, appointmentsList: [], recentPatients: [], patientsThisMonth: 0, totalPatients: 0, pendingPaymentsList: [], pendingSum: 0, activePlans: 0, loading: false }
         const todayStr = new Date().toISOString().slice(0, 10)
         const now = new Date()
         const firstDayStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
-        const [a, b, c, d, e, f] = await Promise.allSettled([
-          supabase.from('appointments').select('*').eq('appointment_date', todayStr).order('appointment_time', { ascending: true }),
-          orgId
-            ? supabase.from('contacts').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).limit(5)
-            : supabase.from('contacts').select('*').order('created_at', { ascending: false }).limit(5),
-          orgId
-            ? supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('org_id', orgId).gte('created_at', firstDayStr)
-            : Promise.resolve({ count: 0, error: null }),
-          supabase.from('payments').select('amount,status,contact_id,id').in('status', ['pending', 'overdue']),
-          supabase.from('deals').select('*', { count: 'exact', head: true }).not('stage', 'in', '("won","lost")'),
-          orgId
-            ? supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('org_id', orgId)
-            : supabase.from('contacts').select('*', { count: 'exact', head: true })
-        ])
-        if (a.status === 'fulfilled' && !a.value.error && a.value.data) { nd.appointmentsList = a.value.data; nd.appointmentsCount = a.value.data.length }
-        if (b.status === 'fulfilled' && !b.value.error && b.value.data) nd.recentPatients = b.value.data
-        if (c.status === 'fulfilled' && !c.value?.error && c.value?.count != null) nd.patientsThisMonth = c.value.count
-        if (d.status === 'fulfilled' && !d.value.error && d.value.data) { nd.pendingPaymentsList = d.value.data; nd.pendingSum = d.value.data.reduce((s, p) => s + Number(p.amount || 0), 0) }
-        if (e.status === 'fulfilled' && !e.value.error && e.value.count !== null) nd.activePlans = e.value.count
-        if (f.status === 'fulfilled' && !f.value.error && f.value.count != null) nd.totalPatients = f.value.count
-        if (mounted) setDbData(nd)
-      } catch { if (mounted) setDbData(p => ({ ...p, loading: false })) }
+        const stats = await fetchDentalDashboardStats({ todayDate: todayStr, firstOfMonthDate: firstDayStr })
+        if (!mounted) return
+        setDbData({
+          appointmentsList: stats.appointmentsToday,
+          appointmentsCount: stats.appointmentsToday.length,
+          recentPatients: stats.recentContacts,
+          patientsThisMonth: stats.newPatientsThisMonth,
+          totalPatients: stats.totalContacts,
+          pendingPaymentsList: stats.pendingPayments,
+          pendingSum: stats.pendingPayments.reduce((s, p) => s + Number(p.amount || 0), 0),
+          activePlans: stats.activeDealsCount,
+          loading: false,
+        })
+      } catch (err) {
+        console.error('[DentalDashboard] stats fetch failed:', err)
+        if (mounted) setDbData(p => ({ ...p, loading: false }))
+      }
     }
     fetchData()
     return () => { mounted = false }
@@ -123,15 +115,12 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
     let mounted = true
     const fetchDoctors = async () => {
       try {
-        const { supabase, isSupabaseConfigured } = await import('../lib/supabase.js')
         if (!isSupabaseConfigured()) { if (mounted) setDoctors(SAMPLE_DENTAL_DOCTORS); return }
-        const { data: userData } = await supabase.auth.getUser()
-        if (!userData?.user) return
-        const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', userData.user.id).single()
-        if (!profile?.org_id) return
-        const { data: docs } = await supabase.from('profiles').select('id, full_name, color, specialization, role').eq('org_id', profile.org_id).eq('role', 'doctor')
-        if (mounted && docs) setDoctors(docs)
-      } catch { }
+        const docs = await listDoctorsInOrg()
+        if (mounted) setDoctors(docs)
+      } catch (err) {
+        console.error('[DentalDashboard] doctors fetch failed:', err)
+      }
     }
     fetchDoctors()
     return () => { mounted = false }
@@ -139,10 +128,9 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
 
   const handleAction = async (id, status) => {
     setDbData(prev => ({ ...prev, appointmentsList: prev.appointmentsList.map(a => a.id === id ? { ...a, status } : a) }))
-    try {
-      const { supabase, isSupabaseConfigured } = await import('../lib/supabase.js')
-      if (isSupabaseConfigured()) await supabase.from('appointments').update({ status }).eq('id', id)
-    } catch { }
+    if (!isSupabaseConfigured()) return
+    try { await updateAppointmentStatus(id, status) }
+    catch (err) { console.error('[DentalDashboard] status update failed:', err) }
   }
 
   const fmt$ = n => Number(n || 0).toLocaleString() + ' IQD'

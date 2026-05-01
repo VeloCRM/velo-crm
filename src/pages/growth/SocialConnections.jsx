@@ -1,5 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../../lib/supabase';
+import { fetchAgencySetting, fetchAllAgencySettings } from '../../lib/agency_settings';
+import {
+  listSocialConnections,
+  upsertSocialConnection,
+  deleteSocialConnection,
+} from '../../lib/social_connections';
 
 const platformDefs = [
   { id: 'meta', name: 'Meta / Instagram', icon: '📸', color: '#e879a8', prompt: 'Input: username only' },
@@ -49,21 +55,18 @@ export default function SocialConnections({ orgId }) {
 
   const fetchGlobalSettings = async () => {
     try {
-       const { data } = await supabase.from('agency_settings').select('value').eq('key', 'rapidapi_key').single();
-       if (data?.value) setRapidApiKey(data.value);
-    } catch(e) {}
+      const row = await fetchAgencySetting('rapidapi_key');
+      if (row?.value) setRapidApiKey(row.value);
+    } catch {
+      // No agency_settings row is OK; the page falls back to manual entry.
+    }
   };
 
   const fetchConnections = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('social_connections')
-        .select('*')
-        .eq('org_id', orgId);
-      
-      if (error) throw error;
-      setConnections(data || []);
+      const data = await listSocialConnections();
+      setConnections(data);
     } catch (err) {
       console.error('Error fetching connections:', err);
     } finally {
@@ -107,11 +110,11 @@ export default function SocialConnections({ orgId }) {
       if (['meta', 'tiktok', 'youtube', 'twitter', 'snapchat', 'google'].includes(activeModal)) {
         let token = null;
         if (activeModal === 'twitter') {
-          const { data: settings } = await supabase.from('agency_settings').select('*').single();
-          token = settings?.twitter_bearer_token;
+          const settings = await fetchAllAgencySettings();
+          token = settings?.[0]?.twitter_bearer_token;
         } else if (activeModal === 'google') {
-          const { data: settings } = await supabase.from('agency_settings').select('*').single();
-          token = settings?.google_places_api_key;
+          const settings = await fetchAllAgencySettings();
+          token = settings?.[0]?.google_places_api_key;
         } else if (['meta', 'tiktok', 'youtube'].includes(activeModal)) {
           token = rapidApiKey;
           if (!token) throw new Error('RapidAPI access is missing! Add key in settings API panel.');
@@ -180,29 +183,7 @@ export default function SocialConnections({ orgId }) {
     if (!supabase || !orgId) return;
     setSaving(true);
     try {
-      await supabase
-        .from('social_connections')
-        .delete()
-        .match({ org_id: orgId, platform: activeModal });
-        
-      const { error } = await supabase
-        .from('social_connections')
-        .insert([{
-          org_id: orgId,
-          platform: activeModal,
-          page_name: formData.page_name,
-          profile_url: formData.profile_url,
-          followers_count: parseInt(formData.followers_count) || 0,
-          following_count: parseInt(formData.following_count) || 0,
-          posts_count: parseInt(formData.posts_count) || 0,
-          profile_pic_url: formData.profile_pic_url,
-          bio: formData.bio,
-          engagement_rate: parseFloat(formData.engagement_rate) || 0,
-          notes: formData.notes,
-          last_synced_at: new Date().toISOString()
-        }]);
-        
-      if (error) throw error;
+      await upsertSocialConnection(activeModal, formData);
       await fetchConnections();
       setActiveModal(null);
     } catch (err) {
@@ -216,10 +197,7 @@ export default function SocialConnections({ orgId }) {
   const handleDisconnect = async (platformId) => {
     if (!supabase) return;
     try {
-      await supabase
-        .from('social_connections')
-        .delete()
-        .match({ org_id: orgId, platform: platformId });
+      await deleteSocialConnection(platformId);
       await fetchConnections();
     } catch (err) {
       console.error('Error disconnecting:', err);

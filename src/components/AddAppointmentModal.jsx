@@ -1,8 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, FormField, inputStyle, selectStyle, Icons } from './shared'
 import { makeBtn } from '../design'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabase'
 import { todayLocal } from '../lib/date'
+import { getCurrentUser, getCurrentOrgId } from '../lib/auth_session'
+import { listDoctorsInOrg } from '../lib/profiles'
+import { searchContactsForAppointment, upsertAppointment } from '../lib/appointments'
+import { insertContact } from '../lib/database'
 
 const TYPE_OPTIONS = [
   { value: 'checkup', label: 'Checkup' },
@@ -53,29 +57,35 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
   const [doctors, setDoctors] = useState([])
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return
-      supabase.from('profiles').select('org_id').eq('id', user.id).single().then(async ({ data }) => {
-        if (!data?.org_id) return
-        setOrgId(data.org_id)
-        // Doctors are profiles with role='doctor'. The legacy doctors
-        // table was unified into profiles (Commit 2 — demo-readiness).
-        const { data: docs } = await supabase.from('profiles')
-          .select('id, full_name, color, specialization')
-          .eq('org_id', data.org_id)
-          .eq('role', 'doctor')
-        setDoctors(docs || [])
-      })
-    })
+    let cancelled = false
+    ;(async () => {
+      const user = await getCurrentUser()
+      if (!user || cancelled) return
+      try {
+        const oid = await getCurrentOrgId()
+        if (cancelled) return
+        setOrgId(oid)
+        const docs = await listDoctorsInOrg()
+        if (!cancelled) setDoctors(docs)
+      } catch {
+        // Silent fall-through; the form just renders without doctor options.
+      }
+    })()
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
     if (searchQuery.length >= 2 && !form.contact_id && orgId) {
-      const doSearch = async () => {
-        const { data, error } = await supabase.from('contacts').select('id, name, phone').eq('org_id', orgId).or(`name.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`).limit(10)
-        if (!error && data) setSearchResults(data)
-      }
-      doSearch()
+      let cancelled = false
+      ;(async () => {
+        try {
+          const rows = await searchContactsForAppointment(searchQuery)
+          if (!cancelled) setSearchResults(rows)
+        } catch {
+          if (!cancelled) setSearchResults([])
+        }
+      })()
+      return () => { cancelled = true }
     } else {
       setSearchResults([])
     }
@@ -105,18 +115,19 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
     setLoading(true); setError(null); setSuccess(null)
     try {
       if (!newPatientForm.name) throw new Error('Patient name is required')
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData?.user) throw new Error('Not authenticated')
-      const payload = { org_id: orgId, user_id: userData.user.id, name: newPatientForm.name, phone: newPatientForm.phone, notes: newPatientForm.dob ? `Date of Birth: ${newPatientForm.dob}` : '' }
-      const { data, error: err } = await supabase.from('contacts').insert(payload).select().single()
-      if (err) throw err
-      set('contact_id', data.id)
-      setSearchQuery(data.name)
+      if (!orgId) throw new Error('Organization context not loaded')
+      const created = await insertContact({
+        name: newPatientForm.name,
+        phone: newPatientForm.phone,
+        notes: newPatientForm.dob ? `Date of Birth: ${newPatientForm.dob}` : '',
+      }, orgId)
+      set('contact_id', created.id)
+      setSearchQuery(created.name)
       setShowDropdown(false)
       setShowNewPatient(false)
       setSuccess('Patient added successfully')
       setTimeout(() => setSuccess(null), 3000)
-    } catch(err) {
+    } catch (err) {
       setError(err.message || 'Failed to add patient')
     } finally {
       setLoading(false)
@@ -130,28 +141,21 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
     setLoading(true); setError(null)
     try {
       if (!isSupabaseConfigured()) throw new Error('Supabase is not configured.')
-      const { data: userData } = await supabase.auth.getUser()
-      if (!userData?.user) throw new Error('Not authenticated')
-      const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', userData.user.id).single()
-      const orgIdVal = profile?.org_id
-      if (!orgIdVal) throw new Error('Organization not found')
       const payload = {
-        org_id: orgIdVal, contact_id: form.contact_id,
+        contact_id: form.contact_id,
         doctor_id: form.doctor_id || null,
-        title: form.title, appointment_date: form.appointment_date,
+        title: form.title,
+        appointment_date: form.appointment_date,
         appointment_time: form.appointment_time,
         duration_minutes: Number(form.duration_minutes),
-        type: form.type, status: form.status, notes: form.notes,
-        created_by: userData.user.id
+        type: form.type,
+        status: form.status,
+        notes: form.notes,
       }
-      let result
-      if (editAppointment?.id) {
-        result = await supabase.from('appointments').update(payload).eq('id', editAppointment.id).select().single()
-      } else {
-        result = await supabase.from('appointments').insert(payload).select().single()
-      }
-      if (result.error) throw result.error
-      onSave(result.data)
+      const saved = await upsertAppointment(
+        editAppointment?.id ? { id: editAppointment.id, ...payload } : payload
+      )
+      onSave(saved)
     } catch (err) {
       console.error(err)
       setError(err.message || 'Error saving appointment')

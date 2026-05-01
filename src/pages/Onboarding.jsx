@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { C } from '../design'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
 import { createInvitation } from '../lib/invitations'
+import { insertDepartments } from '../lib/orgs'
 import { isValidEmail } from '../lib/sanitize'
 
 const COLORS = ['#2563EB', '#7C3AED', '#16A34A', '#DC2626', '#D97706', '#E16F24', '#0D9488', '#6366F1']
@@ -58,13 +59,16 @@ export default function OnboardingPage({ user, lang, onComplete, toast }) {
           // departments too. If it fails, the user lands in the dashboard anyway and
           // can create departments manually later.
           try {
-            await supabase.from('departments').insert([
-              { org_id: org.id, name: isRTL ? 'المبيعات' : 'Sales', color: '#2563EB' },
-              { org_id: org.id, name: isRTL ? 'الدعم' : 'Support', color: '#16A34A' },
-              { org_id: org.id, name: isRTL ? 'التقنية' : 'Technical', color: '#7C3AED' },
+            await insertDepartments(org.id, [
+              { name: isRTL ? 'المبيعات' : 'Sales', color: '#2563EB' },
+              { name: isRTL ? 'الدعم' : 'Support', color: '#16A34A' },
+              { name: isRTL ? 'التقنية' : 'Technical', color: '#7C3AED' },
             ])
           } catch (deptErr) {
-            console.warn('Default departments seed failed (non-blocking):', deptErr.message)
+            // Non-blocking: the user lands in the dashboard and can create
+            // departments manually later. The error is surfaced to the toast
+            // pipeline so it isn't silently lost.
+            if (toast) toast(`Default departments not seeded: ${deptErr.message}`, 'warning')
           }
 
           localStorage.setItem('velo_tmp_org', JSON.stringify(org))

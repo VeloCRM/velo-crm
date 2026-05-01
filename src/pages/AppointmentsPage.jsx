@@ -1,7 +1,15 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Icons, Modal, FormField } from '../components/shared'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabase'
 import { fmtLocalDate as fmtDate } from '../lib/date'
+import { getCurrentUser, getCurrentOrgId } from '../lib/auth_session'
+import { listDoctorsInOrg } from '../lib/profiles'
+import {
+  listAppointmentsBetween,
+  updateAppointmentStatus,
+  deleteAppointment as deleteAppointmentRow,
+  upsertAppointment,
+} from '../lib/appointments'
 import {
   SAMPLE_DENTAL_DOCTORS,
   getSampleDentalAppointmentsWeek,
@@ -127,20 +135,16 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
       return
     }
     ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getCurrentUser()
       if (!user) return
-      const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
-      if (!profile?.org_id) return
-      setOrgId(profile.org_id)
-      const { data: docs, error: docsError } = await supabase
-        .from('profiles')
-        .select('id, full_name, color, specialization, role, is_active')
-        .eq('org_id', profile.org_id)
-        .eq('role', 'doctor')
-        .eq('is_active', true)
-        .order('full_name')
-      if (docsError) console.warn('[AppointmentsPage] doctors fetch failed:', docsError)
-      setDoctors(docs || [])
+      try {
+        const oid = await getCurrentOrgId()
+        setOrgId(oid)
+        const docs = await listDoctorsInOrg({ activeOnly: true })
+        setDoctors(docs)
+      } catch {
+        // Fall through to empty state; page renders with no doctor filter.
+      }
     })()
   }, [])
 
@@ -174,16 +178,12 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
         setLoading(false)
         return
       }
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*, contacts:contact_id(id, name, phone)')
-        .eq('org_id', orgId)
-        .gte('appointment_date', startDate)
-        .lte('appointment_date', endDate)
-        .order('appointment_time', { ascending: true })
-      if (!error) setAppointments(data || [])
-    } catch (e) { console.warn(e) }
-    finally { setLoading(false) }
+      const data = await listAppointmentsBetween(startDate, endDate)
+      setAppointments(data)
+    } catch (e) {
+      console.error('[AppointmentsPage] fetch failed:', e)
+      toast?.(e.message || 'Failed to load appointments', 'error')
+    } finally { setLoading(false) }
   }, [orgId, currentDate, viewMode])
 
   useEffect(() => { fetchAppointments() }, [fetchAppointments])
@@ -230,8 +230,8 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
     setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a))
     setSelectedApt(prev => prev?.id === id ? { ...prev, status } : prev)
     if (isSupabaseConfigured()) {
-      const { error } = await supabase.from('appointments').update({ status }).eq('id', id)
-      if (error) { toast?.('Error updating status', 'error'); return }
+      try { await updateAppointmentStatus(id, status) }
+      catch (err) { toast?.(err.message || 'Error updating status', 'error'); return }
     }
     toast?.(`Status updated to ${status}`, 'success')
   }
@@ -241,31 +241,35 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
     setAppointments(prev => prev.filter(a => a.id !== id))
     setSelectedApt(null)
     if (isSupabaseConfigured()) {
-      const { error } = await supabase.from('appointments').delete().eq('id', id)
-      if (error) { toast?.('Error deleting', 'error'); return }
+      try { await deleteAppointmentRow(id) }
+      catch (err) { toast?.(err.message || 'Error deleting', 'error'); return }
     }
     toast?.('Appointment deleted', 'success')
   }
 
   const handleSave = async (data) => {
     if (editApt) {
-      // Optimistic local update — always
       setAppointments(prev => prev.map(a => a.id === editApt.id ? { ...a, ...data } : a))
       if (isSupabaseConfigured()) {
-        const { error } = await supabase.from('appointments').update(data).eq('id', editApt.id)
-        if (error) { toast?.('Error updating', 'error') }
-        else { toast?.('Appointment updated', 'success'); fetchAppointments() }
+        try {
+          await upsertAppointment({ id: editApt.id, ...data })
+          toast?.('Appointment updated', 'success'); fetchAppointments()
+        } catch (err) {
+          toast?.(err.message || 'Error updating', 'error')
+        }
       } else {
         toast?.('Appointment updated', 'success')
       }
     } else {
-      // Optimistic local insert with synthetic id (preserved across day↔week toggle in demo).
       const tempId = 'demo-new-' + Date.now()
       setAppointments(prev => [...prev, { id: tempId, org_id: orgId, ...data }])
       if (isSupabaseConfigured()) {
-        const { error } = await supabase.from('appointments').insert({ ...data, org_id: orgId })
-        if (error) { toast?.('Error creating: ' + error.message, 'error') }
-        else { toast?.('Appointment created', 'success'); fetchAppointments() }
+        try {
+          await upsertAppointment(data)
+          toast?.('Appointment created', 'success'); fetchAppointments()
+        } catch (err) {
+          toast?.('Error creating: ' + (err.message || 'unknown'), 'error')
+        }
       } else {
         toast?.('Appointment created', 'success')
       }

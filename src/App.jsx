@@ -666,13 +666,15 @@ export default function App() {
     }
   }
 
-  const saveOrgSettings = (updates) => {
+  const saveOrgSettings = async (updates) => {
     setOrgSettings(prev => ({ ...prev, ...updates }))
-    // In production, save to Supabase organizations table
-    if (isSupabaseConfigured() && orgSettings.id) {
-      import('./lib/supabase.js').then(mod => {
-        if (mod.supabase) mod.supabase.from('organizations').update(updates).eq('id', orgSettings.id)
-      })
+    if (!isSupabaseConfigured() || !orgSettings.id) return
+    try {
+      const { updateOrgSettings } = await import('./lib/orgs')
+      await updateOrgSettings(orgSettings.id, updates)
+    } catch (err) {
+      console.error('Save org settings error:', err)
+      addToast(isRTL ? 'فشل حفظ إعدادات المؤسسة' : 'Failed to save org settings', 'error')
     }
   }
 

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { C, makeBtn, card, STAGE_COLORS } from '../design'
 import { Icons } from '../components/shared'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { fetchMonthlyReports } from '../lib/reports'
 
 const RANGES = [
   { id: '7', label: '7 Days' },
@@ -209,27 +210,14 @@ function DentalReportsSection({ lang, dir, isRTL }) {
         // Aggregate locally from raw rows. These are small monthly windows,
         // so pulling and reducing client-side is fine; moving to an RPC
         // becomes worthwhile when row counts cross ~10k/month.
-        const [apptsRes, paymentsRes, profDoctorsRes] = await Promise.all([
-          supabase
-            .from('appointments')
-            .select('id, doctor_id, type, appointment_date')
-            .gte('appointment_date', firstDayStr),
-          supabase
-            .from('payments')
-            .select('amount, currency, status, payment_date, created_at')
-            .eq('status', 'paid')
-            .gte('payment_date', firstDayStr),
-          supabase.from('profiles').select('id, full_name, color').eq('role', 'doctor'),
-        ])
+        const { appointments: appts, payments, doctors } =
+          await fetchMonthlyReports({ fromDate: firstDayStr })
         if (cancelled) return
-
-        const appts = apptsRes.data || []
-        const payments = paymentsRes.data || []
 
         // Doctor lookup: profiles with role='doctor' only (legacy doctors
         // table unified into profiles).
         const doctorMap = new Map()
-        for (const d of (profDoctorsRes.data || [])) {
+        for (const d of doctors) {
           if (d?.id && !doctorMap.has(d.id)) doctorMap.set(d.id, d)
         }
 

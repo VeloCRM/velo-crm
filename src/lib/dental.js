@@ -1,5 +1,8 @@
 import { supabase } from './supabase'
 import { todayLocal } from './date'
+import { requireUser, getCurrentOrgId } from './auth_session'
+import { logAuditEvent } from './audit'
+import { sanitizeText, sanitizeNotes, LIMITS, toSafeNumber } from './sanitize'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -22,9 +25,21 @@ const MIME_EXT = {
 // ─── Internal helpers ───────────────────────────────────────────────────────
 
 async function currentUserId() {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Not authenticated')
+  const user = await requireUser()
   return user.id
+}
+
+// Caller-supplied orgId must match the session's resolved org_id. Without
+// this, an attacker could pass another org's id to a helper that uses it in
+// the INSERT payload and bypass tenant separation. RLS catches this too,
+// but defense in depth.
+async function assertOrgScope(orgId, fnName) {
+  if (!orgId) throw new Error(`${fnName}: orgId is required`)
+  const myOrgId = await getCurrentOrgId()
+  if (orgId !== myOrgId) {
+    throw new Error(`${fnName}: org_id mismatch with current session`)
+  }
+  return orgId
 }
 
 // Derive a file extension from (1) the filename, (2) the MIME type, or
@@ -44,11 +59,16 @@ function deriveExt(file) {
 // ─── Contact-level dental data (single fetch, parallel sub-queries) ────────
 
 export async function fetchContactDental(orgId, contactId) {
+  await requireUser()
+  await assertOrgScope(orgId, 'fetchContactDental')
+  if (!contactId) throw new Error('fetchContactDental: contactId is required')
+
   const [contactRes, treatmentsRes, prescriptionsRes, xraysRes] = await Promise.all([
     supabase
       .from('contacts')
       .select('medical_history, dental_chart')
       .eq('id', contactId)
+      .eq('org_id', orgId)
       .single(),
     supabase
       .from('treatments')
@@ -75,15 +95,14 @@ export async function fetchContactDental(orgId, contactId) {
   if (xraysRes.error) throw xraysRes.error
 
   // Pre-fetch signed URLs in parallel. Best-effort: a failed signed-URL
-  // generation logs a warning and yields signedUrl=null so the rest of the
-  // batch still loads. UI handles null with a placeholder (Commit 5 scope).
+  // generation yields signedUrl=null so the rest of the batch still loads.
+  // The UI handles null with a placeholder.
   const xraysWithUrls = await Promise.all(
     (xraysRes.data || []).map(async (row) => {
       const mapped = mapXray(row)
       try {
         mapped.signedUrl = await getXraySignedUrl(mapped.storagePath)
-      } catch (err) {
-        console.warn('X-ray signed URL gen failed:', mapped.id, err)
+      } catch {
         mapped.signedUrl = null
       }
       return mapped
@@ -103,103 +122,206 @@ export async function fetchContactDental(orgId, contactId) {
 // ─── Contact JSONB blob updates ─────────────────────────────────────────────
 
 export async function updateMedicalHistory(contactId, history) {
+  if (!contactId) throw new Error('updateMedicalHistory: contactId is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
   const { error } = await supabase
     .from('contacts')
     .update({ medical_history: history })
     .eq('id', contactId)
+    .eq('org_id', orgId)
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'contact.medical_history_update',
+    entityType: 'contact',
+    entityId: contactId,
+  })
 }
 
 export async function updateDentalChart(contactId, teeth) {
+  if (!contactId) throw new Error('updateDentalChart: contactId is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
   const { error } = await supabase
     .from('contacts')
     .update({ dental_chart: teeth })
     .eq('id', contactId)
+    .eq('org_id', orgId)
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'contact.dental_chart_update',
+    entityType: 'contact',
+    entityId: contactId,
+  })
 }
 
 
 // ─── Treatments ─────────────────────────────────────────────────────────────
 
 export async function addTreatment(orgId, contactId, t) {
+  await requireUser()
+  await assertOrgScope(orgId, 'addTreatment')
+  if (!contactId) throw new Error('addTreatment: contactId is required')
+
   const userId = await currentUserId()
+  const sanitized = {
+    procedure: sanitizeText(t.procedure || '', 200),
+    tooth: sanitizeText(t.tooth || '', 16),
+    cost: Math.max(0, toSafeNumber(t.cost, 0)),
+    currency: sanitizeText(t.currency || 'IQD', 8),
+    status: sanitizeText(t.status || 'planned', 32),
+    treatment_date: t.treatmentDate || null,
+    notes: sanitizeNotes(t.notes || ''),
+  }
+
   const { data, error } = await supabase
     .from('treatments')
     .insert({
       org_id: orgId,
       contact_id: contactId,
-      procedure: t.procedure,
-      tooth: t.tooth || '',
-      cost: Number(t.cost) || 0,
-      currency: t.currency || 'IQD',
-      status: t.status || 'planned',
-      treatment_date: t.treatmentDate || null,
-      notes: t.notes || '',
+      ...sanitized,
       created_by: userId,
     })
     .select()
     .single()
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'treatment.create',
+    entityType: 'treatment',
+    entityId: data?.id || null,
+  })
+
   return mapTreatment(data)
 }
 
 export async function updateTreatment(id, updates) {
+  if (!id) throw new Error('updateTreatment: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
   const patch = {}
-  if (updates.procedure !== undefined) patch.procedure = updates.procedure
-  if (updates.tooth !== undefined) patch.tooth = updates.tooth
-  if (updates.cost !== undefined) patch.cost = Number(updates.cost) || 0
-  if (updates.currency !== undefined) patch.currency = updates.currency
-  if (updates.status !== undefined) patch.status = updates.status
+  if (updates.procedure !== undefined) patch.procedure = sanitizeText(updates.procedure, 200)
+  if (updates.tooth !== undefined) patch.tooth = sanitizeText(updates.tooth, 16)
+  if (updates.cost !== undefined) patch.cost = Math.max(0, toSafeNumber(updates.cost, 0))
+  if (updates.currency !== undefined) patch.currency = sanitizeText(updates.currency, 8)
+  if (updates.status !== undefined) patch.status = sanitizeText(updates.status, 32)
   if (updates.treatmentDate !== undefined) patch.treatment_date = updates.treatmentDate || null
-  if (updates.notes !== undefined) patch.notes = updates.notes
+  if (updates.notes !== undefined) patch.notes = sanitizeNotes(updates.notes)
 
   const { data, error } = await supabase
     .from('treatments')
     .update(patch)
     .eq('id', id)
+    .eq('org_id', orgId)
     .select()
     .single()
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'treatment.update',
+    entityType: 'treatment',
+    entityId: id,
+    payload: { fields: Object.keys(patch) },
+  })
+
   return mapTreatment(data)
 }
 
 export async function deleteTreatment(id) {
-  const { error } = await supabase.from('treatments').delete().eq('id', id)
+  if (!id) throw new Error('deleteTreatment: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { error } = await supabase
+    .from('treatments')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'treatment.delete',
+    entityType: 'treatment',
+    entityId: id,
+  })
 }
 
 
 // ─── Prescriptions ──────────────────────────────────────────────────────────
 
 export async function addPrescription(orgId, contactId, rx) {
+  await requireUser()
+  await assertOrgScope(orgId, 'addPrescription')
+  if (!contactId) throw new Error('addPrescription: contactId is required')
+
   const userId = await currentUserId()
+  const sanitized = {
+    medication: sanitizeText(rx.medication || '', 200),
+    dosage: sanitizeText(rx.dosage || '', 64),
+    duration: sanitizeText(rx.duration || '', 64),
+    notes: sanitizeNotes(rx.notes || ''),
+    prescribed_date: rx.prescribedDate || todayLocal(),
+  }
+
   const { data, error } = await supabase
     .from('prescriptions')
     .insert({
       org_id: orgId,
       contact_id: contactId,
-      medication: rx.medication,
-      dosage: rx.dosage || '',
-      duration: rx.duration || '',
-      notes: rx.notes || '',
-      prescribed_date: rx.prescribedDate || todayLocal(),
+      ...sanitized,
       created_by: userId,
     })
     .select()
     .single()
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'prescription.create',
+    entityType: 'prescription',
+    entityId: data?.id || null,
+  })
+
   return mapPrescription(data)
 }
 
 export async function deletePrescription(id) {
-  const { error } = await supabase.from('prescriptions').delete().eq('id', id)
+  if (!id) throw new Error('deletePrescription: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { error } = await supabase
+    .from('prescriptions')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'prescription.delete',
+    entityType: 'prescription',
+    entityId: id,
+  })
 }
 
 
 // ─── X-rays (Storage + DB metadata coordination) ────────────────────────────
 
 export async function uploadXray(orgId, contactId, file, meta = {}) {
+  await requireUser()
+  await assertOrgScope(orgId, 'uploadXray')
+  if (!contactId) throw new Error('uploadXray: contactId is required')
+  if (!file) throw new Error('uploadXray: file is required')
+
   const userId = await currentUserId()
   const xrayId = crypto.randomUUID()
   const ext = deriveExt(file)
@@ -222,26 +344,31 @@ export async function uploadXray(orgId, contactId, file, meta = {}) {
       id: xrayId,
       org_id: orgId,
       contact_id: contactId,
-      file_name: file.name || `xray-${xrayId}.${ext}`,
+      file_name: sanitizeText(file.name || `xray-${xrayId}.${ext}`, 200),
       storage_path: storagePath,
       mime_type: file.type || 'image/jpeg',
-      size_bytes: file.size || 0,
+      size_bytes: Math.max(0, toSafeNumber(file.size, 0)),
       taken_date: meta.takenDate || todayLocal(),
-      notes: meta.notes || '',
+      notes: sanitizeNotes(meta.notes || ''),
       created_by: userId,
     })
     .select()
     .single()
   if (insertErr) {
-    // Best-effort cleanup of the orphaned blob; warn (not throw) on cleanup
-    // failure so the caller still sees the original insert failure.
-    try {
-      await supabase.storage.from(XRAY_BUCKET).remove([storagePath])
-    } catch (cleanupErr) {
-      console.warn('X-ray storage cleanup failed after insert failure:', storagePath, cleanupErr)
-    }
+    // Best-effort cleanup of the orphaned blob. The original insert failure
+    // is what the caller cares about; a cleanup failure here would be
+    // reported on top of the real one and just confuse the toast pipeline.
+    await supabase.storage.from(XRAY_BUCKET).remove([storagePath]).catch(() => null)
     throw insertErr
   }
+
+  await logAuditEvent({
+    orgId,
+    action: 'xray.upload',
+    entityType: 'xray',
+    entityId: xrayId,
+    payload: { fileName: data.file_name },
+  })
 
   // 3. Generate a signed URL so the UI can render the just-uploaded image
   // without waiting for the next fetchContactDental.
@@ -250,6 +377,10 @@ export async function uploadXray(orgId, contactId, file, meta = {}) {
 }
 
 export async function deleteXray(id, storagePath) {
+  if (!id) throw new Error('deleteXray: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
   // Storage-first. If storage fails, the DB row stays — caller retries.
   // Prevents the "ghost row pointing at a deleted file" failure mode.
   const { error: storageErr } = await supabase.storage
@@ -257,8 +388,19 @@ export async function deleteXray(id, storagePath) {
     .remove([storagePath])
   if (storageErr) throw storageErr
 
-  const { error: dbErr } = await supabase.from('xrays').delete().eq('id', id)
+  const { error: dbErr } = await supabase
+    .from('xrays')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
   if (dbErr) throw dbErr
+
+  await logAuditEvent({
+    orgId,
+    action: 'xray.delete',
+    entityType: 'xray',
+    entityId: id,
+  })
 }
 
 export async function getXraySignedUrl(storagePath) {

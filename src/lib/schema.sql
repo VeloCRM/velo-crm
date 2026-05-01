@@ -1192,3 +1192,135 @@ CREATE TABLE whatsapp_usage (id uuid primary key default gen_random_uuid(), org_
 CREATE INDEX idx_whatsapp_usage_org_time ON whatsapp_usage(org_id, sent_at DESC);
 ALTER TABLE whatsapp_usage ENABLE ROW LEVEL SECURITY;
 CREATE POLICY whatsapp_usage_operator ON whatsapp_usage FOR ALL USING (is_operator()) WITH CHECK (is_operator());
+
+
+-- ============================================================================
+-- MIGRATION — Phase 6 (Sprint 0): atomic contact JSON helpers
+-- ----------------------------------------------------------------------------
+-- The legacy `contacts.notes` column stores a JSON string (TEXT) with shape
+--    { "bio": "...", "timeline": [...], "documents": [...] }
+-- The previous client-side flow was read → parse → mutate → stringify →
+-- write, which is a last-write-wins race. These functions take a row lock,
+-- mutate in-memory, and write back atomically. SECURITY INVOKER so RLS
+-- still applies — operators bypass via the contacts operator policy.
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.contact_append_timeline(
+  p_contact_id uuid,
+  p_entry jsonb
+)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+AS $$
+DECLARE
+  current_text text;
+  parsed jsonb;
+  new_notes text;
+BEGIN
+  SELECT notes INTO current_text FROM public.contacts WHERE id = p_contact_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'contact not found: %', p_contact_id;
+  END IF;
+  IF current_text IS NULL OR current_text = '' THEN
+    parsed := '{"bio":"", "timeline":[], "documents":[]}'::jsonb;
+  ELSE
+    BEGIN
+      parsed := current_text::jsonb;
+    EXCEPTION WHEN OTHERS THEN
+      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
+    END;
+    IF jsonb_typeof(parsed) <> 'object' THEN
+      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
+    END IF;
+  END IF;
+  parsed := jsonb_set(parsed, '{timeline}', COALESCE(parsed->'timeline', '[]'::jsonb) || p_entry);
+  new_notes := parsed::text;
+  UPDATE public.contacts SET notes = new_notes WHERE id = p_contact_id;
+  RETURN new_notes;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.contact_add_document(
+  p_contact_id uuid,
+  p_doc jsonb
+)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+AS $$
+DECLARE
+  current_text text;
+  parsed jsonb;
+  new_notes text;
+BEGIN
+  SELECT notes INTO current_text FROM public.contacts WHERE id = p_contact_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'contact not found: %', p_contact_id;
+  END IF;
+  IF current_text IS NULL OR current_text = '' THEN
+    parsed := '{"bio":"", "timeline":[], "documents":[]}'::jsonb;
+  ELSE
+    BEGIN
+      parsed := current_text::jsonb;
+    EXCEPTION WHEN OTHERS THEN
+      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
+    END;
+    IF jsonb_typeof(parsed) <> 'object' THEN
+      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
+    END IF;
+  END IF;
+  parsed := jsonb_set(parsed, '{documents}', COALESCE(parsed->'documents', '[]'::jsonb) || p_doc);
+  new_notes := parsed::text;
+  UPDATE public.contacts SET notes = new_notes WHERE id = p_contact_id;
+  RETURN new_notes;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.contact_remove_document(
+  p_contact_id uuid,
+  p_doc_id text
+)
+RETURNS text
+LANGUAGE plpgsql
+SECURITY INVOKER
+AS $$
+DECLARE
+  current_text text;
+  parsed jsonb;
+  filtered_docs jsonb;
+  new_notes text;
+BEGIN
+  SELECT notes INTO current_text FROM public.contacts WHERE id = p_contact_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'contact not found: %', p_contact_id;
+  END IF;
+  IF current_text IS NULL OR current_text = '' THEN
+    RETURN current_text;
+  END IF;
+  BEGIN
+    parsed := current_text::jsonb;
+  EXCEPTION WHEN OTHERS THEN
+    RETURN current_text;
+  END;
+  IF jsonb_typeof(parsed) <> 'object' THEN
+    RETURN current_text;
+  END IF;
+  -- Filter the documents array, dropping the row whose .id matches p_doc_id.
+  SELECT COALESCE(jsonb_agg(d), '[]'::jsonb)
+    INTO filtered_docs
+    FROM jsonb_array_elements(COALESCE(parsed->'documents', '[]'::jsonb)) AS d
+    WHERE d->>'id' IS DISTINCT FROM p_doc_id;
+  parsed := jsonb_set(parsed, '{documents}', filtered_docs);
+  new_notes := parsed::text;
+  UPDATE public.contacts SET notes = new_notes WHERE id = p_contact_id;
+  RETURN new_notes;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.contact_append_timeline(uuid, jsonb)  FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.contact_add_document(uuid, jsonb)     FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.contact_remove_document(uuid, text)   FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.contact_append_timeline(uuid, jsonb)  TO authenticated;
+GRANT EXECUTE ON FUNCTION public.contact_add_document(uuid, jsonb)     TO authenticated;
+GRANT EXECUTE ON FUNCTION public.contact_remove_document(uuid, text)   TO authenticated;

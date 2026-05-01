@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { C, card, makeBtn } from '../design'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabase'
+import {
+  fetchInventoryItems,
+  insertInventoryItem,
+  updateInventoryItem,
+  deleteInventoryItem,
+} from '../lib/inventory'
 
 // Icons
 const Icons = {
@@ -69,15 +75,14 @@ export default function InventoryPage({ t, lang, dir, isRTL, toast, orgId }) {
     let cancelled = false
     const load = async () => {
       setLoading(true)
-      if (isSupabaseConfigured() && orgId && supabase) {
+      if (isSupabaseConfigured() && orgId) {
         try {
-          const { data, error } = await supabase.from('items').select('*').eq('org_id', orgId).order('name')
-          if (error && error.code !== '42P01') { // 42P01 is relation does not exist
-             console.error('Fetch items error:', error)
-          }
-          if (!cancelled) setItems(data || [])
+          const data = await fetchInventoryItems()
+          if (!cancelled) setItems(data)
         } catch (e) {
-          console.error(e)
+          // 42P01 = relation does not exist, treated as "no inventory yet"
+          if (e?.code !== '42P01') console.error('Fetch items error:', e)
+          if (!cancelled) setItems([])
         }
       } else {
         // Mock data
@@ -107,24 +112,21 @@ export default function InventoryPage({ t, lang, dir, isRTL, toast, orgId }) {
       org_id: orgId
     }
 
-    if (isSupabaseConfigured() && orgId && supabase) {
+    if (isSupabaseConfigured() && orgId) {
       try {
         if (editingItem) {
-          const { error } = await supabase.from('items').update(payload).eq('id', editingItem.id)
-          if (error) throw error
+          await updateInventoryItem(editingItem.id, payload)
           setItems(prev => prev.map(i => i.id === editingItem.id ? { ...i, ...payload } : i))
           toast('Item updated successfully', 'success')
         } else {
-          const { data, error } = await supabase.from('items').insert([payload]).select().single()
-          if (error) throw error
-          if (data) setItems(prev => [data, ...prev].sort((a,b) => a.name.localeCompare(b.name)))
+          const data = await insertInventoryItem(payload)
+          if (data) setItems(prev => [data, ...prev].sort((a, b) => a.name.localeCompare(b.name)))
           toast('Item added successfully', 'success')
         }
         setShowModal(false)
       } catch (err) {
         console.error(err)
-        // If table doesn't exist, fallback to local state for demo
-        if (err.code === '42P01') {
+        if (err?.code === '42P01') {
           handleLocalSave(payload)
         } else {
           toast(err.message || 'Error saving item', 'error')
@@ -146,10 +148,13 @@ export default function InventoryPage({ t, lang, dir, isRTL, toast, orgId }) {
   }
 
   const handleDelete = async (id) => {
-    if (isSupabaseConfigured() && orgId && supabase) {
-      try {
-        await supabase.from('items').delete().eq('id', id)
-      } catch (err) { console.error(err) }
+    if (isSupabaseConfigured() && orgId) {
+      try { await deleteInventoryItem(id) }
+      catch (err) {
+        console.error(err)
+        toast?.(err.message || 'Failed to delete item', 'error')
+        return
+      }
     }
     setItems(prev => prev.filter(i => i.id !== id))
     toast('Item deleted', 'success')

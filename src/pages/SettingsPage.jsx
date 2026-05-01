@@ -2,9 +2,11 @@ import { useState, useRef, useEffect, useCallback } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
 import { sanitizeText, sanitizeName, maskApiKey, isValidEmail } from '../lib/sanitize'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabase'
 import { callClaude, clearAgencyKeyCache } from '../lib/ai'
 import { createInvitation, listPendingInvitations, revokeInvitation, buildInviteUrl } from '../lib/invitations'
+import { listDoctorsInOrg, updateProfile, demoteDoctor } from '../lib/profiles'
+import { getCurrentOrgId } from '../lib/auth_session'
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
 import { SAMPLE_DENTAL_DOCTORS } from '../sampleData'
 
@@ -1047,8 +1049,10 @@ function AgencyAITab({ lang, dir, toast }) {
   // Load existing key
   useState(() => {
     if (!supabase) { setLoading(false); return }
-    supabase.from('agency_settings').select('value').eq('key', 'anthropic_api_key').single()
-      .then(({ data }) => { if (data?.value) setApiKey(data.value); setLoading(false) })
+    import('../lib/agency_settings').then(({ fetchAgencySetting }) =>
+      fetchAgencySetting('anthropic_api_key')
+    )
+      .then(row => { if (row?.value) setApiKey(row.value); setLoading(false) })
       .catch(() => setLoading(false))
   })
 
@@ -1056,16 +1060,14 @@ function AgencyAITab({ lang, dir, toast }) {
     if (!supabase || !apiKey.trim()) return
     setSaving(true)
     setTestResult(null)
-    const { error } = await supabase.from('agency_settings').upsert(
-      { key: 'anthropic_api_key', value: apiKey.trim(), updated_at: new Date().toISOString() },
-      { onConflict: 'key' }
-    )
-    if (error) {
-      console.error('Save agency key error:', error)
-      if (toast) toast(isRTL ? 'خطأ في الحفظ' : 'Error saving key', 'error')
-    } else {
+    try {
+      const { upsertAgencySetting } = await import('../lib/agency_settings')
+      await upsertAgencySetting('anthropic_api_key', apiKey.trim())
       clearAgencyKeyCache()
       if (toast) toast(isRTL ? 'تم حفظ مفتاح الوكالة' : 'Agency API key saved', 'success')
+    } catch (error) {
+      console.error('Save agency key error:', error)
+      if (toast) toast(isRTL ? 'خطأ في الحفظ' : 'Error saving key', 'error')
     }
     setSaving(false)
   }
@@ -1222,26 +1224,26 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
   useEffect(() => {
     if (!isSupabaseConfigured()) return
     ;(async () => {
-      if (!supabase) return setLoading(false)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return setLoading(false)
-      const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
-      if (!profile?.org_id) return setLoading(false)
-      setOrgId(profile.org_id)
-      await fetchAll(profile.org_id)
+      try {
+        const oid = await getCurrentOrgId()
+        setOrgId(oid)
+        await fetchAll()
+      } catch {
+        setLoading(false)
+      }
     })()
   }, [])
 
-  const fetchAll = async (oid) => {
+  const fetchAll = async () => {
     setLoading(true)
-    const { data: docs } = await supabase
-      .from('profiles')
-      .select('id, full_name, specialization, color, phone, is_active, role')
-      .eq('org_id', oid)
-      .eq('role', 'doctor')
-      .order('created_at')
-    setDoctors(docs || [])
-    setLoading(false)
+    try {
+      const docs = await listDoctorsInOrg()
+      setDoctors(docs)
+    } catch (err) {
+      console.error('[Settings] doctors fetch failed:', err)
+    } finally {
+      setLoading(false)
+    }
   }
 
   const saveDoctor = async (form) => {
@@ -1249,18 +1251,21 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
       toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
       return
     }
-    if (!editDoc?.id) return  // safeguard: form should never open without editDoc
-    const { error } = await supabase.from('profiles').update({
-      full_name: form.full_name,
-      specialization: form.specialization,
-      color: form.color,
-      phone: form.phone,
-      is_active: form.is_active,
-    }).eq('id', editDoc.id)
-    if (error) return toast?.('Error: ' + error.message, 'error')
-    toast?.(isRTL ? 'تم تحديث الطبيب' : 'Doctor updated', 'success')
-    setShowDocForm(false); setEditDoc(null)
-    await fetchAll(orgId)
+    if (!editDoc?.id) return
+    try {
+      await updateProfile(editDoc.id, {
+        full_name: form.full_name,
+        specialization: form.specialization,
+        color: form.color,
+        phone: form.phone,
+        is_active: form.is_active,
+      })
+      toast?.(isRTL ? 'تم تحديث الطبيب' : 'Doctor updated', 'success')
+      setShowDocForm(false); setEditDoc(null)
+      await fetchAll()
+    } catch (err) {
+      toast?.('Error: ' + err.message, 'error')
+    }
   }
 
   const deleteDoctor = async (id) => {
@@ -1268,10 +1273,13 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
       toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
       return
     }
-    const { error } = await supabase.from('profiles').update({ role: 'member' }).eq('id', id)
-    if (error) return toast?.('Error: ' + error.message, 'error')
-    toast?.(isRTL ? 'تم تنزيل الطبيب إلى عضو' : 'Doctor demoted to member', 'success')
-    await fetchAll(orgId)
+    try {
+      await demoteDoctor(id)
+      toast?.(isRTL ? 'تم تنزيل الطبيب إلى عضو' : 'Doctor demoted to member', 'success')
+      await fetchAll()
+    } catch (err) {
+      toast?.('Error: ' + err.message, 'error')
+    }
   }
 
   const saveHours = (h) => {

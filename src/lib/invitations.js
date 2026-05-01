@@ -1,4 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase'
+import { requireUser, getCurrentOrgId } from './auth_session'
+import { logAuditEvent } from './audit'
+import { sanitizeEmail, sanitizeText } from './sanitize'
 
 // App URL used in the invite link shown to the admin. Override with
 // VITE_APP_URL in the environment if the deployment URL changes.
@@ -22,16 +25,23 @@ export function clearPendingInvite() {
 // caller turns into a /join link for the admin to copy-paste.
 export async function createInvitation({ orgId, email, role }) {
   if (!isSupabaseConfigured()) throw new Error('Supabase not configured')
-  const { data: user } = await supabase.auth.getUser()
-  const invitedBy = user?.user?.id || null
+  const user = await requireUser()
+  const myOrgId = await getCurrentOrgId()
+  if (!orgId) throw new Error('createInvitation: orgId is required')
+  if (orgId !== myOrgId) {
+    throw new Error('createInvitation: org_id mismatch with current session')
+  }
+
+  const safeEmail = sanitizeEmail(email || '')
+  const safeRole = sanitizeText(role || 'member', 32)
   const token = (typeof crypto !== 'undefined' && crypto.randomUUID)
     ? crypto.randomUUID()
     : undefined // let the DB default fill it
   const payload = {
     org_id: orgId,
-    email: String(email || '').toLowerCase().trim(),
-    role: role || 'member',
-    invited_by: invitedBy,
+    email: safeEmail,
+    role: safeRole,
+    invited_by: user.id,
   }
   if (token) payload.token = token
   const { data, error } = await supabase
@@ -40,6 +50,15 @@ export async function createInvitation({ orgId, email, role }) {
     .select()
     .single()
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'invitation.create',
+    entityType: 'invitation',
+    entityId: data?.id || null,
+    payload: { email: safeEmail, role: safeRole },
+  })
+
   return data
 }
 
@@ -51,6 +70,11 @@ export function buildInviteUrl(token, email) {
 
 export async function listPendingInvitations(orgId) {
   if (!isSupabaseConfigured() || !orgId) return []
+  await requireUser()
+  const myOrgId = await getCurrentOrgId()
+  if (orgId !== myOrgId) {
+    throw new Error('listPendingInvitations: org_id mismatch with current session')
+  }
   const { data, error } = await supabase
     .from('invitations')
     .select('*')
@@ -63,8 +87,22 @@ export async function listPendingInvitations(orgId) {
 
 export async function revokeInvitation(id) {
   if (!isSupabaseConfigured()) return
-  const { error } = await supabase.from('invitations').delete().eq('id', id)
+  if (!id) throw new Error('revokeInvitation: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { error } = await supabase
+    .from('invitations')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'invitation.revoke',
+    entityType: 'invitation',
+    entityId: id,
+  })
 }
 
 // Called on the /join page (unauthenticated). Returns { orgName, email, role }
@@ -74,7 +112,9 @@ export async function getInvitationPreview(token) {
   const { data, error } = await supabase.rpc('get_invitation_preview', {
     invite_token: token,
   })
-  if (error) { console.warn('Invite preview error:', error); return null }
+  // Errors here usually mean a bad / expired token — return null so the UI
+  // can fall back to the generic "your invite link is invalid" state.
+  if (error) return null
   const row = Array.isArray(data) ? data[0] : data
   if (!row) return null
   return { orgName: row.org_name, email: row.invite_email, role: row.invite_role }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { listCompetitors, insertCompetitor, deleteCompetitor } from '../../lib/competitors'
 
 export default function CompetitorSetup({ orgId }) {
   const [competitors, setCompetitors] = useState([])
@@ -13,51 +13,53 @@ export default function CompetitorSetup({ orgId }) {
     location: '',
   })
 
+  async function fetchCompetitors() {
+    setLoading(true)
+    try {
+      const data = await listCompetitors()
+      setCompetitors(data)
+    } catch (err) {
+      console.error('Fetch competitors error:', err)
+      setCompetitors([])
+    }
+    setLoading(false)
+  }
+
   // ── Fetch competitors ────────────────────────────────────────────────
   useEffect(() => {
     if (!orgId) return
     fetchCompetitors()
   }, [orgId])
 
-  async function fetchCompetitors() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('competitors')
-      .select('*')
-      .eq('org_id', orgId)
-      .order('created_at', { ascending: false })
-    if (error) console.error('Fetch competitors error:', error)
-    setCompetitors(data || [])
-    setLoading(false)
-  }
-
   // ── Add competitor ───────────────────────────────────────────────────
   async function handleAdd(e) {
     e.preventDefault()
     if (!form.name.trim()) return
     setSaving(true)
-    const { error } = await supabase.from('competitors').insert({
-      org_id: orgId,
-      name: form.name.trim(),
-      industry: form.industry.trim(),
-      instagram_handle: form.instagram_handle.trim(),
-      google_maps_url: form.google_maps_url.trim(),
-      location: form.location.trim(),
-    })
-    if (error) {
-      console.error('Add competitor error:', error)
-    } else {
+    try {
+      await insertCompetitor({
+        name: form.name.trim(),
+        industry: form.industry.trim(),
+        instagram_handle: form.instagram_handle.trim(),
+        google_maps_url: form.google_maps_url.trim(),
+        location: form.location.trim(),
+      })
       setForm({ name: '', industry: '', instagram_handle: '', google_maps_url: '', location: '' })
       await fetchCompetitors()
+    } catch (err) {
+      console.error('Add competitor error:', err)
     }
     setSaving(false)
   }
 
   // ── Delete competitor ────────────────────────────────────────────────
   async function handleDelete(id) {
-    const { error } = await supabase.from('competitors').delete().eq('id', id)
-    if (error) console.error('Delete competitor error:', error)
-    else setCompetitors(prev => prev.filter(c => c.id !== id))
+    try {
+      await deleteCompetitor(id)
+      setCompetitors(prev => prev.filter(c => c.id !== id))
+    } catch (err) {
+      console.error('Delete competitor error:', err)
+    }
   }
 
   const inputStyle = {
@@ -73,107 +75,93 @@ export default function CompetitorSetup({ orgId }) {
     background: '#101422', borderRadius: 10,
     border: '1px solid rgba(0,255,178,0.12)',
     boxShadow: '0 0 20px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
+    padding: 16,
   }
 
-  // ── Render ───────────────────────────────────────────────────────────
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── Add Form ──────────────────────────────────────────────────── */}
-      <form onSubmit={handleAdd} style={{ ...cardStyle, padding: 24 }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', marginBottom: 16 }}>
-          Add Competitor
-        </h2>
+  if (!orgId) return null
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16, marginBottom: 16 }}>
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
+        Competitors
+      </h2>
+
+      <form onSubmit={handleAdd} style={cardStyle}>
+        <div style={{ display: 'grid', gap: 12, gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
           <div>
             <label style={labelStyle}>Name *</label>
-            <input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="e.g. BrightSmile Dental" required style={inputStyle} />
+            <input value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} style={inputStyle} required />
           </div>
           <div>
             <label style={labelStyle}>Industry</label>
-            <input value={form.industry} onChange={e => setForm(p => ({ ...p, industry: e.target.value }))} placeholder="e.g. Dental, Real Estate" style={inputStyle} />
+            <input value={form.industry} onChange={e => setForm(f => ({ ...f, industry: e.target.value }))} style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>Instagram Handle</label>
-            <input value={form.instagram_handle} onChange={e => setForm(p => ({ ...p, instagram_handle: e.target.value }))} placeholder="@handle" style={inputStyle} />
+            <label style={labelStyle}>Instagram</label>
+            <input value={form.instagram_handle} onChange={e => setForm(f => ({ ...f, instagram_handle: e.target.value }))} style={inputStyle} />
           </div>
           <div>
             <label style={labelStyle}>Google Maps URL</label>
-            <input value={form.google_maps_url} onChange={e => setForm(p => ({ ...p, google_maps_url: e.target.value }))} placeholder="https://maps.google.com/..." style={inputStyle} />
+            <input value={form.google_maps_url} onChange={e => setForm(f => ({ ...f, google_maps_url: e.target.value }))} style={inputStyle} />
           </div>
-          <div style={{ gridColumn: '1 / -1' }}>
+          <div>
             <label style={labelStyle}>Location</label>
-            <input value={form.location} onChange={e => setForm(p => ({ ...p, location: e.target.value }))} placeholder="e.g. Baghdad, Erbil" style={inputStyle} />
+            <input value={form.location} onChange={e => setForm(f => ({ ...f, location: e.target.value }))} style={inputStyle} />
           </div>
         </div>
-
-        <button type="submit" disabled={saving || !form.name.trim()} style={{
-          padding: '8px 18px', borderRadius: 8, border: 'none', fontSize: 13, fontWeight: 600,
-          background: saving || !form.name.trim() ? '#475569' : 'linear-gradient(135deg, #00FFB2, #4DA6FF)',
-          color: saving || !form.name.trim() ? '#94a3b8' : '#080c14',
-          cursor: saving || !form.name.trim() ? 'not-allowed' : 'pointer',
-          fontFamily: 'inherit', transition: 'all 150ms ease',
-        }}>
-          {saving ? 'Adding...' : '+ Add Competitor'}
+        <button
+          type="submit"
+          disabled={saving}
+          style={{
+            marginTop: 12,
+            padding: '8px 16px',
+            borderRadius: 8,
+            border: 'none',
+            background: '#00FFB2',
+            color: '#0C0E1A',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: saving ? 'not-allowed' : 'pointer',
+            opacity: saving ? 0.6 : 1,
+          }}
+        >
+          {saving ? 'Adding...' : 'Add competitor'}
         </button>
       </form>
 
-      {/* ── Competitors List ──────────────────────────────────────────── */}
-      <div style={{ ...cardStyle, overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(0,255,178,0.12)' }}>
-          <h2 style={{ fontSize: 16, fontWeight: 600, color: '#e2e8f0', margin: 0 }}>
-            Tracked Competitors
-            <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 400, color: '#475569' }}>
-              ({competitors.length})
-            </span>
-          </h2>
+      {loading ? (
+        <p style={{ color: '#7b7f9e', fontSize: 13 }}>Loading...</p>
+      ) : competitors.length === 0 ? (
+        <p style={{ color: '#7b7f9e', fontSize: 13 }}>No competitors added yet.</p>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {competitors.map(c => (
+            <div key={c.id} style={{ ...cardStyle, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: '#e2e8f0', fontWeight: 600, fontSize: 14 }}>{c.name}</div>
+                <div style={{ color: '#7b7f9e', fontSize: 12, marginTop: 2 }}>
+                  {[c.industry, c.location].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleDelete(c.id)}
+                style={{
+                  background: 'transparent',
+                  border: '1px solid rgba(239,68,68,0.3)',
+                  color: '#FF6B6B',
+                  padding: '6px 12px',
+                  borderRadius: 6,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          ))}
         </div>
-
-        {loading ? (
-          <div style={{ padding: 48, textAlign: 'center', color: '#475569', fontSize: 13 }}>Loading...</div>
-        ) : competitors.length === 0 ? (
-          <div style={{ padding: 48, textAlign: 'center' }}>
-            <p style={{ color: '#475569', fontSize: 13 }}>No competitors added yet.</p>
-            <p style={{ color: '#475569', fontSize: 11, marginTop: 4 }}>Add your first competitor above to start tracking.</p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ background: '#0C0E1A', borderBottom: '1px solid rgba(0,255,178,0.12)' }}>
-                  {['Name', 'Industry', 'Instagram', 'Location', 'Google Maps', 'Actions'].map(h => (
-                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 11, fontWeight: 600, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {competitors.map((comp, idx) => (
-                  <tr key={comp.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)', transition: 'background 150ms ease' }}
-                    onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.03)'}
-                    onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
-                    <td style={{ padding: '12px 16px', fontWeight: 600, color: '#e2e8f0' }}>{comp.name}</td>
-                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{comp.industry || '\u2014'}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      {comp.instagram_handle
-                        ? <span style={{ color: '#e879a8' }}>@{comp.instagram_handle.replace(/^@/, '')}</span>
-                        : <span style={{ color: '#475569' }}>\u2014</span>}
-                    </td>
-                    <td style={{ padding: '12px 16px', color: '#94a3b8' }}>{comp.location || '\u2014'}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      {comp.google_maps_url
-                        ? <a href={comp.google_maps_url} target="_blank" rel="noopener noreferrer" style={{ color: '#00FFB2', fontSize: 12, textDecoration: 'none' }}>View Map ↗</a>
-                        : <span style={{ color: '#475569' }}>\u2014</span>}
-                    </td>
-                    <td style={{ padding: '12px 16px', textAlign: 'right' }}>
-                      <button onClick={() => handleDelete(comp.id)} style={{ border: 'none', background: 'transparent', color: '#ef4444', fontSize: 12, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>Delete</button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+      )}
     </div>
   )
 }
