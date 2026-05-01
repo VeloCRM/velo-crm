@@ -40,7 +40,7 @@ const thStyle = (isRTL) => ({
 
 const SUBSCRIPTION_PRICING = { free: 0, starter: 29, pro: 79, enterprise: 199 }
 
-export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, toast, showConfirm, isSuperAdmin, orgPayments }) {
+export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, toast, showConfirm, isOperator, orgPayments }) {
   const [tab, setTab] = useState('overview')
   const [expenses, setExpenses] = useState(loadExpenses)
   const [showExpenseForm, setShowExpenseForm] = useState(false)
@@ -55,7 +55,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
     async function load() {
       setLoading(true)
       try {
-        if (isSuperAdmin) {
+        if (isOperator) {
           // Agency view — fetch organizations for subscription revenue
           const data = await withTimeout(fetchOrganizations(), 10000)
           if (!cancelled) setOrgs(data)
@@ -74,7 +74,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
     }
     load()
     return () => { cancelled = true }
-  }, [isSuperAdmin, orgPayments])
+  }, [isOperator, orgPayments])
 
   // Map contact names onto payments
   const contactMap = Object.fromEntries(contacts.map(c => [c.id, c.name]))
@@ -124,7 +124,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
   const topContacts = Object.entries(contactRevenue).sort((a, b) => b[1] - a[1]).slice(0, 5)
 
   // ─── Agency subscription revenue view ──────────────────────────────────
-  if (isSuperAdmin) {
+  if (isOperator) {
     const activeOrgs = orgs.filter(o => o.status === 'active' || !o.status)
     const totalMRR = activeOrgs.reduce((sum, o) => sum + (SUBSCRIPTION_PRICING[o.plan] || 0), 0)
     const planBadge = { free: { color: C.textMuted, bg: C.bg }, starter: { color: C.primary, bg: C.primaryBg }, pro: { color: '#7c3aed', bg: 'rgba(124,58,237,0.1)' }, enterprise: { color: C.success, bg: C.successBg } }
@@ -287,7 +287,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
           })}
 
           {/* Super Admin: Organization Breakdown */}
-          {isSuperAdmin && orgBreakdown.length > 0 && tab === 'overview' && (
+          {isOperator && orgBreakdown.length > 0 && tab === 'overview' && (
             <div style={{ ...card, padding: 20, marginBottom: 20 }}>
               <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{isRTL ? 'إيرادات حسب المؤسسة' : 'Revenue by Organization'}</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -364,9 +364,9 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
               <div style={{ ...card, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead><tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
-                    {[isRTL ? 'جهة الاتصال' : 'Contact', isRTL ? 'المبلغ' : 'Amount', isRTL ? 'العملة' : 'Currency', isRTL ? 'الطريقة' : 'Method', isRTL ? 'التاريخ' : 'Date', isRTL ? 'الوصف' : 'Description', ...(isSuperAdmin ? [isRTL ? 'المؤسسة' : 'Organization'] : [])].map((h, i) => <th key={i} style={thStyle(isRTL)}>{h}</th>)}
+                    {[isRTL ? 'جهة الاتصال' : 'Contact', isRTL ? 'المبلغ' : 'Amount', isRTL ? 'العملة' : 'Currency', isRTL ? 'الطريقة' : 'Method', isRTL ? 'التاريخ' : 'Date', isRTL ? 'الوصف' : 'Description', ...(isOperator ? [isRTL ? 'المؤسسة' : 'Organization'] : [])].map((h, i) => <th key={i} style={thStyle(isRTL)}>{h}</th>)}
                   </tr></thead>
-                  <tbody>{paidPayments.length === 0 ? <tr><td colSpan={isSuperAdmin ? 7 : 6} style={{ padding: 32, textAlign: 'center', color: C.textMuted }}>{isRTL ? 'لا يوجد دخل' : 'No income recorded'}</td></tr> : paidPayments.map(p => (
+                  <tbody>{paidPayments.length === 0 ? <tr><td colSpan={isOperator ? 7 : 6} style={{ padding: 32, textAlign: 'center', color: C.textMuted }}>{isRTL ? 'لا يوجد دخل' : 'No income recorded'}</td></tr> : paidPayments.map(p => (
                     <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, transition: 'all 150ms ease' }}>
                       <td style={{ padding: '10px 16px', fontWeight: 500, color: C.text }}>{p.contactName || '—'}</td>
                       <td style={{ padding: '10px 16px', fontWeight: 700, color: C.success }}>{fmtMoney(p.amount, p.currency || 'USD')}</td>
@@ -374,7 +374,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
                       <td style={{ padding: '10px 16px', color: C.textSec }}>{PAYMENT_METHODS_LABELS[p.method] || p.method}</td>
                       <td style={{ padding: '10px 16px', color: C.textMuted, fontSize: 13 }}>{p.paymentDate || p.createdAt?.slice(0, 10) || ''}</td>
                       <td style={{ padding: '10px 16px', color: C.textMuted, fontSize: 13 }}>{p.description || '—'}</td>
-                      {isSuperAdmin && <td style={{ padding: '10px 16px', color: C.textSec, fontSize: 12 }}><span style={{ padding: '2px 8px', borderRadius: 4, background: C.primaryBg, color: C.primary, fontWeight: 600, fontSize: 11 }}>{p.orgName || '—'}</span></td>}
+                      {isOperator && <td style={{ padding: '10px 16px', color: C.textSec, fontSize: 12 }}><span style={{ padding: '2px 8px', borderRadius: 4, background: C.primaryBg, color: C.primary, fontWeight: 600, fontSize: 11 }}>{p.orgName || '—'}</span></td>}
                     </tr>
                   ))}</tbody>
                 </table>
@@ -386,9 +386,9 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
               <div style={{ ...card, overflow: 'hidden' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                   <thead><tr style={{ background: C.bg, borderBottom: `1px solid ${C.border}` }}>
-                    {[isRTL ? 'جهة الاتصال' : 'Contact', isRTL ? 'المبلغ' : 'Amount', isRTL ? 'العملة' : 'Currency', isRTL ? 'الاستحقاق' : 'Due Date', isRTL ? 'الحالة' : 'Status', isRTL ? 'الوصف' : 'Description', ...(isSuperAdmin ? [isRTL ? 'المؤسسة' : 'Organization'] : [])].map((h, i) => <th key={i} style={thStyle(isRTL)}>{h}</th>)}
+                    {[isRTL ? 'جهة الاتصال' : 'Contact', isRTL ? 'المبلغ' : 'Amount', isRTL ? 'العملة' : 'Currency', isRTL ? 'الاستحقاق' : 'Due Date', isRTL ? 'الحالة' : 'Status', isRTL ? 'الوصف' : 'Description', ...(isOperator ? [isRTL ? 'المؤسسة' : 'Organization'] : [])].map((h, i) => <th key={i} style={thStyle(isRTL)}>{h}</th>)}
                   </tr></thead>
-                  <tbody>{pendingPayments.length === 0 ? <tr><td colSpan={isSuperAdmin ? 7 : 6} style={{ padding: 32, textAlign: 'center', color: C.textMuted }}>{isRTL ? 'لا توجد مدفوعات معلقة' : 'No pending payments'}</td></tr> : pendingPayments.map(p => {
+                  <tbody>{pendingPayments.length === 0 ? <tr><td colSpan={isOperator ? 7 : 6} style={{ padding: 32, textAlign: 'center', color: C.textMuted }}>{isRTL ? 'لا توجد مدفوعات معلقة' : 'No pending payments'}</td></tr> : pendingPayments.map(p => {
                     const isOverdue = p._resolved === 'overdue'
                     return (
                       <tr key={p.id} style={{ borderBottom: `1px solid ${C.border}`, background: isOverdue ? `${C.dangerBg}08` : 'transparent', transition: 'all 150ms ease' }}>
@@ -398,7 +398,7 @@ export default function FinancePage({ t, lang, dir, isRTL, contacts, currency, t
                         <td style={{ padding: '10px 16px', color: isOverdue ? C.danger : C.textMuted, fontSize: 13, fontWeight: isOverdue ? 600 : 400 }}>{p.dueDate || '—'}</td>
                         <td style={{ padding: '10px 16px' }}><span style={{ fontSize: 12, fontWeight: 600, padding: '2px 8px', borderRadius: 4, background: isOverdue ? C.dangerBg : C.warningBg, color: isOverdue ? C.danger : C.warning }}>{isOverdue ? (isRTL ? 'متأخر' : 'Overdue') : (isRTL ? 'معلق' : 'Pending')}</span></td>
                         <td style={{ padding: '10px 16px', color: C.textMuted, fontSize: 13 }}>{p.description || '—'}</td>
-                        {isSuperAdmin && <td style={{ padding: '10px 16px', color: C.textSec, fontSize: 12 }}><span style={{ padding: '2px 8px', borderRadius: 4, background: C.primaryBg, color: C.primary, fontWeight: 600, fontSize: 11 }}>{p.orgName || '—'}</span></td>}
+                        {isOperator && <td style={{ padding: '10px 16px', color: C.textSec, fontSize: 12 }}><span style={{ padding: '2px 8px', borderRadius: 4, background: C.primaryBg, color: C.primary, fontWeight: 600, fontSize: 11 }}>{p.orgName || '—'}</span></td>}
                       </tr>
                     )
                   })}</tbody>

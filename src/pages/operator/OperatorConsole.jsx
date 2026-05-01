@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { C, makeBtn, card } from '../design'
-import { Icons, Modal, FormField, inputStyle, selectStyle } from '../components/shared'
-import { supabase, isSupabaseConfigured } from '../lib/supabase'
-import { withTimeout } from '../lib/sanitize'
+import { C, makeBtn, card } from '../../design'
+import { Icons, Modal, FormField, inputStyle, selectStyle } from '../../components/shared'
+import { supabase, isSupabaseConfigured } from '../../lib/supabase'
+import { withTimeout } from '../../lib/sanitize'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -43,7 +43,7 @@ const SAMPLE_ORGS = [
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
+export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
   const [orgs, setOrgs] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -234,7 +234,7 @@ export default function AgencyDashboard({ user, onEnterOrg, onSignOut }) {
           <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(0,255,178,0.12)', color: '#00FFB2', letterSpacing: '0.06em', textTransform: 'uppercase', border: '1px solid rgba(0,255,178,0.2)' }}>PRO</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <span style={{ color: '#3A3D55', fontSize: 13 }}>{user?.email || 'alialjobory89@gmail.com'}</span>
+          <span style={{ color: '#3A3D55', fontSize: 13 }}>{user?.email || ''}</span>
           <button onClick={onSignOut} style={makeBtn('secondary', { height: 32, fontSize: 13 })}>
             Sign Out
           </button>

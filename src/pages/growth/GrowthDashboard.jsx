@@ -9,7 +9,7 @@ function saveHistory(h) { try { localStorage.setItem(HISTORY_KEY, JSON.stringify
 
 const SYSTEM_PROMPT = `You are Velo's expert marketing growth agent. You are a senior digital marketing strategist with 15+ years experience. You analyze real data from the client's social media and competitors. You NEVER make up numbers — only analyze data provided to you. If data is missing, say so clearly. You respond in the same language the user writes in (Arabic or English). Your goal: help the client grow faster than their competitors by giving specific, actionable advice.`
 
-export default function GrowthDashboard({ orgId, onGoToSocials, isSuperAdmin }) {
+export default function GrowthDashboard({ orgId, onGoToSocials, isOperator }) {
   const [messages, setMessages] = useState(loadHistory)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
@@ -121,7 +121,7 @@ export default function GrowthDashboard({ orgId, onGoToSocials, isSuperAdmin }) 
               <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
             </svg>
           </div>
-          {isSuperAdmin ? (
+          {isOperator ? (
             <>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0', margin: '0 0 8px' }}>
                 Set Up Agency AI Key

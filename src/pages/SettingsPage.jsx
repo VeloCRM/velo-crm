@@ -20,7 +20,7 @@ const TABS = [
   { id: 'integrations', icon: Icons.link },
   { id: 'billing', icon: Icons.creditCard },
   { id: 'apikeys', icon: Icons.key },
-  { id: 'agencyai', icon: Icons.zap, superAdminOnly: true },
+  { id: 'agencyai', icon: Icons.zap, operatorOnly: true },
 ]
 
 const INDUSTRIES = [
@@ -49,7 +49,7 @@ const SAMPLE_TEAM = [
   { id: 'tm4', name: 'Maria Lopez', email: 'maria@velo.app', role: 'viewer', avatar: 'M' },
 ]
 
-export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate, isSuperAdmin }) {
+export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate, isOperator }) {
   const [tab, _setTab] = useState(initialTab || 'organization')
 
   const setTab = (t) => {
@@ -57,7 +57,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
     if (navigate) navigate('/settings/' + t)
   }
 
-  const visibleTabs = TABS.filter(tb => !tb.superAdminOnly || isSuperAdmin)
+  const visibleTabs = TABS.filter(tb => !tb.operatorOnly || isOperator)
 
   const tabLabels = {
     organization: lang === 'ar' ? 'المؤسسة' : 'Organization', clinic: lang === 'ar' ? 'العيادة' : 'Clinic', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
@@ -94,7 +94,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
           {tab === 'apikeys' && <ApiKeysTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} toast={toast} />}
-          {tab === 'agencyai' && isSuperAdmin && <AgencyAITab lang={lang} dir={dir} toast={toast} />}
+          {tab === 'agencyai' && isOperator && <AgencyAITab lang={lang} dir={dir} toast={toast} />}
         </div>
       </div>
     </div>

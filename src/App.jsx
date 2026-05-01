@@ -2,11 +2,9 @@ import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { T } from './translations'
 import { C, CAT_COLORS, STAGE_COLORS, makeBtn, card } from './design'
-import {
-  SAMPLE_CONTACTS, SAMPLE_TASKS,
-  SAMPLE_MESSAGES, SAMPLE_APPOINTMENTS, SAMPLE_ACTIVITIES,
-  SAMPLE_CONVERSATIONS,
-} from './sampleData'
+// Sample data is dynamically imported when the URL contains ?demo=1.
+// Production builds never load this module unless a user explicitly opts
+// into demo mode, keeping it out of the main chunk.
 import AuthPage from './pages/Auth'
 const AppointmentsPage = lazy(() => import('./pages/AppointmentsPage'))
 const AutomationsPage = lazy(() => import('./pages/AutomationsPage'))
@@ -21,20 +19,42 @@ const FinancePage = lazy(() => import('./pages/FinancePage'))
 const TasksPage = lazy(() => import('./pages/TasksPage'))
 const GoalsPage = lazy(() => import('./pages/GoalsPage'))
 const DocsPage = lazy(() => import('./pages/DocsPage'))
-const AgencyDashboard = lazy(() => import('./pages/AgencyDashboard'))
+const OperatorConsole = lazy(() => import('./pages/operator/OperatorConsole'))
 const DentalDashboard = lazy(() => import('./pages/DentalDashboard'))
 const GrowthIntelligence = lazy(() => import('./pages/growth/GrowthIntelligence'))
 const ClinicCredentialsPage = lazy(() => import('./pages/operator/ClinicCredentials'))
-import CommandPalette from './components/CommandPalette'
-import AIAssistant from './components/AIAssistant'
-import NotificationCenter from './components/NotificationCenter'
+// Overlays are lazy-loaded — they're rendered conditionally (modals,
+// floating panels, dental tabs) and don't need to be in the initial bundle.
+const CommandPalette = lazy(() => import('./components/CommandPalette'))
+const AIAssistant = lazy(() => import('./components/AIAssistant'))
+const NotificationCenter = lazy(() => import('./components/NotificationCenter'))
+const KeyboardShortcutsHelp = lazy(() => import('./components/KeyboardShortcuts'))
+// DentalTabs exports several named tab components. Wrap each in its own
+// lazy() with a default-export shim so the named exports load on demand.
+const DentalMedicalHistory = lazy(() =>
+  import('./components/DentalTabs').then(m => ({ default: m.MedicalHistoryTab }))
+)
+const DentalChartWrapper = lazy(() =>
+  import('./components/DentalTabs').then(m => ({ default: m.DentalChartTab }))
+)
+const DentalTreatments = lazy(() =>
+  import('./components/DentalTabs').then(m => ({ default: m.TreatmentPlanTab }))
+)
+const DentalPrescriptions = lazy(() =>
+  import('./components/DentalTabs').then(m => ({ default: m.PrescriptionsTab }))
+)
+const DentalXRays = lazy(() =>
+  import('./components/DentalTabs').then(m => ({ default: m.XRaysTab }))
+)
 import TestAccountBanner from './components/TestAccountBanner'
 import { SkeletonDashboard, SkeletonContacts, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
 import { useToast, ToastContainer } from './components/Toast'
 import ConfirmDialog from './components/ConfirmDialog'
 import EmptyState from './components/EmptyState'
-import KeyboardShortcutsHelp from './components/KeyboardShortcuts'
-import { MedicalHistoryTab as DentalMedicalHistory, DentalChartTab as DentalChartWrapper, TreatmentPlanTab as DentalTreatments, PrescriptionsTab as DentalPrescriptions, XRaysTab as DentalXRays } from './components/DentalTabs'
+
+// Minimal placeholder used inside Suspense for overlays. Most overlays are
+// gated on an `open` flag, so this is rendered for a single frame at most.
+const OverlayFallback = () => null
 import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
@@ -207,6 +227,10 @@ export default function App() {
   const [tasks, setTasks] = useState([])
   const [allPayments, setAllPayments] = useState([])
   const [teamMembers, setTeamMembers] = useState([])
+  // Sample data is null until ?demo=1 is detected and the module is imported.
+  // Pages/widgets read slices from this; nothing renders sample content
+  // until it resolves.
+  const [sampleData, setSampleData] = useState(null)
   const [dragWidget, setDragWidget] = useState(null)
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [notifications, setNotifications] = useState(() => {
@@ -319,11 +343,28 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // ?demo=1 — pull the sample-data module once on mount, then mirror it
+  // into local state. Production builds never load this chunk unless the
+  // user explicitly opts in.
+  useEffect(() => {
+    if (!demoMode || sampleData) return
+    let cancelled = false
+    ;(async () => {
+      const mod = await import('./sampleData')
+      if (!cancelled) setSampleData(mod)
+    })()
+    return () => { cancelled = true }
+  }, [demoMode, sampleData])
+
   // Fetch data from Supabase when user logs in
   const loadAllData = async () => {
     if (demoMode) {
-      // Read-only sample data for the ?demo=1 path.
-      setContacts(SAMPLE_CONTACTS); setContactsTotal(SAMPLE_CONTACTS.length); setTasks(SAMPLE_TASKS)
+      // Read-only sample data for the ?demo=1 path. Wait for the dynamic
+      // import to land before populating state.
+      if (!sampleData) return
+      setContacts(sampleData.SAMPLE_CONTACTS)
+      setContactsTotal(sampleData.SAMPLE_CONTACTS.length)
+      setTasks(sampleData.SAMPLE_TASKS)
       return
     }
     if (!useDB) {
@@ -436,6 +477,14 @@ export default function App() {
     else loadDataForOrg(impersonation.orgId)
   }, [user])
 
+  // Demo mode: re-run loadAllData once the dynamic sample-data import lands,
+  // so the in-memory state is hydrated.
+  useEffect(() => {
+    if (!demoMode || !sampleData || !user || impersonation) return
+    loadAllData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoMode, sampleData])
+
   // Apply any pending invitation token once the user is authenticated.
   // Runs when user first becomes set (fresh signup) AND when an already-
   // signed-in user lands on /join (token captured by the redirect effect).
@@ -528,12 +577,13 @@ export default function App() {
     return <AuthPage onAuth={(u) => setUser(u)} lang={lang} setLang={setLang} />
   }
 
-  // Super Admin check — TODO: replace with role-based check post-Sprint 0
-  const isSuperAdmin = false
+  // Operator identity comes from OperatorContext (loaded once per session
+  // from /api/auth/is-operator). The context-driven `isOperator` const is
+  // already in scope from `const { isOperator } = useIsOperator()` above.
 
-  // Effective role for permission checks. Super admin and agency-mode
-  // impersonation always get full admin access; org users use their own role.
-  const effectiveRole = (isSuperAdmin || impersonation) ? 'admin' : userRole
+  // Effective role for permission checks. Operators and agency-mode
+  // impersonation always get full admin access; clinic users use their own role.
+  const effectiveRole = (isOperator || impersonation) ? 'admin' : userRole
   const requirePerm = (feature, action = 'w') => {
     if (can(effectiveRole, feature, action)) return true
     addToast(isRTL ? 'ليس لديك صلاحية للقيام بذلك' : 'You do not have permission', 'error')
@@ -562,7 +612,7 @@ export default function App() {
     navigate('/agency')
   }
 
-  if (needsOnboarding && !isSuperAdmin) {
+  if (needsOnboarding && !isOperator) {
     return <Suspense fallback={<SkeletonGeneric />}><OnboardingPage user={user} lang={lang} toast={addToast} onComplete={(org) => { setOrgSettings(org); setNeedsOnboarding(false); localStorage.setItem('velo_onboarding_done', 'true'); loadAllData() }} /></Suspense>
   }
 
@@ -679,7 +729,7 @@ export default function App() {
   }
 
   // Nav items
-  const isAgencyMode = isSuperAdmin && !impersonation
+  const isAgencyMode = isOperator && !impersonation
 
   const navGroups = isAgencyMode ? [
     { label: isRTL ? 'إدارة الوكالة' : 'Agency Management', items: [
@@ -713,7 +763,7 @@ export default function App() {
       { id: 'finance', icon: Icons.dollar, label: isRTL ? 'المالية' : 'Finance' },
     ]},
     { label: t.account, items: [
-      ...(isSuperAdmin ? [{ id: 'agency', icon: Icons.building, label: isRTL ? 'لوحة الوكالة' : 'Agency' }] : []),
+      ...(isOperator ? [{ id: 'agency', icon: Icons.building, label: isRTL ? 'لوحة الوكالة' : 'Agency' }] : []),
       { id: 'settings', icon: Icons.settings, label: t.settings },
     ]},
   ]
@@ -978,25 +1028,25 @@ export default function App() {
                 ? <SkeletonDashboard />
                 : orgSettings?.industry === 'dental'
                   ? <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} setPage={setPage} /></Suspense>
-                  : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isSuperAdmin={isSuperAdmin} impersonation={impersonation} demoMode={demoMode} />
+                  : <DashboardPage t={t} lang={lang} isRTL={isRTL} dir={dir} contacts={contacts} contactsTotal={contactsTotal} deals={deals} tasks={tasks} tickets={tickets} toggleTask={toggleTask} layout={layout} widgetNames={widgetNames} showCustomizer={showCustomizer} setShowCustomizer={setShowCustomizer} toggleWidget={toggleWidget} setLayout={setLayout} dragWidget={dragWidget} handleDragStart={handleDragStart} handleDragOver={handleDragOver} handleDragEnd={handleDragEnd} setPage={setPage} allPayments={allPayments} isOperator={isOperator} impersonation={impersonation} demoMode={demoMode} user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} sampleData={sampleData} />
               )}
-              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isSuperAdmin={isSuperAdmin} impersonation={impersonation} orgId={dentalOrgId} />}
-              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isSuperAdmin={isSuperAdmin} impersonation={impersonation} orgId={dentalOrgId} demoMode={demoMode} />}
+              {page === 'contacts' && <ContactsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} contactsTotal={contactsTotal} loadMoreContacts={loadMoreContacts} contactsLoadingMore={contactsLoadingMore} addContact={addContact} updateContact={updateContact} deleteContact={deleteContact} addNoteToContact={addNoteToContact} setPage={setPage} isDental={orgSettings.industry === 'dental'} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} urlContactId={pageSubId} navigate={navigate} isOperator={isOperator} impersonation={impersonation} orgId={dentalOrgId} />}
+              {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} setPage={setPage} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isOperator={isOperator} impersonation={impersonation} orgId={dentalOrgId} demoMode={demoMode} sampleData={sampleData} />}
               {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><AppointmentsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} setPage={setPage} /></Suspense>}
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
               {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialPage t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={addToast} /></Suspense>}
-              {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isSuperAdmin={isSuperAdmin && !impersonation} orgPayments={impersonation ? allPayments : null} /></Suspense>}
+              {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isOperator={isOperator && !impersonation} orgPayments={impersonation ? allPayments : null} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
               {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} onBack={() => setPage('reports')} /></Suspense>}
               {page === 'tasks' && <Suspense fallback={<SkeletonGeneric />}><TasksPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} user={user} toast={addToast} showConfirm={showConfirm} /></Suspense>}
               {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
               {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={contacts} toast={addToast} /></Suspense>}
-              {page === 'agency' && isSuperAdmin && !impersonation && <Suspense fallback={<SkeletonGeneric />}><AgencyDashboard user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
+              {page === 'agency' && isOperator && !impersonation && <Suspense fallback={<SkeletonGeneric />}><OperatorConsole user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
               {page === 'billing' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الفواتير' : 'Billing'} description={isRTL ? 'إدارة الفواتير والمدفوعات قريباً' : 'Billing management coming soon.'} icon={Icons.file} />}
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
-              {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isSuperAdmin={isSuperAdmin} /></Suspense>}
+              {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isOperator={isOperator} /></Suspense>}
               {page === 'operator' && pageSubId === 'credentials' && isOperator && <Suspense fallback={<SkeletonGeneric />}><ClinicCredentialsPage lang={lang} /></Suspense>}
             </>
           )}
@@ -1093,21 +1143,33 @@ export default function App() {
         </>
       )}
 
-      {/* Command Palette */}
-      <CommandPalette open={cmdPaletteOpen} onClose={(action) => action === 'toggle' ? setCmdPaletteOpen(v => !v) : setCmdPaletteOpen(false)} contacts={contacts} onNavigate={setPage} onAction={(action, id) => {
-        if (action === 'add-contact') setPage('contacts')
-        else if (action === 'new-event') setPage('calendar')
-        else if (action === 'view-contact') setPage('contacts')
-      }} lang={lang} />
+      {/* Command Palette — lazy chunk loaded on first open */}
+      {cmdPaletteOpen && (
+        <Suspense fallback={<OverlayFallback />}>
+          <CommandPalette open={cmdPaletteOpen} onClose={(action) => action === 'toggle' ? setCmdPaletteOpen(v => !v) : setCmdPaletteOpen(false)} contacts={contacts} onNavigate={setPage} onAction={(action) => {
+            if (action === 'add-contact') setPage('contacts')
+            else if (action === 'new-event') setPage('calendar')
+            else if (action === 'view-contact') setPage('contacts')
+          }} lang={lang} />
+        </Suspense>
+      )}
 
-      {/* Notification Center */}
-      <NotificationCenter open={notifOpen} onClose={() => setNotifOpen(false)} notifications={notifications} onMarkRead={markNotifRead} onMarkAllRead={markAllNotifsRead} onDismiss={dismissNotif} lang={lang} />
+      {/* Notification Center — lazy chunk loaded on first open */}
+      {notifOpen && (
+        <Suspense fallback={<OverlayFallback />}>
+          <NotificationCenter open={notifOpen} onClose={() => setNotifOpen(false)} notifications={notifications} onMarkRead={markNotifRead} onMarkAllRead={markAllNotifsRead} onDismiss={dismissNotif} lang={lang} />
+        </Suspense>
+      )}
 
       {/* Toast Notifications */}
       <ToastContainer toasts={toasts} onRemove={removeToast} isRTL={isRTL} />
 
-      {/* Keyboard Shortcuts Help */}
-      <KeyboardShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} lang={lang} />
+      {/* Keyboard Shortcuts Help — lazy chunk loaded on first open */}
+      {showShortcuts && (
+        <Suspense fallback={<OverlayFallback />}>
+          <KeyboardShortcutsHelp open={showShortcuts} onClose={() => setShowShortcuts(false)} lang={lang} />
+        </Suspense>
+      )}
 
       {/* Confirm Dialog */}
       <ConfirmDialog
@@ -1119,8 +1181,12 @@ export default function App() {
         dir={dir}
       />
 
-      {/* AI Assistant */}
-      <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} onNavigateToApiKeys={() => navigate('/settings/apikeys')} />
+      {/* AI Assistant — lazy chunk loaded on first open */}
+      {aiOpen && (
+        <Suspense fallback={<OverlayFallback />}>
+          <AIAssistant open={aiOpen} onClose={() => setAiOpen(false)} apiKey={orgSettings.anthropic_api_key} context={`Current page: ${page}. User has ${contacts.length} contacts.`} lang={lang} knowledgeBase={orgSettings.ai_knowledge_base} contacts={contacts} onNavigateToApiKeys={() => navigate('/settings/apikeys')} />
+        </Suspense>
+      )}
 
       {/* AI Floating Button */}
       {!aiOpen && (
@@ -1174,111 +1240,15 @@ function AgencyEmptyState({ isRTL, setPage }) {
   )
 }
 
-// ─── Agency Dashboard View (super admin overview with MRR stats) ────────────
-const PLAN_PRICING = { free: 0, starter: 29, pro: 79, enterprise: 199 }
-
-function AgencyDashboardView({ t, lang, isRTL, dir, setPage }) {
-  const [orgs, setOrgs] = useState([])
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    let cancelled = false
-    async function load() {
-      try {
-        const data = await db.fetchOrganizations()
-        if (!cancelled) setOrgs(data)
-      } catch (e) { console.error('Agency dashboard load error:', e) }
-      if (!cancelled) setLoading(false)
-    }
-    load()
-    return () => { cancelled = true }
-  }, [])
-
-  const activeOrgs = orgs.filter(o => o.status === 'active' || !o.status)
-  const totalMRR = activeOrgs.reduce((sum, o) => sum + (PLAN_PRICING[o.plan] || 0), 0)
-
-  return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'نظرة عامة للوكالة' : 'Agency Overview'}</h1>
-          <p style={{ fontSize: 13, color: C.textSec, marginTop: 4 }}>{new Date().toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-        </div>
-        <button onClick={() => setPage('agency')} className="velo-btn-primary" style={makeBtn('primary', { gap: 8 })}>
-          {Icons.building(16)} {isRTL ? 'إدارة المؤسسات' : 'Manage Organizations'}
-        </button>
-      </div>
-
-      {loading ? (
-        <div style={{ textAlign: 'center', padding: 40, color: C.textMuted, fontSize: 14 }}>{isRTL ? 'جاري التحميل...' : 'Loading...'}</div>
-      ) : (
-        <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, marginBottom: 28 }}>
-            {[
-              { label: isRTL ? 'إجمالي المؤسسات' : 'Total Organizations', value: orgs.length, color: C.primary, bg: C.primaryBg },
-              { label: isRTL ? 'الاشتراكات النشطة' : 'Active Subscriptions', value: activeOrgs.length, color: C.success, bg: C.successBg },
-              { label: isRTL ? 'الإيرادات الشهرية' : 'Monthly Recurring Revenue', value: `$${totalMRR.toLocaleString()}`, color: C.purple, bg: C.purpleBg },
-              { label: isRTL ? 'متوسط الإيراد/مؤسسة' : 'Avg Revenue / Org', value: activeOrgs.length ? `$${Math.round(totalMRR / activeOrgs.length)}` : '$0', color: C.warning, bg: C.warningBg },
-            ].map((s, i) => (
-              <div key={i} style={{ ...card, padding: 20, textAlign: 'center' }}>
-                <div style={{ fontSize: 12, color: C.textMuted, fontWeight: 500, marginBottom: 6 }}>{s.label}</div>
-                <div style={{ fontSize: 28, fontWeight: 700, color: s.color }}>{s.value}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20 }}>
-            {/* Plan distribution */}
-            <div style={{ ...card, padding: 20 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{isRTL ? 'توزيع الاشتراكات' : 'Subscription Distribution'}</h3>
-              {['enterprise', 'pro', 'starter', 'free'].map(plan => {
-                const count = activeOrgs.filter(o => o.plan === plan).length
-                const pct = activeOrgs.length ? (count / activeOrgs.length) * 100 : 0
-                const revenue = count * (PLAN_PRICING[plan] || 0)
-                const colors = { enterprise: C.success, pro: C.purple, starter: C.primary, free: C.textMuted }
-                return (
-                  <div key={plan} style={{ marginBottom: 14 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 600, color: C.text, textTransform: 'capitalize' }}>{plan} <span style={{ fontWeight: 400, color: C.textMuted }}>(${PLAN_PRICING[plan]}/mo)</span></span>
-                      <span style={{ color: C.textSec }}>{count} orgs &middot; ${revenue}/mo</span>
-                    </div>
-                    <div style={{ height: 6, borderRadius: 4, background: C.bg }}>
-                      <div style={{ height: '100%', borderRadius: 4, background: colors[plan], width: `${pct}%`, minWidth: count > 0 ? 4 : 0, transition: 'width 300ms ease' }} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Recent orgs */}
-            <div style={{ ...card, padding: 20 }}>
-              <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 16px', fontFamily: 'DM Sans,Inter,sans-serif' }}>{isRTL ? 'أحدث المؤسسات' : 'Recent Organizations'}</h3>
-              {orgs.length === 0 ? (
-                <p style={{ fontSize: 13, color: C.textMuted, textAlign: 'center', padding: 16 }}>{isRTL ? 'لا توجد مؤسسات' : 'No organizations yet'}</p>
-              ) : orgs.slice(0, 6).map(org => (
-                <div key={org.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${C.border}` }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 8, background: C.primaryBg, color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700 }}>{(org.name || '?')[0].toUpperCase()}</div>
-                    <div>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{org.name}</div>
-                      <div style={{ fontSize: 11, color: C.textMuted, textTransform: 'capitalize' }}>{org.plan || 'free'} &middot; {org.status || 'active'}</div>
-                    </div>
-                  </div>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: C.success }}>${PLAN_PRICING[org.plan] || 0}/mo</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function DashboardPage({ t, lang, isRTL, dir, contacts, contactsTotal = 0, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments, isSuperAdmin, impersonation, demoMode }) {
-  // Agency mode — show agency-level stats instead of regular dashboard
-  if (isSuperAdmin && !impersonation) {
-    return <AgencyDashboardView t={t} lang={lang} isRTL={isRTL} dir={dir} setPage={setPage} />
+function DashboardPage({ t, lang, isRTL, dir, contacts, contactsTotal = 0, deals, tasks, tickets, toggleTask, layout, widgetNames, showCustomizer, setShowCustomizer, toggleWidget, setLayout, dragWidget, handleDragStart, handleDragOver, handleDragEnd, setPage, allPayments, isOperator, impersonation, demoMode, user, onEnterOrg, onSignOut, sampleData }) {
+  // Operator mode — show the cross-tenant operator console instead of the
+  // regular per-clinic dashboard.
+  if (isOperator && !impersonation) {
+    return (
+      <Suspense fallback={<SkeletonGeneric />}>
+        <OperatorConsole user={user} onEnterOrg={onEnterOrg} onSignOut={onSignOut} />
+      </Suspense>
+    )
   }
 
   const widgetRenderers = {
@@ -1288,9 +1258,9 @@ function DashboardPage({ t, lang, isRTL, dir, contacts, contactsTotal = 0, deals
     recentContacts: () => <RecentContactsWidget t={t} contacts={contacts} dir={dir} setPage={setPage} />,
     pipeline: () => <PipelineSummaryWidget t={t} deals={deals} dir={dir} lang={lang} />,
     ticketStats: () => <TicketStatsWidget t={t} tickets={tickets} dir={dir} />,
-    activity: () => <ActivityWidget t={t} dir={dir} demoMode={demoMode} />,
-    inboxPreview: () => <InboxWidget t={t} dir={dir} demoMode={demoMode} />,
-    appointments: () => <AppointmentsWidget t={t} dir={dir} demoMode={demoMode} />,
+    activity: () => <ActivityWidget t={t} dir={dir} sampleData={sampleData} />,
+    inboxPreview: () => <InboxWidget t={t} dir={dir} sampleData={sampleData} />,
+    appointments: () => <AppointmentsWidget t={t} dir={dir} sampleData={sampleData} />,
     topLeads: () => <TopLeadsWidget t={t} contacts={contacts} deals={deals} dir={dir} isRTL={isRTL} />,
     pendingPayments: () => <PendingPaymentsWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
     financeSummary: () => <FinanceSummaryWidget t={t} contacts={contacts} allPayments={allPayments} dir={dir} isRTL={isRTL} />,
@@ -1425,8 +1395,8 @@ function RecentContactsWidget({ t, contacts, dir, setPage }) {
   )
 }
 
-function ActivityWidget({ t, dir, demoMode }) {
-  const activities = demoMode ? SAMPLE_ACTIVITIES : []
+function ActivityWidget({ t, dir, sampleData }) {
+  const activities = sampleData?.SAMPLE_ACTIVITIES || []
   const iconMap={deal:Icons.dollar,contact:Icons.user,message:Icons.mail,task:Icons.check,automation:Icons.automations}
   return (
     <div style={{...card,padding:20,direction:dir}}>
@@ -1453,8 +1423,8 @@ function ActivityWidget({ t, dir, demoMode }) {
   )
 }
 
-function InboxWidget({ t, dir, demoMode }) {
-  const messages = demoMode ? SAMPLE_MESSAGES.slice(0,4) : []
+function InboxWidget({ t, dir, sampleData }) {
+  const messages = (sampleData?.SAMPLE_MESSAGES || []).slice(0, 4)
   return (
     <div style={{...card,padding:20,direction:dir}}>
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
@@ -1482,8 +1452,8 @@ function InboxWidget({ t, dir, demoMode }) {
   )
 }
 
-function AppointmentsWidget({ t, dir, demoMode }) {
-  const appointments = demoMode ? SAMPLE_APPOINTMENTS.slice(0,4) : []
+function AppointmentsWidget({ t, dir, sampleData }) {
+  const appointments = (sampleData?.SAMPLE_APPOINTMENTS || []).slice(0, 4)
   const typeColors={call:{bg:C.primaryBg,color:C.primary},demo:{bg:C.purpleBg,color:C.purple},meeting:{bg:C.successBg,color:C.success}}
   return (
     <div style={{...card,padding:20,direction:dir}}>
@@ -1583,7 +1553,7 @@ function FinanceSummaryWidget({ t, contacts, allPayments, dir, isRTL }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CONTACTS PAGE
 // ═══════════════════════════════════════════════════════════════════════════
-function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMoreContacts, contactsLoadingMore = false, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate, isSuperAdmin, impersonation, orgId }) {
+function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMoreContacts, contactsLoadingMore = false, deals, addContact, updateContact, deleteContact, addDeal, addNoteToContact, setPage, isDental, currency, toast, showConfirm, urlContactId, navigate, isOperator, impersonation, orgId }) {
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCategory, setFilterCategory] = useState('all')
@@ -1617,7 +1587,7 @@ function ContactsPage({ t, lang, dir, isRTL, contacts, contactsTotal = 0, loadMo
   }
 
   // Super admin not impersonating — show agency message instead of contacts
-  if (isSuperAdmin && !impersonation) {
+  if (isOperator && !impersonation) {
     return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
   }
 
@@ -2494,31 +2464,41 @@ function ContactProfile({ t, dir, isRTL, lang, contact, contactDeals, profileTab
         {/* Payments tab */}
         {profileTab === 'payments' && <PaymentsTab payments={payments} addPayment={addPayment} updatePayment={updatePayment} deletePayment={deletePayment} contactDeals={contactDeals} currency={currency||'USD'} dir={dir} isRTL={isRTL} />}
 
-        {/* Dental tabs */}
+        {/* Dental tabs — lazy chunks; one Suspense per active tab */}
         {isDental && profileTab === 'medical' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalMedicalHistory contact={dentalContact} onUpdateMedicalHistory={onUpdateMedicalHistory} lang={lang} dir={dir} />
+          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+            <DentalMedicalHistory contact={dentalContact} onUpdateMedicalHistory={onUpdateMedicalHistory} lang={lang} dir={dir} />
+          </Suspense>
         )}
         {isDental && profileTab === 'dental_chart' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalChartWrapper contact={dentalContact} onUpdateDentalChart={onUpdateDentalChart} onAddToTreatmentPlan={handleAddToTreatmentPlan} lang={lang} />
+          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+            <DentalChartWrapper contact={dentalContact} onUpdateDentalChart={onUpdateDentalChart} onAddToTreatmentPlan={handleAddToTreatmentPlan} lang={lang} />
+          </Suspense>
         )}
         {isDental && profileTab === 'treatments' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalTreatments contact={dentalContact} onAddTreatment={onAddTreatment} onDeleteTreatment={onDeleteTreatment} lang={lang} dir={dir} prefill={treatmentPrefill} onPrefillConsumed={() => setTreatmentPrefill(null)} />
+          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+            <DentalTreatments contact={dentalContact} onAddTreatment={onAddTreatment} onDeleteTreatment={onDeleteTreatment} lang={lang} dir={dir} prefill={treatmentPrefill} onPrefillConsumed={() => setTreatmentPrefill(null)} />
+          </Suspense>
         )}
         {isDental && profileTab === 'prescriptions' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalPrescriptions contact={dentalContact} onAddPrescription={onAddPrescription} onDeletePrescription={onDeletePrescription} lang={lang} dir={dir} />
+          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+            <DentalPrescriptions contact={dentalContact} onAddPrescription={onAddPrescription} onDeletePrescription={onDeletePrescription} lang={lang} dir={dir} />
+          </Suspense>
         )}
         {isDental && profileTab === 'xrays' && (
           dentalState.loading ? <DentalSpinner isRTL={isRTL} /> :
           dentalState.error ? <DentalErrorBanner isRTL={isRTL} /> :
-          <DentalXRays contact={dentalContact} onUploadXray={onUploadXray} onDeleteXray={onDeleteXray} lang={lang} dir={dir} />
+          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+            <DentalXRays contact={dentalContact} onUploadXray={onUploadXray} onDeleteXray={onDeleteXray} lang={lang} dir={dir} />
+          </Suspense>
         )}
       </div>
 
@@ -2800,13 +2780,16 @@ const FILTER_TABS = [
   { id: 'sms', key: 'sms' },
 ]
 
-function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate, teamMembers, isSuperAdmin, impersonation, orgId, demoMode, toast }) {
-  if (isSuperAdmin && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
-  const [conversations, setConversations] = useState(() => {
-    const isDemo = typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('demo') === '1'
-    return isDemo ? SAMPLE_CONVERSATIONS : []
-  })
+function InboxPage({ t, lang, dir, isRTL, contacts, setPage, tickets, addTicket, urlConvId, navigate, teamMembers, isOperator, impersonation, orgId, demoMode, toast, sampleData }) {
+  if (isOperator && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
+  // Demo conversations land via sampleData prop once the dynamic import
+  // resolves; non-demo runs start empty and populate from Supabase.
+  const [conversations, setConversations] = useState([])
+  useEffect(() => {
+    if (demoMode && sampleData?.SAMPLE_CONVERSATIONS) {
+      setConversations(sampleData.SAMPLE_CONVERSATIONS)
+    }
+  }, [demoMode, sampleData])
   const [_activeConvId, _setActiveConvId] = useState(urlConvId || null)
 
   useEffect(() => { _setActiveConvId(urlConvId || null) }, [urlConvId])

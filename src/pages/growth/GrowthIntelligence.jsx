@@ -11,7 +11,7 @@ const tabs = [
   { id: 'reports',      label: '📋 Reports' },
 ]
 
-export default function GrowthIntelligence({ orgId, isSuperAdmin }) {
+export default function GrowthIntelligence({ orgId, isOperator }) {
   const [activeTab, setActiveTab] = useState('dashboard')
 
   return (
@@ -49,7 +49,7 @@ export default function GrowthIntelligence({ orgId, isSuperAdmin }) {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'dashboard'   && <GrowthDashboard orgId={orgId} onGoToSocials={() => setActiveTab('socials')} isSuperAdmin={isSuperAdmin} />}
+      {activeTab === 'dashboard'   && <GrowthDashboard orgId={orgId} onGoToSocials={() => setActiveTab('socials')} isOperator={isOperator} />}
       {activeTab === 'socials'     && <SocialConnections orgId={orgId} />}
       {activeTab === 'competitors' && <CompetitorSetup orgId={orgId} />}
       {activeTab === 'reports'     && <GrowthReports orgId={orgId} />}
