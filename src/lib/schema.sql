@@ -1168,3 +1168,15 @@ CREATE POLICY messages_delete_operator ON messages
 -- ============================================================================
 -- END OF SCHEMA
 -- ============================================================================
+
+
+-- ============================================================================
+-- MIGRATION — Phase 4 (Sprint 0): ai_usage rate-limit table
+-- ----------------------------------------------------------------------------
+-- Append-only migration. Run separately from the main schema. Tracks per-org
+-- AI proxy requests for the 100/hour rate limit enforced by /api/ai/chat.
+-- ============================================================================
+CREATE TABLE ai_usage (id uuid primary key default gen_random_uuid(), org_id uuid not null references orgs(id) on delete cascade, requested_at timestamptz not null default now());
+CREATE INDEX idx_ai_usage_org_time ON ai_usage(org_id, requested_at DESC);
+ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
+CREATE POLICY ai_usage_operator ON ai_usage FOR ALL USING (is_operator()) WITH CHECK (is_operator());
