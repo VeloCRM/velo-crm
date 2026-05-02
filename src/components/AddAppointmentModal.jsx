@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, FormField, inputStyle, selectStyle, Icons } from './shared'
+import { Button } from './ui'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { todayLocal } from '../lib/date'
 import { getCurrentUser, getCurrentOrgId } from '../lib/auth_session'
@@ -198,11 +199,17 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
 
   return (
     <Modal onClose={onClose} width={520} dir="ltr">
+      <div className="ds-root">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
+        <h2 className="text-xl font-semibold text-navy-900 m-0">
           {editAppointment ? 'Edit Appointment' : 'New Appointment'}
         </h2>
-        <button type="button" onClick={onClose} style={{ width: 32, height: 32, border: '1px solid var(--border-default)', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)' }}>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+        >
           {Icons.x(16)}
         </button>
       </div>
@@ -332,11 +339,12 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
         />
       </FormField>
 
-      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-        <button type="button" onClick={onClose} style={{ padding: '10px 20px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
-        <button type="button" onClick={handleSave} disabled={loading} style={{ flex: 1, padding: '12px 20px', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', border: 'none', color: '#fff', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>
+      <div className="flex gap-2 justify-end mt-4">
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant="primary" className="flex-1" onClick={handleSave} loading={loading} disabled={loading}>
           {loading ? 'Saving...' : 'Save Appointment'}
-        </button>
+        </Button>
+      </div>
       </div>
     </Modal>
   )

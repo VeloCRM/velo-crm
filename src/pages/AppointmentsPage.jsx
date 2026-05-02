@@ -14,6 +14,7 @@ import {
   SAMPLE_DENTAL_DOCTORS,
   getSampleDentalAppointmentsWeek,
 } from '../sampleData'
+import { GlassCard, Button, Badge } from '../components/ui'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 // Appointment status enum (matches schema.sql appointment_status):
@@ -367,69 +368,108 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, patients, toast,
 
   // ─── Render ──────────────────────────────────────────────────────────────
   return (
-    <div dir={dir} className="flex flex-col h-[calc(100vh-60px)] overflow-hidden bg-surface-canvas font-sans text-content-primary">
+    <div
+      dir={dir}
+      className="ds-root flex flex-col h-[calc(100vh-60px)] overflow-hidden -m-4 md:-m-8"
+      style={{ background: 'var(--ds-canvas-gradient)' }}
+    >
       {/* Top Bar */}
-      <div className="flex items-center justify-between gap-3 flex-wrap ps-5 pe-5 py-3 bg-surface-raised border-b border-stroke-subtle flex-shrink-0">
+      <div className="flex items-center justify-between gap-3 flex-wrap px-5 md:px-8 py-3 bg-white/70 backdrop-blur-glass-sm border-b border-navy-100/80 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <button onClick={goToday}
-            className="h-[34px] px-3 rounded-md bg-surface-canvas border border-stroke-subtle text-body-sm font-semibold text-content-primary cursor-pointer hover:bg-surface-sunken hover:border-stroke transition-colors duration-fast ease-standard">
-            {L.today}
-          </button>
-          <button onClick={goPrev} aria-label="Previous"
-            className="h-[34px] w-[34px] flex items-center justify-center rounded-md bg-transparent text-content-secondary cursor-pointer hover:bg-surface-canvas hover:text-content-primary transition-colors duration-fast ease-standard">
+          <Button variant="secondary" size="sm" onClick={goToday}>{L.today}</Button>
+          <button
+            type="button"
+            onClick={goPrev}
+            aria-label={isRTL ? 'التالي' : 'Previous'}
+            className="grid place-items-center w-9 h-9 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+          >
             {Icons.chevronLeft(16)}
           </button>
-          <button onClick={goNext} aria-label="Next"
-            className="h-[34px] w-[34px] flex items-center justify-center rounded-md bg-transparent text-content-secondary cursor-pointer hover:bg-surface-canvas hover:text-content-primary transition-colors duration-fast ease-standard">
+          <button
+            type="button"
+            onClick={goNext}
+            aria-label={isRTL ? 'السابق' : 'Next'}
+            className="grid place-items-center w-9 h-9 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+          >
             {Icons.chevronRight(16)}
           </button>
-          <span className="font-display text-h3 !text-content-primary ms-2 whitespace-nowrap tabular-nums lining-nums">
+          <span className="text-base md:text-lg font-semibold text-navy-900 ms-2 whitespace-nowrap tabular-nums">
             {dateDisplay}
           </span>
         </div>
         <div className="flex items-center gap-2">
-          {/* Day/Week segmented toggle */}
-          <div className="flex rounded-md bg-surface-canvas border border-stroke-subtle overflow-hidden">
-            {['day', 'week'].map(v => (
-              <button key={v} onClick={() => setViewMode(v)}
-                className={`px-4 py-1.5 border-none text-body-sm font-semibold cursor-pointer transition-colors duration-fast ease-standard ${viewMode === v ? 'bg-accent-subtle text-accent-fg' : 'bg-transparent text-content-tertiary hover:text-content-secondary'}`}>
-                {v === 'day' ? L.day : L.week}
-              </button>
-            ))}
+          {/* Day/Week segmented toggle — navy-cyan gradient on active */}
+          <div className="flex rounded-glass bg-navy-50/60 p-0.5 overflow-hidden">
+            {['day', 'week'].map(v => {
+              const active = viewMode === v
+              return (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setViewMode(v)}
+                  className={[
+                    'relative px-4 py-1 rounded-md text-sm font-semibold transition-colors',
+                    active ? 'text-navy-900 bg-white shadow-glass-sm' : 'text-navy-500 hover:text-navy-700',
+                  ].join(' ')}
+                  aria-pressed={active}
+                >
+                  {v === 'day' ? L.day : L.week}
+                  {active && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-3 -bottom-px h-0.5 rounded-full"
+                      style={{ background: 'linear-gradient(90deg, #103562, #06B6D4)' }}
+                    />
+                  )}
+                </button>
+              )
+            })}
           </div>
           {/* Doctor filter */}
-          <select value={filterDoctor} onChange={e => setFilterDoctor(e.target.value)} dir={dir}
+          <select
+            value={filterDoctor}
+            onChange={e => setFilterDoctor(e.target.value)}
+            dir={dir}
             aria-label={L.filterDoctor}
-            className="h-[34px] px-2.5 rounded-md bg-surface-canvas border border-stroke-subtle text-body-sm text-content-primary outline-none cursor-pointer min-w-[140px] focus:border-stroke-brand focus:shadow-focus-brand transition-[border-color,box-shadow] duration-fast ease-standard">
+            className="h-9 px-3 rounded-glass bg-white/85 border border-navy-100 text-sm text-navy-800 outline-none cursor-pointer min-w-[140px] hover:border-navy-200 focus:border-accent-cyan-500 focus:shadow-focus-cyan transition-all"
+          >
             <option value="all">{L.allDoctors}</option>
             {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
           </select>
-          {/* Single primary mint moment */}
-          <button onClick={() => openNewModal()}
-            className="h-[34px] px-4 rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body-sm font-semibold border-none cursor-pointer transition-colors duration-fast ease-standard hover:shadow-glow-mint">
-            {L.newApt}
-          </button>
+          <Button
+            variant="primary"
+            size="sm"
+            iconStart={Icons.plus}
+            onClick={() => openNewModal()}
+          >
+            {isRTL ? 'موعد جديد' : 'New Appointment'}
+          </Button>
         </div>
       </div>
 
       {/* Empty state when no doctors */}
       {!loading && doctors.length === 0 && (
-        <div className="flex-1 flex items-center justify-center">
-          <div className="bg-surface-raised border border-stroke-subtle rounded-lg shadow-1 max-w-[440px] py-12 px-10 text-center">
-            <div className="text-content-tertiary mb-4 inline-flex">{Icons.calendar(48)}</div>
-            <h2 className="font-display text-h2 !text-content-primary m-0 mb-2">
+        <div className="flex-1 flex items-center justify-center px-4">
+          <GlassCard padding="lg" className="max-w-[440px] text-center">
+            <span className="grid place-items-center w-16 h-16 mx-auto mb-4 rounded-full bg-accent-cyan-500/10 text-accent-cyan-700">
+              {Icons.calendar(32)}
+            </span>
+            <h2 className="text-2xl font-semibold text-navy-900 m-0 mb-2 leading-tight">
               {lang === 'ar' ? 'لم يتم اضافة اطباء بعد' : 'No doctors added yet'}
             </h2>
-            <p className="text-body text-content-secondary leading-relaxed m-0 mb-6">
+            <p className="text-sm text-navy-600 leading-relaxed m-0 mb-5">
               {lang === 'ar'
                 ? 'اذهب الى الاعدادات ← العيادة لاضافة الاطباء.'
                 : 'Go to Settings → Clinic to add doctors.'}
             </p>
-            <button onClick={() => setPage && setPage('settings/clinic')}
-              className="inline-flex items-center gap-2 h-[42px] px-7 rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body font-semibold border-none cursor-pointer transition-colors duration-fast ease-standard hover:shadow-glow-mint">
-              {Icons.settings(15)} {lang === 'ar' ? 'اعدادات العيادة' : 'Clinic Settings'}
-            </button>
-          </div>
+            <Button
+              variant="primary"
+              iconStart={Icons.settings}
+              onClick={() => setPage && setPage('settings/clinic')}
+            >
+              {lang === 'ar' ? 'اعدادات العيادة' : 'Clinic Settings'}
+            </Button>
+          </GlassCard>
         </div>
       )}
 
@@ -437,7 +477,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, patients, toast,
       {(loading || doctors.length > 0) && (
         <div className="flex flex-1 overflow-hidden">
           {/* Left Sidebar */}
-          <div className="w-[240px] flex-shrink-0 border-e border-stroke-subtle bg-surface-raised overflow-y-auto py-4 px-3 flex flex-col gap-5">
+          <div className="w-[240px] flex-shrink-0 border-e border-navy-100/80 bg-white/65 backdrop-blur-glass-sm overflow-y-auto py-4 px-3 flex flex-col gap-5">
             <MiniCalendar
               currentDate={currentDate}
               setCurrentDate={(d) => { setCurrentDate(d); setViewMode('day') }}
@@ -448,19 +488,24 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, patients, toast,
 
             {/* Doctors */}
             <div>
-              <div className="text-caption uppercase text-content-tertiary mb-2.5">{L.doctors}</div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-navy-500 mb-2.5">{L.doctors}</div>
               {doctors.length === 0 ? (
-                <div className="text-caption text-content-tertiary">No doctors added</div>
+                <div className="text-xs text-navy-400">{lang === 'ar' ? 'لا يوجد أطباء' : 'No doctors added'}</div>
               ) : doctors.map(d => {
                 const c = doctorColor(d)
                 return (
-                  <label key={d.id}
-                    className="flex items-center gap-2 ps-1 pe-1 py-1.5 rounded-md cursor-pointer transition-colors duration-fast ease-standard hover:bg-surface-canvas">
-                    <input type="checkbox" checked={!hiddenDoctors.has(d.id)}
+                  <label
+                    key={d.id}
+                    className="flex items-center gap-2 ps-1 pe-1 py-1.5 rounded-md cursor-pointer transition-colors hover:bg-navy-50/60"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={!hiddenDoctors.has(d.id)}
                       onChange={() => setHiddenDoctors(prev => { const n = new Set(prev); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n })}
-                      style={{ accentColor: c }} />
+                      style={{ accentColor: c }}
+                    />
                     <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c }} />
-                    <span className="text-body-sm text-content-primary font-medium truncate">{d.full_name}</span>
+                    <span className="text-sm text-navy-800 font-medium truncate">{d.full_name}</span>
                   </label>
                 )
               })}
@@ -470,7 +515,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, patients, toast,
           {/* Calendar Area */}
           <div className="flex-1 overflow-hidden flex flex-col">
             {loading ? (
-              <div className="flex-1 flex items-center justify-center text-content-tertiary text-body">Loading...</div>
+              <div className="flex-1 flex items-center justify-center text-navy-500 text-sm">{lang === 'ar' ? 'جاري التحميل...' : 'Loading...'}</div>
             ) : viewMode === 'day' ? (
               <DayView
                 scrollRef={scrollRef}
@@ -1040,20 +1085,24 @@ function AppointmentModal({ onClose, onSave, patients, doctors, editApt, default
 
   return (
     <Modal onClose={onClose} dir={dir} width={560}>
-      <div className="px-6 py-5">
+      <div className="ds-root px-6 py-5">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="font-display text-h2 !text-content-primary m-0">{editApt ? L.editApt : L.createApt}</h2>
-          <button onClick={onClose} aria-label="Close"
-            className="bg-transparent border-none text-content-tertiary cursor-pointer hover:text-content-primary transition-colors duration-fast ease-standard">
-            {Icons.x(20)}
+          <h2 className="text-xl font-semibold text-navy-900 m-0">{editApt ? L.editApt : L.createApt}</h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={isRTL ? 'إغلاق' : 'Close'}
+            className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+          >
+            {Icons.x(18)}
           </button>
         </div>
 
         {/* Conflict Warning */}
         {conflict && (
-          <div className="ps-3.5 pe-3.5 py-2.5 rounded-md bg-status-warning-bg border border-status-warning-border/30 mb-4 flex items-center gap-2">
-            <span className="text-body-lg text-status-warning-fg font-bold">!</span>
-            <span className="text-body-sm text-status-warning-fg font-semibold">
+          <div className="ps-3.5 pe-3.5 py-2.5 rounded-glass bg-amber-50/80 border border-amber-200 mb-4 flex items-center gap-2">
+            <span className="text-base text-amber-700 font-bold">!</span>
+            <span className="text-sm text-amber-700 font-semibold">
               {conflictDoctor?.full_name || L.doctor} {L.conflict}
             </span>
           </div>
@@ -1163,16 +1212,10 @@ function AppointmentModal({ onClose, onSave, patients, doctors, editApt, default
           </FormField>
         )}
 
-        {/* Actions — single mint moment is Save */}
-        <div className="flex gap-2.5 mt-2">
-          <button onClick={onClose}
-            className="flex-1 justify-center h-[42px] rounded-md bg-surface-canvas border border-stroke-subtle text-content-primary text-body font-semibold cursor-pointer hover:bg-surface-sunken hover:border-stroke transition-colors duration-fast ease-standard flex items-center">
-            {L.cancel}
-          </button>
-          <button onClick={handleSubmit} disabled={!form.patient_id}
-            className="flex-[2] justify-center h-[42px] rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body font-semibold border-none cursor-pointer transition-colors duration-fast ease-standard hover:shadow-glow-mint disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center">
-            {L.save}
-          </button>
+        {/* Actions */}
+        <div className="flex gap-2.5 mt-3">
+          <Button variant="secondary" size="lg" className="flex-1" onClick={onClose}>{L.cancel}</Button>
+          <Button variant="primary" size="lg" className="flex-[2]" onClick={handleSubmit} disabled={!form.patient_id}>{L.save}</Button>
         </div>
       </div>
     </Modal>

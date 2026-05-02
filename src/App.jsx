@@ -58,7 +58,7 @@ import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
 import { formatMoney, toMinor } from './lib/money'
 import { avatarGradient, avatarInitials } from './lib/avatarGradient'
-import { GlassCard, Button, Badge } from './components/ui'
+import { GlassCard, Button, Badge, Input, EmptyState as UIEmptyState } from './components/ui'
 import { can, normalizeRole } from './lib/permissions'
 import { useIsOperator } from './lib/operator'
 import { onAuditFailure } from './lib/audit'
@@ -1215,101 +1215,150 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
     )
   }
 
+  const countLabel = patientsTotal > patients.length
+    ? (isRTL
+        ? `عرض ${patients.length} من أصل ${patientsTotal}`
+        : `Showing ${patients.length} of ${patientsTotal} patients`)
+    : `${filtered.length} ${isRTL ? 'مريض' : (filtered.length === 1 ? 'patient' : 'patients')}`
+
   return (
-    <div>
-      {/* Header */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:24 }}>
-        <div>
-          <h1 style={{ fontSize:24, fontWeight:700, color:C.text, margin:0 }}>{isRTL ? 'المرضى' : 'Patients'}</h1>
-          <p style={{ fontSize:13, color:C.textSec, marginTop:4 }}>
-            {patientsTotal > patients.length
-              ? (isRTL
-                  ? `عرض ${patients.length} من أصل ${patientsTotal}`
-                  : `Showing ${patients.length} of ${patientsTotal} patients`)
-              : `${filtered.length} ${isRTL ? 'مريض' : 'patients'}`}
-          </p>
-        </div>
-        <button data-action="new-patient" onClick={() => { setEditingPatient(null); setShowForm(true) }} className="velo-btn-primary" style={makeBtn('primary', { gap:6 })}>
-          {Icons.plus(16)} {isRTL ? 'إضافة مريض' : 'Add Patient'}
-        </button>
-      </div>
+    <div
+      dir={dir}
+      className="ds-root min-h-full -m-4 md:-m-8 p-4 md:p-8 box-border"
+      style={{ background: 'var(--ds-canvas-gradient)' }}
+    >
+      <div className="relative max-w-[1280px] mx-auto flex flex-col gap-6">
+        <div className="ds-ambient" />
 
-      {/* Filters bar */}
-      <div style={{ ...card, padding:'14px 18px', marginBottom:20, display:'flex', alignItems:'center', gap:12, flexWrap:'wrap', direction:dir }}>
-        <div style={{ display:'flex', alignItems:'center', gap:8, background:C.bg, borderRadius:8, padding:'6px 12px', border:`1px solid ${C.border}`, flex:1, maxWidth:380 }}>
-          <span style={{color:C.textMuted,display:'flex'}}>{Icons.search(16)}</span>
-          <input value={search} onChange={e=>setSearch(e.target.value)} maxLength={LIMITS.search}
-            placeholder={isRTL ? 'بحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
-            style={{ border:'none', background:'transparent', outline:'none', fontSize:13, color:C.text, flex:1, fontFamily:'inherit', direction:dir }} />
-        </div>
-      </div>
-
-      {/* Patients Table */}
-      <div style={{ ...card, overflow:'hidden' }}>
-        <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-          <thead>
-            <tr style={{ background:C.bg, borderBottom:`1px solid ${C.border}` }}>
-              {[isRTL?'الاسم':'Name', isRTL?'الهاتف':'Phone', isRTL?'البريد':'Email', isRTL?'الميلاد':'DOB', ''].map((h,i) => (
-                <th key={i} style={{ padding:'10px 16px', textAlign:isRTL?'right':'left', fontWeight:600, color:C.textSec, fontSize:12, whiteSpace:'nowrap' }}>{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={5} style={{ padding:0 }}>
-                <EmptyState
-                  type="contacts"
-                  title={patients.length === 0 ? (isRTL ? 'لا يوجد مرضى بعد' : 'No patients yet') : (isRTL ? 'لا توجد نتائج' : 'No matching patients')}
-                  message={patients.length === 0 ? (isRTL ? 'أضف أول مريض لبدء إدارة العيادة' : 'Add your first patient to start managing the clinic') : (isRTL ? 'جرب تعديل مصطلح البحث' : 'Try adjusting your search')}
-                  actionLabel={patients.length === 0 ? (isRTL ? 'إضافة مريض' : 'Add Patient') : null}
-                  onAction={patients.length === 0 ? () => { setEditingPatient(null); setShowForm(true) } : null}
-                  dir={dir} />
-              </td></tr>
-            ) : filtered.map(p => {
-              const name = fullNameOf(p)
-              return (
-                <tr key={p.id} onClick={() => setSelectedPatient(p.id)}
-                  style={{ borderBottom:`1px solid ${C.border}`, cursor:'pointer', transition:'background .1s' }}
-                  onMouseEnter={e=>e.currentTarget.style.background=C.bg}
-                  onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                  <td style={{ padding:'12px 16px' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                      <div style={{ width:32, height:32, borderRadius:'50%', background:C.primaryBg, color:C.primary, display:'flex', alignItems:'center', justifyContent:'center', fontSize:13, fontWeight:600, flexShrink:0 }}>{(name || 'P').charAt(0)}</div>
-                      <span style={{ fontWeight:600, color:C.text }}>{name || '—'}</span>
-                    </div>
-                  </td>
-                  <td style={{ padding:'12px 16px', color:C.textSec, fontFamily:'inherit', fontVariantNumeric:'tabular-nums' }}>{p.phone || '—'}</td>
-                  <td style={{ padding:'12px 16px', color:C.textSec }}>{p.email || '—'}</td>
-                  <td style={{ padding:'12px 16px', color:C.textMuted, fontSize:12 }}>{p.dob || '—'}</td>
-                  <td style={{ padding:'12px 16px' }}>
-                    <div style={{ display:'flex', gap:4 }}>
-                      <button onClick={e => { e.stopPropagation(); setEditingPatient(p); setShowForm(true) }} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, padding:4, borderRadius:4, display:'flex' }} title={isRTL?'تعديل':'Edit'}>{Icons.edit(14)}</button>
-                      <button onClick={e => { e.stopPropagation(); setConfirmDeleteId(p.id) }} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, padding:4, borderRadius:4, display:'flex' }} title={isRTL?'حذف':'Delete'}>{Icons.trash(14)}</button>
-                    </div>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Load More (pagination) */}
-      {patientsTotal > patients.length && (
-        <div style={{ display:'flex', justifyContent:'center', marginTop:16 }}>
-          <button
-            onClick={() => loadMorePatients && loadMorePatients()}
-            disabled={patientsLoadingMore}
-            style={makeBtn('secondary', { gap:6, opacity: patientsLoadingMore ? 0.6 : 1, cursor: patientsLoadingMore ? 'wait' : 'pointer' })}
+        {/* ── Header ───────────────────────────────────────────────── */}
+        <header className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-semibold text-navy-900 leading-tight tracking-tight m-0">
+              {isRTL ? 'المرضى' : 'Patients'}
+            </h1>
+            <p className="text-sm text-navy-500 mt-1.5 m-0">{countLabel}</p>
+          </div>
+          <Button
+            data-action="new-patient"
+            variant="primary"
+            iconStart={Icons.plus}
+            onClick={() => { setEditingPatient(null); setShowForm(true) }}
           >
-            {patientsLoadingMore
-              ? (isRTL ? 'جار التحميل...' : 'Loading…')
-              : (isRTL
-                  ? `تحميل المزيد (${patients.length} من ${patientsTotal})`
-                  : `Load more (${patients.length} of ${patientsTotal})`)}
-          </button>
-        </div>
-      )}
+            {isRTL ? 'إضافة مريض' : 'Add Patient'}
+          </Button>
+        </header>
+
+        {/* ── Search ───────────────────────────────────────────────── */}
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          maxLength={LIMITS.search}
+          iconStart={Icons.search}
+          placeholder={isRTL ? 'بحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
+          aria-label={isRTL ? 'بحث' : 'Search'}
+        />
+
+        {/* ── Patient list ─────────────────────────────────────────── */}
+        {filtered.length === 0 ? (
+          <GlassCard padding="lg">
+            <UIEmptyState
+              title={patients.length === 0
+                ? (isRTL ? 'لا يوجد مرضى بعد' : 'No patients yet')
+                : (isRTL ? 'لا توجد نتائج' : 'No matching patients')}
+              description={patients.length === 0
+                ? (isRTL ? 'أضف أول مريض لبدء إدارة العيادة' : 'Add your first patient to start managing the clinic')
+                : (isRTL ? 'جرب تعديل مصطلح البحث' : 'Try adjusting your search')}
+              action={patients.length === 0
+                ? (
+                  <Button
+                    variant="primary"
+                    iconStart={Icons.plus}
+                    onClick={() => { setEditingPatient(null); setShowForm(true) }}
+                  >
+                    {isRTL ? 'إضافة مريض' : 'Add Patient'}
+                  </Button>
+                )
+                : null}
+            />
+          </GlassCard>
+        ) : (
+          <GlassCard padding="none" className="overflow-hidden">
+            <ul className="flex flex-col">
+              {filtered.map((p, i) => {
+                const name = fullNameOf(p)
+                const isLast = i === filtered.length - 1
+                return (
+                  <li key={p.id} className={isLast ? '' : 'border-b border-navy-100/60'}>
+                    <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedPatient(p.id)}
+                      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPatient(p.id) } }}
+                      className="group flex items-center gap-4 px-4 md:px-5 py-3 cursor-pointer hover:bg-navy-50/50 transition-colors focus:outline-none focus-visible:bg-navy-50/60"
+                    >
+                      <span
+                        aria-hidden="true"
+                        className={`grid place-items-center w-10 h-10 rounded-full text-white text-xs font-bold shadow-glass-sm shrink-0 bg-gradient-to-br ${avatarGradient(name)}`}
+                      >
+                        {avatarInitials(name)}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-navy-900 truncate m-0">{name || '—'}</p>
+                        {(p.phone || p.email) && (
+                          <p className="text-xs text-navy-500 truncate m-0 mt-0.5" dir="ltr">
+                            {p.phone || p.email}
+                          </p>
+                        )}
+                      </div>
+                      <span className="hidden md:inline text-xs text-navy-400 tabular-nums shrink-0 me-1">
+                        {p.dob || ''}
+                      </span>
+                      <div className="flex gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setEditingPatient(p); setShowForm(true) }}
+                          aria-label={isRTL ? 'تعديل' : 'Edit'}
+                          title={isRTL ? 'تعديل' : 'Edit'}
+                          className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+                        >
+                          {Icons.edit(14)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={e => { e.stopPropagation(); setConfirmDeleteId(p.id) }}
+                          aria-label={isRTL ? 'حذف' : 'Delete'}
+                          title={isRTL ? 'حذف' : 'Delete'}
+                          className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                        >
+                          {Icons.trash(14)}
+                        </button>
+                      </div>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </GlassCard>
+        )}
+
+        {/* ── Load more (pagination) ───────────────────────────────── */}
+        {patientsTotal > patients.length && (
+          <div className="flex justify-center mt-2">
+            <Button
+              variant="secondary"
+              onClick={() => loadMorePatients && loadMorePatients()}
+              loading={patientsLoadingMore}
+              disabled={patientsLoadingMore}
+            >
+              {patientsLoadingMore
+                ? (isRTL ? 'جار التحميل...' : 'Loading…')
+                : (isRTL
+                    ? `تحميل المزيد (${patients.length} من ${patientsTotal})`
+                    : `Load more (${patients.length} of ${patientsTotal})`)}
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Add/Edit Modal */}
       {showForm && (
@@ -1328,15 +1377,17 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
       {/* Confirm Delete */}
       {confirmDeleteId && (
         <Modal onClose={() => setConfirmDeleteId(null)} dir={dir} width={400}>
-          <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 12px' }}>
-            {isRTL ? 'تأكيد الحذف' : 'Confirm Delete'}
-          </h3>
-          <p style={{ fontSize:13, color:C.textSec, marginBottom:20 }}>
-            {isRTL ? 'سيتم حذف المريض وجميع بياناته. لا يمكن التراجع.' : 'This will permanently delete the patient and all their data. This cannot be undone.'}
-          </p>
-          <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-            <button onClick={() => setConfirmDeleteId(null)} style={makeBtn('secondary')}>{isRTL?'إلغاء':'Cancel'}</button>
-            <button onClick={() => { deletePatient(confirmDeleteId); setConfirmDeleteId(null) }} style={makeBtn('danger')}>{isRTL?'حذف':'Delete'}</button>
+          <div className="ds-root">
+            <h3 className="text-lg font-semibold text-navy-900 m-0 mb-3">
+              {isRTL ? 'تأكيد الحذف' : 'Confirm Delete'}
+            </h3>
+            <p className="text-sm text-navy-600 mb-5 m-0">
+              {isRTL ? 'سيتم حذف المريض وجميع بياناته. لا يمكن التراجع.' : 'This will permanently delete the patient and all their data. This cannot be undone.'}
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="destructive" onClick={() => { deletePatient(confirmDeleteId); setConfirmDeleteId(null) }}>{isRTL ? 'حذف' : 'Delete'}</Button>
+            </div>
           </div>
         </Modal>
       )}
@@ -1381,38 +1432,47 @@ function PatientFormModal({ t, dir, isRTL, patient, onSave, onClose }) {
 
   return (
     <Modal onClose={onClose} dir={dir} width={560}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:20 }}>
-        <h2 style={{ fontSize:18, fontWeight:700, color:C.text, margin:0 }}>
-          {patient ? (isRTL ? 'تعديل المريض' : 'Edit Patient') : (isRTL ? 'إضافة مريض' : 'Add Patient')}
-        </h2>
-        <button onClick={onClose} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex' }}>{Icons.x(20)}</button>
-      </div>
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-        <FormField label={isRTL ? 'الاسم الكامل' : 'Full Name'} dir={dir}>
-          <input value={form.full_name} onChange={e=>set('full_name', e.target.value)} maxLength={LIMITS.name} style={inputStyle(dir)} />
-        </FormField>
-        <FormField label={isRTL ? 'رقم الهاتف' : 'Phone'} dir={dir}>
-          <input value={form.phone} onChange={e=>set('phone', e.target.value)} maxLength={LIMITS.phone} style={inputStyle(dir)} />
-        </FormField>
-        <FormField label={isRTL ? 'البريد الإلكتروني' : 'Email'} dir={dir}>
-          <input value={form.email} onChange={e=>set('email', e.target.value)} type="email" maxLength={LIMITS.email} style={inputStyle(dir)} />
-        </FormField>
-        <FormField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'} dir={dir}>
-          <input value={form.dob} onChange={e=>set('dob', e.target.value)} type="date" style={inputStyle(dir)} />
-        </FormField>
-        <FormField label={isRTL ? 'الجنس' : 'Gender'} dir={dir}>
-          <select value={form.gender} onChange={e=>set('gender', e.target.value)} style={selectStyle(dir)}>
-            <option value="">{isRTL ? '— غير محدد —' : '— Not specified —'}</option>
-            {GENDER_OPTIONS.map(g => <option key={g.id} value={g.id}>{isRTL ? g.ar : g.en}</option>)}
-          </select>
-        </FormField>
-        <FormField label={isRTL ? 'الحساسيات (مفصولة بفواصل)' : 'Allergies (comma separated)'} dir={dir}>
-          <input value={form.allergies} onChange={e=>set('allergies', e.target.value)} maxLength={500} style={inputStyle(dir)} placeholder={isRTL ? 'مثال: بنسلين، لاتكس' : 'e.g. penicillin, latex'} />
-        </FormField>
-      </div>
-      <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:8 }}>
-        <button onClick={onClose} style={makeBtn('secondary')}>{isRTL?'إلغاء':'Cancel'}</button>
-        <button onClick={handleSubmit} className="velo-btn-primary" style={makeBtn('primary')}>{isRTL?'حفظ':'Save'}</button>
+      <div className="ds-root">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-semibold text-navy-900 m-0">
+            {patient ? (isRTL ? 'تعديل المريض' : 'Edit Patient') : (isRTL ? 'إضافة مريض' : 'Add Patient')}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={isRTL ? 'إغلاق' : 'Close'}
+            className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+          >
+            {Icons.x(18)}
+          </button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
+          <FormField label={isRTL ? 'الاسم الكامل' : 'Full Name'} dir={dir}>
+            <input value={form.full_name} onChange={e=>set('full_name', e.target.value)} maxLength={LIMITS.name} style={inputStyle(dir)} />
+          </FormField>
+          <FormField label={isRTL ? 'رقم الهاتف' : 'Phone'} dir={dir}>
+            <input value={form.phone} onChange={e=>set('phone', e.target.value)} maxLength={LIMITS.phone} style={inputStyle(dir)} />
+          </FormField>
+          <FormField label={isRTL ? 'البريد الإلكتروني' : 'Email'} dir={dir}>
+            <input value={form.email} onChange={e=>set('email', e.target.value)} type="email" maxLength={LIMITS.email} style={inputStyle(dir)} />
+          </FormField>
+          <FormField label={isRTL ? 'تاريخ الميلاد' : 'Date of Birth'} dir={dir}>
+            <input value={form.dob} onChange={e=>set('dob', e.target.value)} type="date" style={inputStyle(dir)} />
+          </FormField>
+          <FormField label={isRTL ? 'الجنس' : 'Gender'} dir={dir}>
+            <select value={form.gender} onChange={e=>set('gender', e.target.value)} style={selectStyle(dir)}>
+              <option value="">{isRTL ? '— غير محدد —' : '— Not specified —'}</option>
+              {GENDER_OPTIONS.map(g => <option key={g.id} value={g.id}>{isRTL ? g.ar : g.en}</option>)}
+            </select>
+          </FormField>
+          <FormField label={isRTL ? 'الحساسيات (مفصولة بفواصل)' : 'Allergies (comma separated)'} dir={dir}>
+            <input value={form.allergies} onChange={e=>set('allergies', e.target.value)} maxLength={500} style={inputStyle(dir)} placeholder={isRTL ? 'مثال: بنسلين، لاتكس' : 'e.g. penicillin, latex'} />
+          </FormField>
+        </div>
+        <div className="flex gap-2 justify-end mt-2">
+          <Button variant="secondary" onClick={onClose}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+          <Button variant="primary" onClick={handleSubmit}>{isRTL ? 'حفظ' : 'Save'}</Button>
+        </div>
       </div>
     </Modal>
   )
