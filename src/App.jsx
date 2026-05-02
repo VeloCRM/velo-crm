@@ -153,7 +153,6 @@ export default function App() {
   const [dataLoading, setDataLoading] = useState(false)
   const [dataError, setDataError] = useState(null)
   const [showUserMenu, setShowUserMenu] = useState(false)
-  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('velo_dark') === 'true')
   const [cmdPaletteOpen, setCmdPaletteOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
   const [aiOpen, setAiOpen] = useState(false)
@@ -271,11 +270,14 @@ export default function App() {
     }
   }, [location.pathname, location.search, navigate, user, impersonation])
 
-  // Dark mode
+  // Light-only: remove any leftover [data-theme="dark"] attribute set by an
+  // older session, and clear the legacy localStorage key. Dark mode toggle
+  // was removed in Sprint 1 Phase 2.3.1 because the new Liquid Glass design
+  // system is light-only and a proper dark variant isn't in Sprint 1 scope.
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
-    localStorage.setItem('velo_dark', darkMode)
-  }, [darkMode])
+    document.documentElement.removeAttribute('data-theme')
+    try { localStorage.removeItem('velo_dark') } catch { /* private mode */ }
+  }, [])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -865,15 +867,6 @@ export default function App() {
               {Icons.globe()}{lang==='en'?'العربية':'English'}
             </button>
           )}
-          {/* Dark mode toggle */}
-          <button onClick={() => setDarkMode(d => !d)} style={{ width:32, height:32, borderRadius:8, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec, transition:'all 0.18s ease' }}
-            title={darkMode ? 'Light Mode' : 'Dark Mode'}
-            onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}>
-            {darkMode
-              ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-              : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-            }
-          </button>
           {/* Notifications */}
           <button onClick={() => setNotifOpen(v => !v)} style={{ width:32, height:32, borderRadius:8, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec, position:'relative', transition:'all 0.18s ease' }}
             onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}>

@@ -237,37 +237,45 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
               style={inputStyle('ltr')}
             />
             {showDropdown && searchQuery.length >= 2 && !showNewPatient && (
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-hover)', borderRadius: 'var(--radius-sm)', marginTop: 4, zIndex: 10, maxHeight: 250, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+              <div className="absolute top-full inset-x-0 z-10 mt-1 max-h-[250px] overflow-y-auto rounded-glass bg-white/95 backdrop-blur-glass-sm border border-navy-100 shadow-glass-lg">
                 {searchResults.length > 0 ? searchResults.map(p => (
-                  <div key={p.id} onClick={() => { set('patient_id', p.id); setSearchQuery(p.full_name); setShowDropdown(false) }}
-                    style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-default)', cursor: 'pointer' }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{p.full_name}</div>
-                    {p.phone && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.phone}</div>}
+                  <div
+                    key={p.id}
+                    onClick={() => { set('patient_id', p.id); setSearchQuery(p.full_name); setShowDropdown(false) }}
+                    className="px-3.5 py-2.5 border-b border-navy-100/60 cursor-pointer hover:bg-navy-50/60 transition-colors"
+                  >
+                    <div className="text-sm font-semibold text-navy-900">{p.full_name}</div>
+                    {p.phone && <div className="text-xs text-navy-500 mt-0.5 tabular-nums" dir="ltr">{p.phone}</div>}
                   </div>
                 )) : (
-                  <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                    <div style={{ fontSize: 13, marginBottom: 12 }}>No patients found</div>
-                    <button type="button" onClick={() => { setShowNewPatient(true); setNewPatientForm(p => ({ ...p, full_name: searchQuery })) }}
-                      style={{ width: '100%', padding: '8px 14px', border: '1px solid var(--accent-primary)', background: 'transparent', color: 'var(--accent-primary)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      {Icons.plus(14)} Add as new patient
-                    </button>
+                  <div className="p-4 text-center">
+                    <div className="text-sm text-navy-500 mb-3">No patients found</div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      iconStart={Icons.plus}
+                      onClick={() => { setShowNewPatient(true); setNewPatientForm(p => ({ ...p, full_name: searchQuery })) }}
+                    >
+                      Add as new patient
+                    </Button>
                   </div>
                 )}
               </div>
             )}
             {showNewPatient && (
-              <div style={{ marginTop: 12, padding: 16, border: '1px solid var(--border-hover)', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
-                <h4 style={{ margin: '0 0 12px 0', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Add New Patient</h4>
-                <div style={{ display: 'grid', gap: 12 }}>
+              <div className="mt-3 p-4 rounded-glass bg-navy-50/40 border border-navy-100">
+                <h4 className="m-0 mb-3 text-sm font-semibold text-navy-900">Add New Patient</h4>
+                <div className="grid gap-3">
                   <input value={newPatientForm.full_name} onChange={e => setNewPatientForm(p => ({ ...p, full_name: e.target.value }))} placeholder="Full Name" style={inputStyle('ltr')} />
                   <input value={newPatientForm.phone} onChange={e => setNewPatientForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone Number" style={inputStyle('ltr')} />
                   <input value={newPatientForm.email} onChange={e => setNewPatientForm(p => ({ ...p, email: e.target.value }))} placeholder="Email (optional)" type="email" style={inputStyle('ltr')} />
                   <input type="date" value={newPatientForm.dob} onChange={e => setNewPatientForm(p => ({ ...p, dob: e.target.value }))} placeholder="Date of Birth" style={inputStyle('ltr')} />
-                  <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button type="button" onClick={() => setShowNewPatient(false)} style={{ padding: '8px 16px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Cancel</button>
-                    <button type="button" onClick={handleAddNewPatient} disabled={loading} style={{ padding: '8px 16px', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', border: 'none', color: '#fff', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>
+                  <div className="flex gap-2 justify-end mt-1">
+                    <Button variant="secondary" size="sm" onClick={() => setShowNewPatient(false)}>Cancel</Button>
+                    <Button variant="primary" size="sm" onClick={handleAddNewPatient} loading={loading} disabled={loading}>
                       {loading ? 'Saving...' : 'Add & Select'}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

@@ -16,17 +16,6 @@ const LockIcon = (s = 16) => (
     <path d="M7 11V7a5 5 0 0 1 10 0v4" />
   </svg>
 )
-const SunIcon = (s = 16) => (
-  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <circle cx="12" cy="12" r="4" />
-    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
-  </svg>
-)
-const MoonIcon = (s = 16) => (
-  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-  </svg>
-)
 const GlobeIcon = (s = 16) => (
   <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
@@ -113,7 +102,6 @@ export default function AuthPage({ onAuth, lang, setLang }) {
   const [message, setMessage] = useState('')
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
   const [showOperatorModal, setShowOperatorModal] = useState(false)
-  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'light')
 
   const operatorContact = import.meta.env.VITE_OPERATOR_CONTACT || ''
 
@@ -131,13 +119,6 @@ export default function AuthPage({ onAuth, lang, setLang }) {
   const isRTL = lang === 'ar'
   const dir = isRTL ? 'rtl' : 'ltr'
   const txt = STRINGS[lang] || STRINGS.en
-
-  const toggleTheme = () => {
-    const next = theme === 'dark' ? 'light' : 'dark'
-    setTheme(next)
-    if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
-    else document.documentElement.removeAttribute('data-theme')
-  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -199,14 +180,14 @@ export default function AuthPage({ onAuth, lang, setLang }) {
 
   const headerTitle = mode === 'forgot' ? txt.resetPassword : txt.welcome
   const headerSub   = mode === 'forgot' ? txt.forgotSub    : txt.welcomeSub
-  const isThemeDark = theme === 'dark'
 
   return (
     <div dir={dir} className="ds-root relative min-h-screen w-full overflow-y-auto">
       {/* Ambient halo behind everything */}
       <div className="ds-ambient" />
 
-      {/* Top-right utility bar (lang + theme toggles) */}
+      {/* Top-right utility bar (language toggle only — dark mode removed in
+          Sprint 1 Phase 2.3.1; the Liquid Glass system is light-only). */}
       <header className="absolute top-0 inset-x-0 flex justify-end items-center gap-1 px-5 md:px-8 py-4 z-10">
         <Button
           variant="ghost"
@@ -217,13 +198,6 @@ export default function AuthPage({ onAuth, lang, setLang }) {
         >
           {txt.switchLang}
         </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={toggleTheme}
-          iconStart={isThemeDark ? SunIcon : MoonIcon}
-          aria-label={isThemeDark ? txt.themeLight : txt.themeDark}
-        />
       </header>
 
       <div className="min-h-screen flex flex-col items-center justify-center px-5 py-20">

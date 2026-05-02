@@ -19,13 +19,15 @@ import { GlassCard, Button, Badge } from '../components/ui'
 // ─── Constants ──────────────────────────────────────────────────────────────
 // Appointment status enum (matches schema.sql appointment_status):
 //   scheduled | confirmed | in_progress | completed | no_show | cancelled
+// Colors map to the Liquid Glass palette — amber for "needs action",
+// cyan for "active", emerald for "done", rose for "negative outcome".
 const STATUS_STYLE = {
-  scheduled:   'bg-status-warning-bg text-status-warning-fg',
-  confirmed:   'bg-accent-subtle text-accent-fg',
-  in_progress: 'bg-accent-muted text-accent-fg',
-  completed:   'bg-status-success-bg text-status-success-fg',
-  no_show:     'bg-status-danger-bg/60 text-status-danger-fg',
-  cancelled:   'bg-status-danger-bg text-status-danger-fg',
+  scheduled:   'bg-amber-50 text-amber-700',
+  confirmed:   'bg-accent-cyan-50 text-accent-cyan-700',
+  in_progress: 'bg-accent-cyan-100 text-accent-cyan-800',
+  completed:   'bg-emerald-50 text-emerald-700',
+  no_show:     'bg-rose-50 text-rose-700',
+  cancelled:   'bg-gray-100 text-gray-600',
 }
 
 const APT_TYPES = [
@@ -611,21 +613,27 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
   return (
     <div>
       <div className="flex items-center justify-between mb-2.5">
-        <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))}
-          aria-label="Previous month"
-          className="bg-transparent border-none text-content-secondary cursor-pointer p-0.5 hover:text-content-primary transition-colors duration-fast ease-standard">
+        <button
+          type="button"
+          onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1))}
+          aria-label={lang === 'ar' ? 'الشهر السابق' : 'Previous month'}
+          className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+        >
           {Icons.chevronLeft(14)}
         </button>
-        <span className="font-display text-body-lg !text-content-primary">{monthLabel}</span>
-        <button onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))}
-          aria-label="Next month"
-          className="bg-transparent border-none text-content-secondary cursor-pointer p-0.5 hover:text-content-primary transition-colors duration-fast ease-standard">
+        <span className="text-sm font-semibold text-navy-900">{monthLabel}</span>
+        <button
+          type="button"
+          onClick={() => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1))}
+          aria-label={lang === 'ar' ? 'الشهر التالي' : 'Next month'}
+          className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+        >
           {Icons.chevronRight(14)}
         </button>
       </div>
       <div className="grid grid-cols-7 gap-px text-center">
         {dayLabels.map((d, i) => (
-          <div key={i} className="text-[10px] font-bold text-content-tertiary py-1 uppercase">{d}</div>
+          <div key={i} className="text-[10px] font-semibold text-navy-400 py-1 uppercase tracking-wider">{d}</div>
         ))}
         {Array.from({ length: offset }, (_, i) => <div key={`e${i}`} />)}
         {Array.from({ length: daysInMonth }, (_, i) => {
@@ -635,17 +643,23 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
           const isSel = fmtDate(currentDate) === dateStr
           const hasApt = aptDates.has(dateStr)
           const isTod = dateStr === fmtDate(new Date())
+          // Selected (and today-when-also-selected) gets the navy pill;
+          // today-not-selected gets a subtle cyan ring; everything else is
+          // a quiet hoverable cell.
           const stateClass = isSel
-            ? 'bg-accent text-content-on-accent font-bold'
+            ? 'bg-navy-700 text-white font-bold shadow-glass-sm'
             : isTod
-              ? 'bg-accent-subtle text-accent-fg font-semibold hover:bg-accent-muted'
-              : 'text-content-primary font-medium hover:bg-surface-canvas'
+              ? 'bg-accent-cyan-50 text-accent-cyan-800 font-semibold ring-1 ring-accent-cyan-300 hover:bg-accent-cyan-100'
+              : 'text-navy-700 font-medium hover:bg-navy-50'
           return (
-            <div key={day} onClick={() => setCurrentDate(d)}
-              className={`text-body-sm py-1 cursor-pointer rounded-md tabular-nums lining-nums relative transition-colors duration-fast ease-standard ${stateClass}`}>
+            <div
+              key={day}
+              onClick={() => setCurrentDate(d)}
+              className={`text-sm py-1 cursor-pointer rounded-md tabular-nums relative transition-colors ${stateClass}`}
+            >
               {day}
               {hasApt && !isSel && (
-                <div className="absolute bottom-0.5 start-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent" />
+                <div className="absolute bottom-0.5 start-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-accent-cyan-500" />
               )}
             </div>
           )
@@ -667,15 +681,17 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       {/* Doctor Headers */}
-      <div className="flex border-b border-stroke-subtle flex-shrink-0">
-        <div className="w-[60px] flex-shrink-0 border-e border-stroke-subtle" />
+      <div className="flex border-b border-navy-100/80 flex-shrink-0 bg-white/60 backdrop-blur-glass-sm">
+        <div className="w-[60px] flex-shrink-0 border-e border-navy-100/60" />
         {cols.map(col => {
           const c = doctorColor(col)
           return (
-            <div key={col.id}
-              className="flex-1 px-3 py-2.5 text-center border-e border-stroke-subtle bg-surface-sunken/40 border-b-2 border-solid"
-              style={{ borderBottomColor: c || 'rgb(var(--velo-border-default))' }}>
-              <div className="font-display text-h3 !text-content-primary truncate">{col.full_name}</div>
+            <div
+              key={col.id}
+              className="flex-1 px-3 py-2.5 text-center border-e border-navy-100/60 border-b-2 border-solid"
+              style={{ borderBottomColor: c || 'rgba(15,23,42,0.08)' }}
+            >
+              <div className="text-base font-semibold text-navy-900 truncate">{col.full_name}</div>
             </div>
           )
         })}
@@ -685,11 +701,11 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
       <div ref={scrollRef} className="flex-1 overflow-y-auto overflow-x-hidden relative">
         <div className="flex relative">
           {/* Time Labels */}
-          <div className="w-[60px] flex-shrink-0 border-e border-stroke-subtle">
+          <div className="w-[60px] flex-shrink-0 border-e border-navy-100/60">
             {TIME_SLOTS.map((slot, i) => (
               <div key={slot} className="flex items-start justify-end pe-2 pt-0.5" style={{ height: SLOT_H }}>
                 {i % 2 === 0 && (
-                  <span className="font-display text-caption font-semibold text-content-secondary tabular-nums lining-nums">{slot}</span>
+                  <span className="text-[11px] font-semibold text-navy-500 tabular-nums">{slot}</span>
                 )}
               </div>
             ))}
@@ -701,12 +717,13 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
               col.id === '__none' ? true : a.doctor_id === col.id
             )
             return (
-              <div key={col.id} className="flex-1 relative border-e border-stroke-subtle">
+              <div key={col.id} className="flex-1 relative border-e border-navy-100/60">
                 {/* Slot rows */}
                 {TIME_SLOTS.map((slot, i) => (
-                  <div key={slot}
+                  <div
+                    key={slot}
                     onClick={() => onSlotClick(slot, col.id === '__none' ? null : col.id)}
-                    className={`cursor-pointer transition-colors duration-fast ease-standard hover:bg-accent-subtle/60 ${i % 2 === 0 ? 'border-b border-stroke-subtle' : 'border-b border-stroke-subtle/30'}`}
+                    className={`cursor-pointer transition-colors hover:bg-navy-50/60 ${i % 2 === 0 ? 'border-b border-navy-100/60' : 'border-b border-navy-100/20'}`}
                     style={{ height: SLOT_H }}
                   />
                 ))}
@@ -721,34 +738,38 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
                   const doc = getDoctorById(apt.doctor_id)
                   const docColor = doctorColor(doc)
                   const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.scheduled
-                  const patientName = apt.patients?.full_name || 'Unknown'
+                  const patientName = apt.patients?.full_name || (lang === 'ar' ? 'مجهول' : 'Unknown')
                   const typeDef = APT_TYPES.find(t => t.value === apt.type)
                   const typeLabel = typeDef ? (lang === 'ar' ? typeDef.ar : typeDef.en) : apt.type || ''
+                  const isCancelled = apt.status === 'cancelled'
 
                   if (topPx < 0) return null
 
                   return (
-                    <div key={apt.id}
+                    <div
+                      key={apt.id}
                       onClick={(e) => { e.stopPropagation(); onAptClick(apt) }}
-                      className="absolute start-[3px] end-[3px] rounded-md cursor-pointer overflow-hidden z-raised bg-surface-raised border border-stroke-subtle border-s-[3px] shadow-1 hover:shadow-2 transition-shadow duration-fast ease-standard ps-2 pe-2 py-1"
+                      className={`absolute start-[3px] end-[3px] rounded-glass cursor-pointer overflow-hidden z-raised border border-navy-100/80 border-s-[3px] shadow-glass-sm hover:shadow-glass transition-shadow ps-2 pe-2 py-1 backdrop-blur-glass-sm ${isCancelled ? 'bg-gray-100/80 opacity-75' : 'bg-white/85'}`}
                       style={{
                         top: topPx,
                         height: Math.max(heightPx, 28),
-                        borderInlineStartColor: docColor || 'rgb(var(--velo-border-default))',
+                        borderInlineStartColor: docColor || 'rgba(15,23,42,0.16)',
                       }}
                     >
-                      <div className="text-body-sm font-semibold text-content-primary leading-tight truncate">
+                      <div className={`text-sm font-semibold leading-tight truncate ${isCancelled ? 'text-gray-500 line-through' : 'text-navy-900'}`}>
                         {patientName}
                       </div>
                       {heightPx > 36 && (
                         <div className="flex items-center gap-1 mt-0.5">
-                          <div className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                            style={{ backgroundColor: docColor || 'rgb(var(--velo-text-tertiary))' }} />
-                          <span className="text-[10px] text-content-tertiary truncate">{doc?.full_name || ''}</span>
+                          <div
+                            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: docColor || 'rgba(15,23,42,0.3)' }}
+                          />
+                          <span className="text-[10px] text-navy-500 truncate">{doc?.full_name || ''}</span>
                         </div>
                       )}
                       {heightPx > 54 && (
-                        <div className="text-[10px] text-content-secondary mt-0.5 truncate">{typeLabel}</div>
+                        <div className="text-[10px] text-navy-600 mt-0.5 truncate">{typeLabel}</div>
                       )}
                       {heightPx > 70 && (
                         <span className={`inline-block text-[9px] font-bold uppercase rounded-sm px-1.5 py-0.5 mt-1 ${ssClass}`}>
@@ -782,8 +803,14 @@ function CurrentTimeLine() {
   if (top < 0) return null
   return (
     <div className="absolute z-sticky pointer-events-none flex items-center start-[54px] end-0" style={{ top }}>
-      <div className="w-2 h-2 rounded-full bg-accent flex-shrink-0 shadow-glow-mint" />
-      <div className="flex-1 h-0.5 bg-accent opacity-85 shadow-glow-mint" />
+      <div
+        className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+        style={{ background: '#06B6D4', boxShadow: '0 0 12px -2px rgba(6,182,212,0.55)' }}
+      />
+      <div
+        className="flex-1 h-0.5 opacity-90"
+        style={{ background: '#06B6D4', boxShadow: '0 0 8px -2px rgba(6,182,212,0.45)' }}
+      />
     </div>
   )
 }
@@ -811,21 +838,25 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
           const isTod = dateStr === fmtDate(new Date())
 
           return (
-            <div key={dateStr}
-              className={`bg-surface-raised rounded-2xl shadow-1 overflow-hidden flex flex-col ${isTod ? 'border border-accent/60' : 'border border-stroke-subtle'}`}>
+            <div
+              key={dateStr}
+              className={`glass-card rounded-glass-lg overflow-hidden flex flex-col ${isTod ? 'ring-1 ring-accent-cyan-300' : ''}`}
+            >
               {/* Day Header */}
-              <div onClick={() => onDayClick(day)}
-                className={`px-3 py-2.5 cursor-pointer border-b border-stroke-subtle flex items-center justify-between transition-colors duration-fast ease-standard ${isTod ? 'bg-accent-subtle hover:bg-accent-muted' : 'bg-surface-sunken hover:bg-accent-subtle/50'}`}>
+              <div
+                onClick={() => onDayClick(day)}
+                className={`px-3 py-2.5 cursor-pointer border-b border-navy-100/60 flex items-center justify-between transition-colors ${isTod ? 'bg-accent-cyan-50/80 hover:bg-accent-cyan-100' : 'bg-navy-50/40 hover:bg-navy-50/70'}`}
+              >
                 <div>
-                  <div className={`text-caption font-bold uppercase ${isTod ? 'text-accent-fg' : 'text-content-tertiary'}`}>
+                  <div className={`text-[10px] font-semibold uppercase tracking-wider ${isTod ? 'text-accent-cyan-700' : 'text-navy-500'}`}>
                     {L[dayKeys[i]]}
                   </div>
-                  <div className={`font-display text-h3 tabular-nums lining-nums ${isTod ? '!text-accent-fg' : '!text-content-primary'}`}>
+                  <div className={`text-lg font-bold tabular-nums leading-tight ${isTod ? 'text-accent-cyan-800' : 'text-navy-900'}`}>
                     {day.getDate()}
                   </div>
                 </div>
                 {dayApts.length > 0 && (
-                  <span className="text-caption font-bold px-2 py-0.5 rounded-full bg-accent-subtle text-accent-fg tabular-nums lining-nums">
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full tabular-nums ${isTod ? 'bg-accent-cyan-500 text-white' : 'bg-navy-100 text-navy-700'}`}>
                     {dayApts.length}
                   </span>
                 )}
@@ -834,26 +865,32 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
               {/* Appointments */}
               <div className="flex-1 p-1.5 flex flex-col gap-1 overflow-y-auto max-h-[400px]">
                 {dayApts.length === 0 ? (
-                  <div className="p-3 text-center text-content-tertiary text-caption">{L.noApts}</div>
+                  <div className="p-3 text-center text-navy-400 text-[11px]">{L.noApts}</div>
                 ) : dayApts.map(apt => {
                   const doc = getDoctorById(apt.doctor_id)
                   const docColor = doctorColor(doc)
                   const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.scheduled
-                  const patientName = apt.patients?.full_name || 'Unknown'
+                  const patientName = apt.patients?.full_name || (lang === 'ar' ? 'مجهول' : 'Unknown')
+                  const isCancelled = apt.status === 'cancelled'
                   return (
-                    <div key={apt.id} onClick={(e) => { e.stopPropagation(); onAptClick(apt) }}
-                      className="px-2 py-1.5 rounded-md cursor-pointer bg-surface-raised border border-stroke-subtle border-s-[3px] hover:bg-surface-canvas hover:shadow-1 transition-[background,box-shadow] duration-fast ease-standard"
-                      style={{ borderInlineStartColor: docColor || 'rgb(var(--velo-border-default))' }}>
+                    <div
+                      key={apt.id}
+                      onClick={(e) => { e.stopPropagation(); onAptClick(apt) }}
+                      className={`px-2 py-1.5 rounded-md cursor-pointer border border-navy-100/60 border-s-[3px] hover:shadow-glass-sm transition-shadow ${isCancelled ? 'bg-gray-100/80 opacity-75' : 'bg-white/85 backdrop-blur-glass-sm hover:bg-white'}`}
+                      style={{ borderInlineStartColor: docColor || 'rgba(15,23,42,0.16)' }}
+                    >
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-caption font-bold tabular-nums lining-nums"
-                          style={{ color: docColor || 'rgb(var(--velo-text-secondary))' }}>
+                        <span
+                          className="text-[11px] font-bold tabular-nums"
+                          style={{ color: docColor || '#475569' }}
+                        >
                           {aptTimeStr(apt)}
                         </span>
                         <span className={`text-[9px] font-bold uppercase rounded-sm px-1.5 py-0.5 ${ssClass}`}>
                           {apt.status?.slice(0,4)}
                         </span>
                       </div>
-                      <div className="text-body-sm font-semibold text-content-primary truncate">{patientName}</div>
+                      <div className={`text-sm font-semibold truncate ${isCancelled ? 'text-gray-500 line-through' : 'text-navy-900'}`}>{patientName}</div>
                     </div>
                   )
                 })}
@@ -884,13 +921,19 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
   const docColor = doctorColor(doctor)
 
   return (
-    <div dir={dir}
-      className="w-[340px] flex-shrink-0 border-s border-stroke-subtle bg-surface-raised overflow-y-auto flex flex-col animate-fade shadow-1">
+    <div
+      dir={dir}
+      className="ds-root w-[340px] flex-shrink-0 border-s border-navy-100/80 bg-white/70 backdrop-blur-glass-sm overflow-y-auto flex flex-col animate-fade-in"
+    >
       {/* Header */}
-      <div className="px-5 py-4 border-b border-stroke-subtle flex items-center justify-between">
-        <span className="font-display text-h3 !text-content-primary">{L.aptDetails}</span>
-        <button onClick={onClose} aria-label="Close"
-          className="bg-transparent border-none text-content-tertiary cursor-pointer p-1 hover:text-content-primary transition-colors duration-fast ease-standard">
+      <div className="px-5 py-4 border-b border-navy-100/60 flex items-center justify-between">
+        <span className="text-base font-semibold text-navy-900">{L.aptDetails}</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={lang === 'ar' ? 'إغلاق' : 'Close'}
+          className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+        >
           {Icons.x(18)}
         </button>
       </div>
@@ -898,19 +941,23 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
       <div className="px-5 py-5 flex-1 flex flex-col gap-4">
         {/* Status Badge */}
         <div className="flex justify-center">
-          <span className={`text-body-sm font-bold py-1.5 px-5 rounded-full uppercase ${ssClass}`}>
+          <span className={`text-xs font-bold py-1.5 px-5 rounded-full uppercase tracking-wider ${ssClass}`}>
             {L[apt.status] || apt.status}
           </span>
         </div>
 
         {/* Patient */}
-        <div onClick={onGoToPatient}
-          className="bg-surface-canvas border border-stroke-subtle rounded-lg p-3.5 cursor-pointer transition-colors duration-fast ease-standard hover:border-stroke">
-          <div className="font-display text-h2 !text-content-primary">{patientName}</div>
+        <div
+          onClick={onGoToPatient}
+          className="bg-white/85 border border-navy-100 rounded-glass p-3.5 cursor-pointer transition-colors hover:border-navy-200 hover:bg-white shadow-glass-sm"
+        >
+          <div className="text-lg font-semibold text-navy-900 leading-tight">{patientName}</div>
           {patientPhone && (
-            <div className="text-caption text-content-secondary mt-1 tabular-nums lining-nums">{patientPhone}</div>
+            <div className="text-xs text-navy-600 mt-1 tabular-nums" dir="ltr">{patientPhone}</div>
           )}
-          <div className="text-[10px] text-content-tertiary mt-1">Click to view profile</div>
+          <div className="text-[10px] text-accent-cyan-700 font-medium mt-1.5">
+            {lang === 'ar' ? 'انقر لعرض الملف' : 'Click to view profile'}
+          </div>
         </div>
 
         {/* Details */}
@@ -922,13 +969,13 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
           {doctor && (
             <div className="flex items-center gap-2">
               <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: docColor }} />
-              <span className="text-body-sm text-content-primary font-semibold">{doctor.full_name}</span>
+              <span className="text-sm text-navy-800 font-semibold">{doctor.full_name}</span>
             </div>
           )}
           {apt.notes && (
             <div>
-              <div className="text-caption font-bold text-content-tertiary uppercase mb-1">{L.notes}</div>
-              <div className="text-body-sm text-content-secondary leading-relaxed p-2.5 bg-surface-canvas rounded-md">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-navy-500 mb-1">{L.notes}</div>
+              <div className="text-sm text-navy-700 leading-relaxed p-2.5 bg-navy-50/60 rounded-md">
                 {apt.notes}
               </div>
             </div>
@@ -937,45 +984,65 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
       </div>
 
       {/* Action Buttons */}
-      <div className="px-5 py-4 border-t border-stroke-subtle flex flex-col gap-2">
+      <div className="px-5 py-4 border-t border-navy-100/60 flex flex-col gap-2">
         {apt.status === 'scheduled' && (
-          <button onClick={() => onStatusChange(apt.id, 'confirmed')}
-            className="w-full justify-center h-[38px] rounded-md bg-surface-canvas hover:bg-accent-subtle border border-stroke-subtle hover:border-accent text-content-primary hover:text-accent-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
-            {Icons.check(14)} {L.confirm}
-          </button>
+          <Button
+            variant="secondary"
+            className="w-full justify-center"
+            iconStart={Icons.check}
+            onClick={() => onStatusChange(apt.id, 'confirmed')}
+          >
+            {L.confirm}
+          </Button>
         )}
         {(apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'in_progress') && (
-          <button onClick={() => onStatusChange(apt.id, 'completed')}
-            className="w-full justify-center h-[38px] rounded-md bg-surface-canvas hover:bg-status-success-bg border border-stroke-subtle hover:border-status-success-border text-content-primary hover:text-status-success-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
+          <button
+            type="button"
+            onClick={() => onStatusChange(apt.id, 'completed')}
+            className="w-full justify-center inline-flex items-center gap-2 h-10 px-4 rounded-glass bg-emerald-50/70 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 hover:text-emerald-800 text-sm font-semibold transition-colors"
+          >
             {Icons.check(14)} {L.complete}
           </button>
         )}
         <div className="flex gap-2">
-          {/* Single primary mint moment in panel: Reschedule */}
-          <button onClick={onEdit}
-            className="flex-1 justify-center h-[36px] rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body-sm font-semibold border-none cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard hover:shadow-glow-mint">
-            {Icons.edit(13)} {L.reschedule}
-          </button>
+          <Button
+            variant="primary"
+            className="flex-1 justify-center"
+            iconStart={Icons.edit}
+            onClick={onEdit}
+          >
+            {L.reschedule}
+          </Button>
           {apt.status !== 'cancelled' && apt.status !== 'completed' && (
-            <button onClick={() => onStatusChange(apt.id, 'cancelled')}
-              className="flex-1 justify-center h-[36px] rounded-md bg-surface-canvas hover:bg-status-danger-bg border border-stroke-subtle hover:border-status-danger-border text-content-primary hover:text-status-danger-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
+            <button
+              type="button"
+              onClick={() => onStatusChange(apt.id, 'cancelled')}
+              className="flex-1 justify-center inline-flex items-center gap-2 h-10 px-4 rounded-glass bg-white/85 hover:bg-rose-50 border border-navy-100 hover:border-rose-200 text-navy-700 hover:text-rose-700 text-sm font-semibold transition-colors"
+            >
               {Icons.x(13)} {L.cancel}
             </button>
           )}
         </div>
-        <button onClick={() => onDelete(apt.id)}
-          className="w-full justify-center h-[36px] rounded-md bg-transparent hover:bg-status-danger-bg border border-stroke-subtle hover:border-status-danger-border text-status-danger-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
-          {Icons.trash(13)} {L.delete}
-        </button>
+        <Button
+          variant="destructive"
+          className="w-full justify-center"
+          iconStart={Icons.trash}
+          onClick={() => onDelete(apt.id)}
+        >
+          {L.delete}
+        </Button>
 
-        {/* WhatsApp Reminder — neutral outline (NOT WhatsApp brand green) */}
+        {/* WhatsApp Reminder — neutral outline */}
         {apt.patients?.phone && (
-          <button onClick={() => {
-            const msg = encodeURIComponent(`Reminder: Your appointment is on ${aptDateStr(apt)} at ${startTime}`)
-            const phone = apt.patients.phone.replace(/[^0-9]/g, '')
-            window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')
-          }}
-            className="w-full justify-center h-[38px] rounded-md bg-transparent hover:bg-surface-canvas border border-stroke-subtle text-content-secondary hover:text-content-primary text-body-sm font-semibold cursor-pointer flex items-center transition-colors duration-fast ease-standard">
+          <button
+            type="button"
+            onClick={() => {
+              const msg = encodeURIComponent(`Reminder: Your appointment is on ${aptDateStr(apt)} at ${startTime}`)
+              const phone = apt.patients.phone.replace(/[^0-9]/g, '')
+              window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')
+            }}
+            className="w-full justify-center inline-flex items-center h-10 rounded-glass bg-transparent hover:bg-navy-50 border border-navy-100 text-navy-600 hover:text-navy-800 text-sm font-semibold transition-colors"
+          >
             {L.sendReminder}
           </button>
         )}
@@ -987,9 +1054,9 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
 function DetailRow({ icon, label, value, tabular }) {
   return (
     <div className="flex items-center gap-2">
-      {icon && <span className="text-content-tertiary flex-shrink-0">{icon}</span>}
-      <span className="text-caption text-content-tertiary font-bold uppercase min-w-[70px]">{label}:</span>
-      <span className={`text-body-sm text-content-primary font-medium ${tabular ? 'tabular-nums lining-nums' : ''}`}>
+      {icon && <span className="text-navy-400 flex-shrink-0">{icon}</span>}
+      <span className="text-[10px] text-navy-500 font-semibold uppercase tracking-wider min-w-[70px]">{label}:</span>
+      <span className={`text-sm text-navy-800 font-medium ${tabular ? 'tabular-nums' : ''}`}>
         {value}
       </span>
     </div>
