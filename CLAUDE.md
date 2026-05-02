@@ -113,9 +113,9 @@ No test framework is configured. (Tech debt — adding Vitest is roadmap work.)
 
 Required (see `.env.example`):
 
-    VITE_SUPABASE_URL
-    VITE_SUPABASE_ANON_KEY
-    VITE_SUPABASE_SERVICE_KEY
+    VITE_SUPABASE_URL              # client-bundled
+    VITE_SUPABASE_ANON_KEY         # client-bundled
+    SUPABASE_SERVICE_ROLE_KEY      # server-only — never VITE_-prefixed
 
 Falls back to demo mode with sample data if Supabase is not configured.
 

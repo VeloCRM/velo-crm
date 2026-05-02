@@ -1,28 +1,39 @@
 import React, { useState, useEffect } from 'react'
 import { Modal, FormField, inputStyle, selectStyle, Icons } from './shared'
-import { makeBtn } from '../design'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { todayLocal } from '../lib/date'
 import { getCurrentUser, getCurrentOrgId } from '../lib/auth_session'
 import { listDoctorsInOrg } from '../lib/profiles'
-import { searchContactsForAppointment, upsertAppointment } from '../lib/appointments'
-import { insertContact } from '../lib/database'
+import { searchPatientsForAppointment, upsertAppointment } from '../lib/appointments'
+import { insertPatient } from '../lib/database'
 
+// Schema enums (src/lib/schema.sql).
 const TYPE_OPTIONS = [
-  { value: 'checkup', label: 'Checkup' },
-  { value: 'cleaning', label: 'Cleaning' },
-  { value: 'filling', label: 'Filling' },
-  { value: 'extraction', label: 'Extraction' },
-  { value: 'root_canal', label: 'Root Canal' },
-  { value: 'whitening', label: 'Whitening' },
-  { value: 'other', label: 'Other' }
+  { value: 'checkup',      label: 'Checkup' },
+  { value: 'cleaning',     label: 'Cleaning' },
+  { value: 'filling',      label: 'Filling' },
+  { value: 'extraction',   label: 'Extraction' },
+  { value: 'root_canal',   label: 'Root Canal' },
+  { value: 'crown',        label: 'Crown' },
+  { value: 'whitening',    label: 'Whitening' },
+  { value: 'consultation', label: 'Consultation' },
+  { value: 'emergency',    label: 'Emergency' },
+]
+
+const STATUS_OPTIONS = [
+  { value: 'scheduled',   label: 'Scheduled' },
+  { value: 'confirmed',   label: 'Confirmed' },
+  { value: 'in_progress', label: 'In Progress' },
+  { value: 'completed',   label: 'Completed' },
+  { value: 'no_show',     label: 'No-show' },
+  { value: 'cancelled',   label: 'Cancelled' },
 ]
 
 const DURATION_OPTIONS = [
   { value: 30, label: '30 minutes' },
   { value: 45, label: '45 minutes' },
   { value: 60, label: '1 hour' },
-  { value: 90, label: '1 hour 30 mins' }
+  { value: 90, label: '1 hour 30 mins' },
 ]
 
 const TIME_SLOTS = []
@@ -32,19 +43,43 @@ for (let h = 8; h <= 20; h++) {
   if (h !== 20) TIME_SLOTS.push(`${hr}:30`)
 }
 
-export default function AddAppointmentModal({ onClose, onSave, contacts, initialDate, editAppointment }) {
+// Combine separate date (YYYY-MM-DD) and time (HH:mm) inputs into an ISO
+// timestamp in the user's local timezone, then send as ISO (with offset).
+// Postgres stores it as timestamptz so the conversion is handled there.
+function combineDateTime(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return null
+  // Construct via Date(year, month, day, hour, minute) so the result is a
+  // local-time wall clock, then .toISOString() converts to UTC.
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const [hh, mm] = timeStr.split(':').map(Number)
+  if ([y, m, d, hh, mm].some(n => Number.isNaN(n))) return null
+  return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString()
+}
+
+// Inverse: split an ISO scheduled_at into local YYYY-MM-DD + HH:mm.
+function splitScheduledAt(iso) {
+  if (!iso) return { date: todayLocal(), time: '10:00' }
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return { date: todayLocal(), time: '10:00' }
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  return { date, time }
+}
+
+export default function AddAppointmentModal({ onClose, onSave, patients, initialDate, editAppointment }) {
+  const initialSplit = splitScheduledAt(editAppointment?.scheduled_at)
   const [form, setForm] = useState({
-    contact_id: editAppointment?.contact_id || '',
+    patient_id: editAppointment?.patient_id || '',
     doctor_id: editAppointment?.doctor_id || '',
-    title: editAppointment?.title || '',
-    appointment_date: editAppointment?.appointment_date || initialDate || todayLocal(),
-    appointment_time: editAppointment?.appointment_time?.slice(0,5) || '10:00',
+    date: editAppointment?.scheduled_at ? initialSplit.date : (initialDate || todayLocal()),
+    time: editAppointment?.scheduled_at ? initialSplit.time : '10:00',
     duration_minutes: editAppointment?.duration_minutes || 30,
     type: editAppointment?.type || 'checkup',
+    status: editAppointment?.status || 'scheduled',
+    chair_id: editAppointment?.chair_id || '',
     notes: editAppointment?.notes || '',
-    status: editAppointment?.status || 'pending'
   })
-  
+
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -53,7 +88,7 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
   const [orgId, setOrgId] = useState(null)
   const [success, setSuccess] = useState(null)
   const [showNewPatient, setShowNewPatient] = useState(false)
-  const [newPatientForm, setNewPatientForm] = useState({ name: '', phone: '', dob: '' })
+  const [newPatientForm, setNewPatientForm] = useState({ full_name: '', phone: '', dob: '', email: '' })
   const [doctors, setDoctors] = useState([])
 
   useEffect(() => {
@@ -68,18 +103,19 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
         const docs = await listDoctorsInOrg()
         if (!cancelled) setDoctors(docs)
       } catch {
-        // Silent fall-through; the form just renders without doctor options.
+        // Empty state is fine — page renders without doctor options.
       }
     })()
     return () => { cancelled = true }
   }, [])
 
+  // Patient search by full_name / phone
   useEffect(() => {
-    if (searchQuery.length >= 2 && !form.contact_id && orgId) {
+    if (searchQuery.length >= 2 && !form.patient_id && orgId) {
       let cancelled = false
       ;(async () => {
         try {
-          const rows = await searchContactsForAppointment(searchQuery)
+          const rows = await searchPatientsForAppointment(searchQuery)
           if (!cancelled) setSearchResults(rows)
         } catch {
           if (!cancelled) setSearchResults([])
@@ -89,40 +125,32 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
     } else {
       setSearchResults([])
     }
-  }, [searchQuery, form.contact_id, orgId])
+  }, [searchQuery, form.patient_id, orgId])
 
+  // Pre-fill the search field if we already know the patient id
   useEffect(() => {
-    if (form.contact_id && !searchQuery) {
-      const initialContact = contacts.find(c => c.id === form.contact_id)
-      if (initialContact) setSearchQuery(initialContact.name)
+    if (form.patient_id && !searchQuery) {
+      const p = patients?.find(x => x.id === form.patient_id)
+      if (p) setSearchQuery(p.full_name || p.fullName || '')
     }
-  }, [form.contact_id, contacts])
+  }, [form.patient_id, patients])
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
-
-  useEffect(() => {
-    if (editAppointment) return
-    const contact = contacts.find(c => c.id === form.contact_id) || searchResults.find(c => c.id === form.contact_id)
-    const typeLabel = TYPE_OPTIONS.find(t => t.value === form.type)?.label || 'Appointment'
-    let newTitle = typeLabel
-    if (contact || form.contact_id) {
-      newTitle = `${searchQuery || (contact && contact.name)} - ${typeLabel}`
-    }
-    set('title', newTitle)
-  }, [form.contact_id, form.type, contacts, searchResults, searchQuery])
 
   const handleAddNewPatient = async () => {
     setLoading(true); setError(null); setSuccess(null)
     try {
-      if (!newPatientForm.name) throw new Error('Patient name is required')
+      if (!newPatientForm.full_name) throw new Error('Patient name is required')
+      if (!newPatientForm.phone) throw new Error('Patient phone is required')
       if (!orgId) throw new Error('Organization context not loaded')
-      const created = await insertContact({
-        name: newPatientForm.name,
+      const created = await insertPatient({
+        full_name: newPatientForm.full_name,
         phone: newPatientForm.phone,
-        notes: newPatientForm.dob ? `Date of Birth: ${newPatientForm.dob}` : '',
+        email: newPatientForm.email || null,
+        dob: newPatientForm.dob || null,
       }, orgId)
-      set('contact_id', created.id)
-      setSearchQuery(created.name)
+      set('patient_id', created.id)
+      setSearchQuery(created.fullName || created.full_name || newPatientForm.full_name)
       setShowDropdown(false)
       setShowNewPatient(false)
       setSuccess('Patient added successfully')
@@ -135,22 +163,24 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
   }
 
   const handleSave = async () => {
-    if (!form.contact_id || !form.appointment_date || !form.appointment_time || !form.title) {
-      setError('Please fill in all required fields.'); return
+    if (!form.patient_id || !form.date || !form.time) {
+      setError('Patient, date, and time are required.'); return
     }
     setLoading(true); setError(null)
     try {
       if (!isSupabaseConfigured()) throw new Error('Supabase is not configured.')
+      const scheduled_at = combineDateTime(form.date, form.time)
+      if (!scheduled_at) throw new Error('Invalid date or time')
+
       const payload = {
-        contact_id: form.contact_id,
+        patient_id: form.patient_id,
         doctor_id: form.doctor_id || null,
-        title: form.title,
-        appointment_date: form.appointment_date,
-        appointment_time: form.appointment_time,
-        duration_minutes: Number(form.duration_minutes),
         type: form.type,
         status: form.status,
-        notes: form.notes,
+        scheduled_at,
+        duration_minutes: Number(form.duration_minutes),
+        chair_id: form.chair_id || null,
+        notes: form.notes || null,
       }
       const saved = await upsertAppointment(
         editAppointment?.id ? { id: editAppointment.id, ...payload } : payload
@@ -164,7 +194,7 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
     }
   }
 
-  const selectedDoctor = doctors.find(d => d.id === form.doctor_id)
+  const selectedPatient = patients?.find(p => p.id === form.patient_id) || null
 
   return (
     <Modal onClose={onClose} width={520} dir="ltr">
@@ -172,9 +202,7 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
         <h2 style={{ fontSize: 20, fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>
           {editAppointment ? 'Edit Appointment' : 'New Appointment'}
         </h2>
-        <button type="button" onClick={onClose} style={{ width:32, height:32, border: '1px solid var(--border-default)', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems:'center', justifyContent:'center', borderRadius:'var(--radius-sm)', transition:'var(--transition)' }}
-          onMouseEnter={e=>{e.currentTarget.style.background='var(--bg-hover)';e.currentTarget.style.color='var(--text-primary)'}}
-          onMouseLeave={e=>{e.currentTarget.style.background='transparent';e.currentTarget.style.color='var(--text-muted)'}}>
+        <button type="button" onClick={onClose} style={{ width: 32, height: 32, border: '1px solid var(--border-default)', background: 'transparent', cursor: 'pointer', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 'var(--radius-sm)' }}>
           {Icons.x(16)}
         </button>
       </div>
@@ -183,10 +211,12 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
       {success && <div style={{ padding: '10px 14px', background: 'rgba(0,255,178,0.1)', color: 'var(--accent-green)', borderRadius: 'var(--radius-sm)', fontSize: 13, marginBottom: 16, border: '1px solid rgba(0,255,178,0.25)' }}>{Icons.check(14)} {success}</div>}
 
       <FormField label="Patient">
-        {form.contact_id ? (
+        {form.patient_id ? (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', ...inputStyle('ltr') }}>
-            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{searchQuery || contacts.find(c => c.id === form.contact_id)?.name || 'Patient'}</span>
-            <button type="button" onClick={() => { set('contact_id', ''); setSearchQuery('') }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-muted)' }}>
+            <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+              {searchQuery || selectedPatient?.full_name || selectedPatient?.fullName || 'Patient'}
+            </span>
+            <button type="button" onClick={() => { set('patient_id', ''); setSearchQuery('') }} style={{ border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', color: 'var(--text-muted)' }}>
               {Icons.x(16)}
             </button>
           </div>
@@ -201,21 +231,17 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
             />
             {showDropdown && searchQuery.length >= 2 && !showNewPatient && (
               <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--bg-secondary)', border: '1px solid var(--border-hover)', borderRadius: 'var(--radius-sm)', marginTop: 4, zIndex: 10, maxHeight: 250, overflowY: 'auto', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-                {searchResults.length > 0 ? searchResults.map(c => (
-                  <div key={c.id} onClick={() => { set('contact_id', c.id); setSearchQuery(c.name); setShowDropdown(false) }}
-                    style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-default)', cursor: 'pointer', transition: 'var(--transition)' }}
-                    onMouseEnter={e=>e.currentTarget.style.background='var(--bg-hover)'}
-                    onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{c.name}</div>
-                    {c.phone && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{c.phone}</div>}
+                {searchResults.length > 0 ? searchResults.map(p => (
+                  <div key={p.id} onClick={() => { set('patient_id', p.id); setSearchQuery(p.full_name); setShowDropdown(false) }}
+                    style={{ padding: '10px 14px', borderBottom: '1px solid var(--border-default)', cursor: 'pointer' }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{p.full_name}</div>
+                    {p.phone && <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{p.phone}</div>}
                   </div>
                 )) : (
                   <div style={{ padding: '16px', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <div style={{ fontSize: 13, marginBottom: 12 }}>No patients found</div>
-                    <button type="button" onClick={() => { setShowNewPatient(true); setNewPatientForm(p => ({ ...p, name: searchQuery })) }}
-                      style={{ width:'100%', padding:'8px 14px', border:'1px solid var(--accent-primary)', background:'transparent', color:'var(--accent-primary)', borderRadius:'var(--radius-sm)', fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit', transition:'var(--transition)' }}
-                      onMouseEnter={e=>e.currentTarget.style.background='rgba(0,255,178,0.08)'}
-                      onMouseLeave={e=>e.currentTarget.style.background='transparent'}>
+                    <button type="button" onClick={() => { setShowNewPatient(true); setNewPatientForm(p => ({ ...p, full_name: searchQuery })) }}
+                      style={{ width: '100%', padding: '8px 14px', border: '1px solid var(--accent-primary)', background: 'transparent', color: 'var(--accent-primary)', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                       {Icons.plus(14)} Add as new patient
                     </button>
                   </div>
@@ -226,12 +252,15 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
               <div style={{ marginTop: 12, padding: 16, border: '1px solid var(--border-hover)', borderRadius: 'var(--radius-md)', background: 'var(--bg-secondary)' }}>
                 <h4 style={{ margin: '0 0 12px 0', fontSize: 14, fontWeight: 700, color: 'var(--text-primary)' }}>Add New Patient</h4>
                 <div style={{ display: 'grid', gap: 12 }}>
-                  <input value={newPatientForm.name} onChange={e => setNewPatientForm(p => ({ ...p, name: e.target.value }))} placeholder="Full Name" style={inputStyle('ltr')} />
+                  <input value={newPatientForm.full_name} onChange={e => setNewPatientForm(p => ({ ...p, full_name: e.target.value }))} placeholder="Full Name" style={inputStyle('ltr')} />
                   <input value={newPatientForm.phone} onChange={e => setNewPatientForm(p => ({ ...p, phone: e.target.value }))} placeholder="Phone Number" style={inputStyle('ltr')} />
+                  <input value={newPatientForm.email} onChange={e => setNewPatientForm(p => ({ ...p, email: e.target.value }))} placeholder="Email (optional)" type="email" style={inputStyle('ltr')} />
                   <input type="date" value={newPatientForm.dob} onChange={e => setNewPatientForm(p => ({ ...p, dob: e.target.value }))} placeholder="Date of Birth" style={inputStyle('ltr')} />
                   <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
-                    <button type="button" onClick={() => setShowNewPatient(false)} style={{ padding:'8px 16px', border:'1px solid var(--border-default)', background:'transparent', color:'var(--text-secondary)', borderRadius:'var(--radius-sm)', cursor:'pointer', fontSize:13, fontFamily:'inherit' }}>Cancel</button>
-                    <button type="button" onClick={handleAddNewPatient} disabled={loading} style={{ padding:'8px 16px', background:'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', border:'none', color:'#fff', borderRadius:'var(--radius-sm)', cursor:'pointer', fontSize:13, fontWeight:600, fontFamily:'inherit' }}>{loading ? 'Saving...' : 'Add & Select'}</button>
+                    <button type="button" onClick={() => setShowNewPatient(false)} style={{ padding: '8px 16px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 13, fontFamily: 'inherit' }}>Cancel</button>
+                    <button type="button" onClick={handleAddNewPatient} disabled={loading} style={{ padding: '8px 16px', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', border: 'none', color: '#fff', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 13, fontWeight: 600, fontFamily: 'inherit' }}>
+                      {loading ? 'Saving...' : 'Add & Select'}
+                    </button>
                   </div>
                 </div>
               </div>
@@ -240,34 +269,19 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
         )}
       </FormField>
 
-      {/* Assign Doctor */}
       <FormField label="Assign Doctor">
-        <div style={{ position: 'relative' }}>
-          {doctors.length === 0 ? (
-            <div style={{ ...inputStyle('ltr'), color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 13 }}>No doctors found — add doctors in Settings → Team</span>
-            </div>
-          ) : (
-            <select value={form.doctor_id} onChange={e => set('doctor_id', e.target.value)} style={selectStyle('ltr')}>
-              <option value="">-- Unassigned --</option>
-              {doctors.map(d => (
-                <option key={d.id} value={d.id}>
-                  {d.full_name || 'Dr. Unknown'}{d.specialization ? ` (${d.specialization})` : ''}
-                </option>
-              ))}
-            </select>
-          )}
-          {selectedDoctor && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
-              <div style={{ width: 10, height: 10, borderRadius: '50%', background: selectedDoctor.color || '#4DA6FF', flexShrink: 0 }} />
-              <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{selectedDoctor.specialization || 'General'}</span>
-            </div>
-          )}
-        </div>
-      </FormField>
-
-      <FormField label="Title">
-        <input value={form.title} onChange={e => set('title', e.target.value)} placeholder="Appointment title" style={inputStyle('ltr')} />
+        {doctors.length === 0 ? (
+          <div style={{ ...inputStyle('ltr'), color: 'var(--text-muted)', fontSize: 13 }}>
+            No doctors found — add doctors in Settings → Team
+          </div>
+        ) : (
+          <select value={form.doctor_id} onChange={e => set('doctor_id', e.target.value)} style={selectStyle('ltr')}>
+            <option value="">— Unassigned —</option>
+            {doctors.map(d => (
+              <option key={d.id} value={d.id}>{d.full_name || 'Dr.'}</option>
+            ))}
+          </select>
+        )}
       </FormField>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
@@ -277,7 +291,7 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
           </select>
         </FormField>
         <FormField label="Duration">
-          <select value={form.duration_minutes} onChange={e => set('duration_minutes', e.target.value)} style={selectStyle('ltr')}>
+          <select value={form.duration_minutes} onChange={e => set('duration_minutes', Number(e.target.value))} style={selectStyle('ltr')}>
             {DURATION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
         </FormField>
@@ -285,14 +299,27 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
         <FormField label="Date">
-          <input type="date" value={form.appointment_date} onChange={e => set('appointment_date', e.target.value)} style={inputStyle('ltr')} />
+          <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={inputStyle('ltr')} />
         </FormField>
         <FormField label="Time">
-          <select value={form.appointment_time} onChange={e => set('appointment_time', e.target.value)} style={selectStyle('ltr')}>
+          <select value={form.time} onChange={e => set('time', e.target.value)} style={selectStyle('ltr')}>
             <option value="">Select time...</option>
             {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         </FormField>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+        <FormField label="Chair">
+          <input value={form.chair_id} onChange={e => set('chair_id', e.target.value)} placeholder="e.g. chair-1" style={inputStyle('ltr')} />
+        </FormField>
+        {editAppointment && (
+          <FormField label="Status">
+            <select value={form.status} onChange={e => set('status', e.target.value)} style={selectStyle('ltr')}>
+              {STATUS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </FormField>
+        )}
       </div>
 
       <FormField label="Notes">
@@ -306,12 +333,8 @@ export default function AddAppointmentModal({ onClose, onSave, contacts, initial
       </FormField>
 
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-        <button type="button" onClick={onClose} style={{ padding:'10px 20px', border:'1px solid var(--border-default)', background:'transparent', color:'var(--text-secondary)', borderRadius:'var(--radius-sm)', cursor:'pointer', fontSize:14, fontFamily:'inherit', transition:'var(--transition)' }}
-          onMouseEnter={e=>e.currentTarget.style.borderColor='var(--border-hover)'}
-          onMouseLeave={e=>e.currentTarget.style.borderColor='var(--border-default)'}>Cancel</button>
-        <button type="button" onClick={handleSave} disabled={loading} style={{ flex:1, padding:'12px 20px', background:'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', border:'none', color:'#fff', borderRadius:'var(--radius-sm)', cursor:'pointer', fontSize:14, fontWeight:700, fontFamily:'inherit', transition:'var(--transition)' }}
-          onMouseEnter={e=>{e.currentTarget.style.opacity='0.88';e.currentTarget.style.transform='translateY(-1px)'}}
-          onMouseLeave={e=>{e.currentTarget.style.opacity='1';e.currentTarget.style.transform='translateY(0)'}}>
+        <button type="button" onClick={onClose} style={{ padding: '10px 20px', border: '1px solid var(--border-default)', background: 'transparent', color: 'var(--text-secondary)', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 14, fontFamily: 'inherit' }}>Cancel</button>
+        <button type="button" onClick={handleSave} disabled={loading} style={{ flex: 1, padding: '12px 20px', background: 'linear-gradient(135deg, var(--accent-primary), var(--accent-secondary))', border: 'none', color: '#fff', borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 14, fontWeight: 700, fontFamily: 'inherit' }}>
           {loading ? 'Saving...' : 'Save Appointment'}
         </button>
       </div>

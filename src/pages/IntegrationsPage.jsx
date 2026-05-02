@@ -12,7 +12,7 @@ const INTEGRATIONS = [
   { id: 'meta_ads', name: 'Meta Ads', desc: 'Import leads from Facebook and Instagram ad campaigns', category: 'marketing', connected: false, color: '#0668E1', initial: 'M' },
   { id: 'zapier', name: 'Zapier', desc: 'Connect Velo to 5000+ apps with automated workflows', category: 'automation', connected: false, color: '#FF4A00', initial: 'Z' },
   { id: 'make', name: 'Make (Integromat)', desc: 'Build advanced automation scenarios with visual builder', category: 'automation', connected: false, color: '#6D00CC', initial: 'M' },
-  { id: 'stripe', name: 'Stripe', desc: 'Process payments, track invoices, and manage subscriptions', category: 'payments', connected: false, color: '#635BFF', initial: 'S' },
+  { id: 'stripe', name: 'Stripe', desc: 'Process payments and manage subscriptions', category: 'payments', connected: false, color: '#635BFF', initial: 'S' },
 ]
 
 const CATEGORIES = [

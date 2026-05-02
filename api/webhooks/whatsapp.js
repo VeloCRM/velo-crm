@@ -23,10 +23,7 @@ import { createClient } from '@supabase/supabase-js'
 export const config = { api: { bodyParser: false } }
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
-const serviceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_SERVICE_KEY ||
-  process.env.VITE_SUPABASE_SERVICE_KEY
+const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 // Hard fail at module load — there is no anon-key fallback.
 if (!serviceKey) {

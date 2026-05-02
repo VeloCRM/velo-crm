@@ -1,137 +1,133 @@
 /**
- * Velo CRM — core data-access helpers.
+ * Velo CRM — core data-access helpers (new schema).
  *
- * Every helper here:
+ * Targets the post-Sprint-0 dental schema declared in src/lib/schema.sql:
+ * patients, appointments, payments, treatment_plans, profiles, orgs,
+ * audit_log, org_secrets, etc. The legacy tables (contacts, organizations,
+ * deals, items, treatments, prescriptions, xrays, agency_settings, etc.)
+ * are gone.
+ *
+ * Every helper:
  *   - calls requireUser() (throws if not authenticated),
  *   - resolves the caller's org_id via getCurrentOrgId() and pins it on
  *     every query as `.eq('org_id', orgId)` for defense in depth on top of
  *     RLS,
  *   - sanitizes user-supplied text fields BEFORE the supabase call,
- *   - calls logAuditEvent on every successful mutation. Audit-log failures
- *     bubble up — never swallowed.
- *
- * JSON-column updates (contacts.notes timeline / documents) go through
- * server-side Postgres functions added in src/lib/schema.sql so the read-
- * modify-write race is fixed atomically with row locks.
+ *   - calls logAuditEvent on every successful mutation.
  */
 
 import { supabase } from './supabase'
 import {
-  sanitizeContact,
   sanitizeText,
   sanitizeName,
   sanitizeEmail,
   sanitizePhone,
   sanitizeNotes,
-  sanitizeTags,
   LIMITS,
   toSafeNumber,
 } from './sanitize'
 import { requireUser, getCurrentOrgId } from './auth_session'
 import { logAuditEvent } from './audit'
 
-// ─── Notes JSON helpers ────────────────────────────────────────────────────
-// Notes field stores JSON: { bio: "", timeline: [...], documents: [...] }
-// Legacy contacts may have plain text — handle both.
 
-function parseNotesJson(notesStr) {
-  if (!notesStr) return { bio: '', timeline: [], documents: [] }
-  try {
-    const parsed = JSON.parse(notesStr)
-    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.timeline)) {
-      return { bio: parsed.bio || '', timeline: parsed.timeline, documents: parsed.documents || [] }
-    }
-  } catch {
-    // Plain-text legacy fallback
+// ─── Patients ──────────────────────────────────────────────────────────────
+// Replaces the legacy `contacts` table. Money / status / tags / category /
+// company / source columns from the old contacts shape do not exist on
+// patients — they were never patient-level concepts.
+
+export const PATIENTS_PAGE_SIZE = 100
+
+function mapPatient(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email || '',
+    dob: row.dob || '',
+    gender: row.gender || null,
+    medicalHistory: row.medical_history || {},
+    allergies: row.allergies || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
-  return { bio: notesStr, timeline: [], documents: [] }
 }
 
+function sanitizePatient(p) {
+  return {
+    full_name: sanitizeName(p.full_name || p.fullName || ''),
+    phone: sanitizePhone(p.phone || ''),
+    email: p.email ? sanitizeEmail(p.email) : null,
+    dob: p.dob || null,
+    gender: p.gender ? sanitizeText(p.gender, 32) : null,
+    medical_history: p.medical_history || p.medicalHistory || {},
+    allergies: p.allergies || [],
+  }
+}
 
-// ─── Contacts ───────────────────────────────────────────────────────────────
-
-// Supabase caps rows at 1000 per request — paginate with .range() + exact count.
-// Page size is intentionally small so the initial load is fast; callers use
-// the Load More UI to pull the next page.
-export const CONTACTS_PAGE_SIZE = 100
-
-export async function fetchContacts(offset = 0, limit = CONTACTS_PAGE_SIZE) {
+export async function fetchPatients(offset = 0, limit = PATIENTS_PAGE_SIZE) {
   await requireUser()
   const orgId = await getCurrentOrgId()
   const { data, error, count } = await supabase
-    .from('contacts')
+    .from('patients')
     .select('*', { count: 'exact' })
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
   if (error) throw error
-  const rows = (data || []).map(mapContact)
+  const rows = (data || []).map(mapPatient)
   const total = count ?? rows.length
   return { rows, total, hasMore: offset + rows.length < total }
 }
 
-export async function insertContact(c, orgId) {
+export async function insertPatient(patient, orgId) {
+  if (!orgId) throw new Error('insertPatient: orgId is required')
   await requireUser()
-  if (!orgId) throw new Error('insertContact: orgId is required')
   const myOrgId = await getCurrentOrgId()
   if (orgId !== myOrgId) {
-    throw new Error('insertContact: org_id mismatch with current session')
+    throw new Error('insertPatient: org_id mismatch with current session')
   }
+  await assertTestAccountLimit(orgId, 'patients')
 
-  const sanitized = sanitizeContact(c || {})
-  const userId = (await supabase.auth.getUser()).data.user?.id
-  const notesJson = JSON.stringify({ bio: sanitized.notes || '', timeline: [], documents: [] })
+  const sanitized = sanitizePatient(patient)
 
   const { data, error } = await supabase
-    .from('contacts')
-    .insert({
-      org_id: orgId,
-      user_id: userId,
-      name: sanitized.name,
-      email: sanitized.email || '',
-      phone: sanitized.phone || '',
-      company: sanitized.company || '',
-      city: sanitized.city || '',
-      category: sanitizeText(c.category || 'prospect', 32),
-      status: sanitizeText(c.status || 'lead', 32),
-      tags: sanitized.tags,
-      source: sanitizeText(c.source || 'inbound', 32),
-      notes: notesJson,
-    })
+    .from('patients')
+    .insert({ org_id: orgId, ...sanitized })
     .select()
     .single()
   if (error) throw error
 
   await logAuditEvent({
     orgId,
-    action: 'contact.create',
-    entityType: 'contact',
+    action: 'patient.create',
+    entityType: 'patient',
     entityId: data?.id || null,
   })
 
-  return mapContact(data)
+  return mapPatient(data)
 }
 
-export async function patchContact(id, updates) {
-  if (!id) throw new Error('patchContact: id is required')
+export async function patchPatient(id, updates) {
+  if (!id) throw new Error('patchPatient: id is required')
   await requireUser()
   const orgId = await getCurrentOrgId()
 
   const patch = {}
-  if (updates.name !== undefined) patch.name = sanitizeName(updates.name)
-  if (updates.email !== undefined) patch.email = sanitizeEmail(updates.email)
+  if (updates.full_name !== undefined || updates.fullName !== undefined) {
+    patch.full_name = sanitizeName(updates.full_name ?? updates.fullName ?? '')
+  }
   if (updates.phone !== undefined) patch.phone = sanitizePhone(updates.phone)
-  if (updates.company !== undefined) patch.company = sanitizeText(updates.company, 100)
-  if (updates.city !== undefined) patch.city = sanitizeText(updates.city, 100)
-  if (updates.category !== undefined) patch.category = sanitizeText(updates.category, 32)
-  if (updates.status !== undefined) patch.status = sanitizeText(updates.status, 32)
-  if (updates.tags !== undefined) patch.tags = sanitizeTags(updates.tags)
-  if (updates.source !== undefined) patch.source = sanitizeText(updates.source, 32)
-  if (updates.notes !== undefined) patch.notes = sanitizeNotes(updates.notes)
-  if (updates._rawNotes !== undefined) patch.notes = updates._rawNotes // pre-built JSON blob
+  if (updates.email !== undefined) patch.email = updates.email ? sanitizeEmail(updates.email) : null
+  if (updates.dob !== undefined) patch.dob = updates.dob || null
+  if (updates.gender !== undefined) patch.gender = updates.gender ? sanitizeText(updates.gender, 32) : null
+  if (updates.medical_history !== undefined) patch.medical_history = updates.medical_history
+  if (updates.medicalHistory !== undefined) patch.medical_history = updates.medicalHistory
+  if (updates.allergies !== undefined) patch.allergies = updates.allergies
 
   const { data, error } = await supabase
-    .from('contacts')
+    .from('patients')
     .update(patch)
     .eq('id', id)
     .eq('org_id', orgId)
@@ -141,21 +137,21 @@ export async function patchContact(id, updates) {
 
   await logAuditEvent({
     orgId,
-    action: 'contact.update',
-    entityType: 'contact',
+    action: 'patient.update',
+    entityType: 'patient',
     entityId: id,
     payload: { fields: Object.keys(patch) },
   })
 
-  return mapContact(data)
+  return mapPatient(data)
 }
 
-export async function removeContact(id) {
-  if (!id) throw new Error('removeContact: id is required')
+export async function removePatient(id) {
+  if (!id) throw new Error('removePatient: id is required')
   await requireUser()
   const orgId = await getCurrentOrgId()
   const { error } = await supabase
-    .from('contacts')
+    .from('patients')
     .delete()
     .eq('id', id)
     .eq('org_id', orgId)
@@ -163,210 +159,52 @@ export async function removeContact(id) {
 
   await logAuditEvent({
     orgId,
-    action: 'contact.delete',
-    entityType: 'contact',
+    action: 'patient.delete',
+    entityType: 'patient',
     entityId: id,
   })
 }
 
-// ─── Contact Notes (timeline) ──────────────────────────────────────────────
-// Atomic via the `contact_append_timeline` Postgres function (Phase 6
-// migration). The function takes a row lock, parses the JSON text column,
-// appends to the timeline array, and writes back — all in one transaction.
-// The previous client-side read-modify-write was a last-write-wins race.
-
-export async function addContactNote(contactId, note) {
-  if (!contactId) throw new Error('addContactNote: contactId is required')
-  await requireUser()
-  const orgId = await getCurrentOrgId()
-
-  // Sanitize the note text. id/author/date come from caller (server values).
-  const sanitizedNote = {
-    ...note,
-    text: sanitizeText(note?.text || '', LIMITS.notes),
-    author: sanitizeText(note?.author || '', LIMITS.name),
-  }
-
-  // Defense in depth: confirm the row is in the caller's org before mutating.
-  const { data: target, error: lookupErr } = await supabase
-    .from('contacts')
-    .select('id')
-    .eq('id', contactId)
-    .eq('org_id', orgId)
-    .maybeSingle()
-  if (lookupErr) throw lookupErr
-  if (!target) throw new Error('addContactNote: contact not found in your org')
-
-  const { error: rpcErr } = await supabase.rpc('contact_append_timeline', {
-    p_contact_id: contactId,
-    p_entry: sanitizedNote,
-  })
-  if (rpcErr) throw rpcErr
-
-  // Re-fetch to return the up-to-date contact (the RPC returns the new notes
-  // string but the caller wants the full mapped contact).
-  const { data, error: refetchErr } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('id', contactId)
-    .eq('org_id', orgId)
-    .single()
-  if (refetchErr) throw refetchErr
-
-  await logAuditEvent({
-    orgId,
-    action: 'contact.note_add',
-    entityType: 'contact',
-    entityId: contactId,
-  })
-
-  return mapContact(data)
-}
-
-
-// ─── Contact Documents (Supabase Storage) ──────────────────────────────────
-
-export async function uploadContactDocument(contactId, file) {
-  if (!contactId) throw new Error('uploadContactDocument: contactId is required')
-  if (!file) throw new Error('uploadContactDocument: file is required')
-  await requireUser()
-  const orgId = await getCurrentOrgId()
-
-  const { data: target, error: lookupErr } = await supabase
-    .from('contacts')
-    .select('id')
-    .eq('id', contactId)
-    .eq('org_id', orgId)
-    .maybeSingle()
-  if (lookupErr) throw lookupErr
-  if (!target) throw new Error('uploadContactDocument: contact not found in your org')
-
-  const storagePath = `${contactId}/${Date.now()}_${file.name}`
-  const { error: uploadErr } = await supabase.storage
-    .from('documents').upload(storagePath, file, { upsert: false })
-  if (uploadErr) throw uploadErr
-
-  const doc = {
-    id: 'doc_' + Date.now(),
-    name: sanitizeText(file.name || '', 200),
-    size: (file.size / 1024).toFixed(1) + ' KB',
-    path: storagePath,
-    date: new Date().toLocaleDateString(),
-  }
-
-  const { error: rpcErr } = await supabase.rpc('contact_add_document', {
-    p_contact_id: contactId,
-    p_doc: doc,
-  })
-  if (rpcErr) throw rpcErr
-
-  const { data, error: refetchErr } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('id', contactId)
-    .eq('org_id', orgId)
-    .single()
-  if (refetchErr) throw refetchErr
-
-  await logAuditEvent({
-    orgId,
-    action: 'contact.document_upload',
-    entityType: 'contact',
-    entityId: contactId,
-    payload: { docId: doc.id, name: doc.name },
-  })
-
-  return mapContact(data)
-}
-
-export async function removeContactDocument(contactId, docId, storagePath) {
-  if (!contactId || !docId) throw new Error('removeContactDocument: contactId and docId are required')
-  await requireUser()
-  const orgId = await getCurrentOrgId()
-
-  const { data: target, error: lookupErr } = await supabase
-    .from('contacts')
-    .select('id')
-    .eq('id', contactId)
-    .eq('org_id', orgId)
-    .maybeSingle()
-  if (lookupErr) throw lookupErr
-  if (!target) throw new Error('removeContactDocument: contact not found in your org')
-
-  if (storagePath) {
-    const { error: storageErr } = await supabase.storage
-      .from('documents').remove([storagePath])
-    if (storageErr) throw storageErr
-  }
-
-  const { error: rpcErr } = await supabase.rpc('contact_remove_document', {
-    p_contact_id: contactId,
-    p_doc_id: docId,
-  })
-  if (rpcErr) throw rpcErr
-
-  const { data, error: refetchErr } = await supabase
-    .from('contacts')
-    .select('*')
-    .eq('id', contactId)
-    .eq('org_id', orgId)
-    .single()
-  if (refetchErr) throw refetchErr
-
-  await logAuditEvent({
-    orgId,
-    action: 'contact.document_remove',
-    entityType: 'contact',
-    entityId: contactId,
-    payload: { docId },
-  })
-
-  return mapContact(data)
-}
-
-export async function getDocumentSignedUrl(storagePath) {
-  await requireUser()
-  const { data, error } = await supabase.storage
-    .from('documents').createSignedUrl(storagePath, 3600)
-  if (error) throw error
-  return data.signedUrl
-}
-
-function mapContact(row) {
-  const notes = parseNotesJson(row.notes)
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    phone: row.phone,
-    company: row.company,
-    city: row.city,
-    category: row.category,
-    status: row.status,
-    tags: row.tags || [],
-    source: row.source,
-    notes: notes.bio,
-    notesTimeline: notes.timeline,
-    documents: notes.documents,
-    _rawNotes: row.notes,
-    createdAt: row.created_at?.slice(0, 10) || '',
-    activityHistory: [],
-  }
-}
-
 
 // ─── Payments ──────────────────────────────────────────────────────────────
+// New schema columns: org_id, patient_id, treatment_plan_id (nullable),
+// amount_minor (BIGINT), currency, method, recorded_at, recorded_by, notes.
+// No status, no deal_id, no source.
 
-export async function fetchPaymentsByContact(contactId) {
-  if (!contactId) throw new Error('fetchPaymentsByContact: contactId is required')
+const PAYMENT_METHODS = new Set(['cash', 'fib', 'zaincash', 'asia_hawala', 'card', 'other'])
+
+function mapPayment(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    patientId: row.patient_id,
+    treatmentPlanId: row.treatment_plan_id || null,
+    amountMinor: row.amount_minor != null ? Number(row.amount_minor) : 0,
+    currency: row.currency,
+    method: row.method,
+    recordedAt: row.recorded_at,
+    recordedBy: row.recorded_by || null,
+    notes: row.notes || '',
+    createdAt: row.created_at,
+  }
+}
+
+function sanitizePaymentMethod(m) {
+  const safe = sanitizeText(m || 'cash', 32).toLowerCase()
+  return PAYMENT_METHODS.has(safe) ? safe : 'other'
+}
+
+export async function fetchPaymentsByPatient(patientId) {
+  if (!patientId) throw new Error('fetchPaymentsByPatient: patientId is required')
   await requireUser()
   const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('payments')
     .select('*')
     .eq('org_id', orgId)
-    .eq('contact_id', contactId)
-    .order('payment_date', { ascending: false })
+    .eq('patient_id', patientId)
+    .order('recorded_at', { ascending: false })
   if (error) throw error
   return (data || []).map(mapPayment)
 }
@@ -383,24 +221,43 @@ export async function fetchAllPayments() {
   return (data || []).map(mapPayment)
 }
 
-export async function fetchTeamMembers(orgId) {
-  if (!orgId) return []
+/**
+ * FinancePage helper. Returns payments joined with patient (full_name, phone)
+ * and treatment plan (notes, status) for the current org, supporting:
+ *
+ *   from, to       - ISO strings filtering on payments.recorded_at
+ *   patientQuery   - ILIKE filter on patient.full_name (server-side join filter)
+ *   method         - exact match on payments.method (payment_method enum)
+ *   limit          - row cap (default 100)
+ *
+ * Each row keeps the raw schema shape (snake_case) so the page can pass
+ * amount_minor straight into formatMoney without remapping.
+ */
+export async function fetchPaymentsWithJoins({ from, to, method, limit = 100 } = {}) {
   await requireUser()
-  const myOrgId = await getCurrentOrgId()
-  if (orgId !== myOrgId) {
-    throw new Error('fetchTeamMembers: org_id mismatch with current session')
-  }
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, full_name, email, role')
+  const orgId = await getCurrentOrgId()
+
+  let q = supabase
+    .from('payments')
+    .select(`
+      id, amount_minor, currency, method, recorded_at, notes, treatment_plan_id, patient_id,
+      patient:patient_id ( id, full_name, phone ),
+      plan:treatment_plan_id ( id, status, notes )
+    `)
     .eq('org_id', orgId)
+    .order('recorded_at', { ascending: false })
+    .limit(Math.max(1, Math.min(limit, 500)))
+
+  if (from) q = q.gte('recorded_at', from)
+  if (to)   q = q.lte('recorded_at', to)
+  if (method) {
+    const safeMethod = sanitizeText(String(method), 32).toLowerCase()
+    if (PAYMENT_METHODS.has(safeMethod)) q = q.eq('method', safeMethod)
+  }
+
+  const { data, error } = await q
   if (error) throw error
-  return (data || []).map(p => ({
-    id: p.id,
-    name: p.full_name || p.email?.split('@')[0] || 'Team Member',
-    email: p.email,
-    role: p.role,
-  }))
+  return data || []
 }
 
 export async function insertPayment(p) {
@@ -408,26 +265,23 @@ export async function insertPayment(p) {
   const orgId = await getCurrentOrgId()
   const userId = (await supabase.auth.getUser()).data.user?.id
 
+  if (!p.patient_id && !p.patientId) {
+    throw new Error('insertPayment: patient_id is required')
+  }
+
   const sanitized = {
-    contact_id: p.contactId || null,
-    amount: Math.max(0, toSafeNumber(p.amount, 0)),
+    patient_id: p.patient_id || p.patientId,
+    treatment_plan_id: p.treatment_plan_id || p.treatmentPlanId || null,
+    amount_minor: Math.max(1, toSafeNumber(p.amount_minor ?? p.amountMinor, 0)),
     currency: sanitizeText(p.currency || 'IQD', 8),
-    method: sanitizeText(p.method || 'cash', 32),
-    status: sanitizeText(p.status || 'pending', 32),
-    due_date: p.dueDate || null,
-    payment_date: p.paymentDate || null,
-    description: sanitizeText(p.description || '', LIMITS.notes),
-    deal_id: p.dealId || null,
-    source: sanitizeText(p.source || 'manual', 32),
+    method: sanitizePaymentMethod(p.method),
+    recorded_at: p.recorded_at || p.recordedAt || new Date().toISOString(),
+    notes: p.notes ? sanitizeNotes(p.notes) : null,
   }
 
   const { data, error } = await supabase
     .from('payments')
-    .insert({
-      ...sanitized,
-      user_id: userId,
-      org_id: orgId,
-    })
+    .insert({ ...sanitized, org_id: orgId, recorded_by: userId })
     .select()
     .single()
   if (error) throw error
@@ -437,7 +291,7 @@ export async function insertPayment(p) {
     action: 'payment.create',
     entityType: 'payment',
     entityId: data?.id || null,
-    payload: { amount: sanitized.amount, currency: sanitized.currency, method: sanitized.method },
+    payload: { amount_minor: sanitized.amount_minor, currency: sanitized.currency, method: sanitized.method },
   })
 
   return mapPayment(data)
@@ -449,14 +303,18 @@ export async function patchPayment(id, updates) {
   const orgId = await getCurrentOrgId()
 
   const patch = {}
-  if (updates.amount !== undefined) patch.amount = Math.max(0, toSafeNumber(updates.amount, 0))
+  if (updates.amount_minor !== undefined || updates.amountMinor !== undefined) {
+    patch.amount_minor = Math.max(1, toSafeNumber(updates.amount_minor ?? updates.amountMinor, 0))
+  }
   if (updates.currency !== undefined) patch.currency = sanitizeText(updates.currency, 8)
-  if (updates.method !== undefined) patch.method = sanitizeText(updates.method, 32)
-  if (updates.status !== undefined) patch.status = sanitizeText(updates.status, 32)
-  if (updates.dueDate !== undefined) patch.due_date = updates.dueDate
-  if (updates.paymentDate !== undefined) patch.payment_date = updates.paymentDate
-  if (updates.description !== undefined) patch.description = sanitizeText(updates.description, LIMITS.notes)
-  if (updates.dealId !== undefined) patch.deal_id = updates.dealId
+  if (updates.method !== undefined) patch.method = sanitizePaymentMethod(updates.method)
+  if (updates.recorded_at !== undefined || updates.recordedAt !== undefined) {
+    patch.recorded_at = updates.recorded_at ?? updates.recordedAt
+  }
+  if (updates.treatment_plan_id !== undefined || updates.treatmentPlanId !== undefined) {
+    patch.treatment_plan_id = updates.treatment_plan_id ?? updates.treatmentPlanId ?? null
+  }
+  if (updates.notes !== undefined) patch.notes = updates.notes ? sanitizeNotes(updates.notes) : null
 
   const { data, error } = await supabase
     .from('payments')
@@ -497,27 +355,10 @@ export async function removePayment(id) {
   })
 }
 
-function mapPayment(row) {
-  return {
-    id: row.id,
-    contactId: row.contact_id,
-    amount: Number(row.amount) || 0,
-    currency: row.currency || 'IQD',
-    method: row.method || 'cash',
-    status: row.status || 'paid',
-    dueDate: row.due_date || '',
-    paymentDate: row.payment_date || '',
-    description: row.description || '',
-    dealId: row.deal_id || '',
-    source: row.source || 'manual',
-    createdAt: row.created_at,
-  }
-}
-
 
 // ─── Audit Log ────────────────────────────────────────────────────────────
-// `logAuditEvent` lives in src/lib/audit.js. The two read helpers here are
-// thin wrappers that scope the query to the caller's org for defense in
+// `logAuditEvent` lives in src/lib/audit.js. The read helper here is a
+// thin wrapper that scopes the query to the caller's org for defense in
 // depth.
 
 export async function fetchAuditLog(limit = 100) {
@@ -534,27 +375,25 @@ export async function fetchAuditLog(limit = 100) {
 }
 
 
-// ─── Organizations ─────────────────────────────────────────────────────────
+// ─── Organizations (orgs) ──────────────────────────────────────────────────
 
 export async function fetchOrganizations() {
   // Operator-only path (operators can read all orgs via the per-table
   // operator policies). Clinic users see at most their own org.
   await requireUser()
   const { data, error } = await supabase
-    .from('organizations')
+    .from('orgs')
     .select('*')
     .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
 }
 
-// ─── Impersonation (Admin) ──────────────────────────────────────────────────
-
 export async function fetchOrg(orgId) {
   if (!orgId) throw new Error('fetchOrg: orgId is required')
   await requireUser()
   const { data, error } = await supabase
-    .from('organizations')
+    .from('orgs')
     .select('*')
     .eq('id', orgId)
     .single()
@@ -573,44 +412,64 @@ export async function fetchOrgUserIds(orgId) {
   return (data || []).map(p => p.id)
 }
 
-export async function fetchContactsForOrg(orgId, userIds, offset = 0, limit = CONTACTS_PAGE_SIZE) {
-  if (!orgId) throw new Error('fetchContactsForOrg: orgId is required')
+// Operator-impersonation path: read every patient/payment row in a given
+// org. RLS still applies — only operators can pull foreign org data.
+
+export async function fetchPatientsForOrg(orgId, offset = 0, limit = PATIENTS_PAGE_SIZE) {
+  if (!orgId) throw new Error('fetchPatientsForOrg: orgId is required')
   await requireUser()
-  let query = supabase
-    .from('contacts')
+  const { data, error, count } = await supabase
+    .from('patients')
     .select('*', { count: 'exact' })
     .eq('org_id', orgId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
-  if (!userIds?.length && orgId) {
-    // org_id alone is enough; userIds was a transitional fallback
-  } else if (userIds?.length) {
-    query = query.in('user_id', userIds)
-  }
-  const { data, error, count } = await query
   if (error) throw error
-  const rows = (data || []).map(mapContact)
+  const rows = (data || []).map(mapPatient)
   const total = count ?? rows.length
   return { rows, total, hasMore: offset + rows.length < total }
 }
 
-export async function fetchPaymentsForOrg(userIds) {
-  if (!userIds?.length) return []
+export async function fetchPaymentsForOrg(orgId) {
+  if (!orgId) throw new Error('fetchPaymentsForOrg: orgId is required')
   await requireUser()
   const { data, error } = await supabase
     .from('payments')
     .select('*')
-    .in('user_id', userIds)
+    .eq('org_id', orgId)
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map(mapPayment)
 }
 
 
+// ─── Profiles (team members) ───────────────────────────────────────────────
+// New profiles columns: id, org_id, role, full_name, avatar_url, locale.
+// No email, color, specialization, phone, is_active.
+
+export async function fetchTeamMembers(orgId) {
+  if (!orgId) return []
+  await requireUser()
+  const myOrgId = await getCurrentOrgId()
+  if (orgId !== myOrgId) {
+    throw new Error('fetchTeamMembers: org_id mismatch with current session')
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .eq('org_id', orgId)
+  if (error) throw error
+  return (data || []).map(p => ({
+    id: p.id,
+    name: p.full_name || 'Team Member',
+    role: p.role,
+  }))
+}
+
+
 // ─── Test Account Limits ───────────────────────────────────────────────────
 // Test orgs (status='test') get a sandbox-sized cap on records and a hard
-// block on org_secrets writes. Real clinic accounts (status='active') are
-// unconstrained by these helpers.
+// block on org_secrets writes.
 
 export const TEST_ACCOUNT_LIMITS = {
   patients: 50,
@@ -627,10 +486,6 @@ export class TestAccountLimitError extends Error {
   }
 }
 
-/**
- * Read the org's status. Returns null if not signed in or org not found.
- * Used by the test-limit guards. Cheap query (single row, indexed PK).
- */
 export async function fetchOrgStatus(orgId) {
   if (!orgId) return null
   const { data, error } = await supabase
@@ -642,10 +497,6 @@ export async function fetchOrgStatus(orgId) {
   return data?.status || null
 }
 
-/**
- * Throws TestAccountLimitError if the org is in 'test' status and the named
- * collection is at or above its cap.
- */
 export async function assertTestAccountLimit(orgId, kind) {
   const max = TEST_ACCOUNT_LIMITS[kind]
   if (max === undefined) {
@@ -664,86 +515,11 @@ export async function assertTestAccountLimit(orgId, kind) {
   }
 }
 
-// ── New-schema write helpers (Sprint 0+). Each one enforces test-account
-// limits, sanitizes inputs, and audit-logs.
 
-export async function insertPatient(patient, orgId) {
-  if (!orgId) throw new Error('insertPatient: orgId is required')
-  await requireUser()
-  const myOrgId = await getCurrentOrgId()
-  if (orgId !== myOrgId) {
-    throw new Error('insertPatient: org_id mismatch with current session')
-  }
-  await assertTestAccountLimit(orgId, 'patients')
+// ─── Profiles INSERT (operator-side) ───────────────────────────────────────
+// Test orgs are capped at 1 profile (the owner created by the test-account
+// endpoint). Real onboarding goes through a SECURITY DEFINER RPC.
 
-  const sanitized = {
-    full_name: sanitizeName(patient.full_name || patient.fullName || ''),
-    phone: sanitizePhone(patient.phone || ''),
-    email: patient.email ? sanitizeEmail(patient.email) : null,
-    dob: patient.dob || null,
-    gender: patient.gender ? sanitizeText(patient.gender, 32) : null,
-    medical_history: patient.medical_history || patient.medicalHistory || {},
-    allergies: patient.allergies || [],
-  }
-
-  const { data, error } = await supabase
-    .from('patients')
-    .insert({ org_id: orgId, ...sanitized })
-    .select()
-    .single()
-  if (error) throw error
-
-  await logAuditEvent({
-    orgId,
-    action: 'patient.create',
-    entityType: 'patient',
-    entityId: data?.id || null,
-  })
-
-  return data
-}
-
-export async function insertAppointment(appt, orgId) {
-  if (!orgId) throw new Error('insertAppointment: orgId is required')
-  await requireUser()
-  const myOrgId = await getCurrentOrgId()
-  if (orgId !== myOrgId) {
-    throw new Error('insertAppointment: org_id mismatch with current session')
-  }
-  await assertTestAccountLimit(orgId, 'appointments')
-
-  const sanitized = {
-    patient_id: appt.patient_id || appt.patientId,
-    doctor_id: appt.doctor_id || appt.doctorId || null,
-    type: sanitizeText(appt.type || '', 32),
-    status: sanitizeText(appt.status || 'scheduled', 32),
-    scheduled_at: appt.scheduled_at || appt.scheduledAt,
-    duration_minutes: Math.max(1, toSafeNumber(appt.duration_minutes || appt.durationMinutes, 30)),
-    chair_id: appt.chair_id || appt.chairId || null,
-    notes: appt.notes ? sanitizeNotes(appt.notes) : null,
-  }
-
-  const { data, error } = await supabase
-    .from('appointments')
-    .insert({ org_id: orgId, ...sanitized })
-    .select()
-    .single()
-  if (error) throw error
-
-  await logAuditEvent({
-    orgId,
-    action: 'appointment.create',
-    entityType: 'appointment',
-    entityId: data?.id || null,
-  })
-
-  return data
-}
-
-/**
- * Create a new clinic-user profile. Test orgs are capped at 1 profile (the
- * owner created by the test-account endpoint) — no team-member invites.
- */
 export async function insertProfile(profile, orgId) {
   if (!orgId) throw new Error('insertProfile: orgId is required')
   await requireUser()
@@ -756,7 +532,9 @@ export async function insertProfile(profile, orgId) {
   const sanitized = {
     id: profile.id,
     role: sanitizeText(profile.role || 'assistant', 32),
-    full_name: profile.full_name ? sanitizeName(profile.full_name) : (profile.fullName ? sanitizeName(profile.fullName) : null),
+    full_name: profile.full_name
+      ? sanitizeName(profile.full_name)
+      : (profile.fullName ? sanitizeName(profile.fullName) : null),
     avatar_url: profile.avatar_url || profile.avatarUrl || null,
     locale: sanitizeText(profile.locale || 'en', 8),
   }
@@ -779,9 +557,11 @@ export async function insertProfile(profile, orgId) {
   return data
 }
 
-/**
- * Set / upsert an org-level secret. Refused for test orgs.
- */
+
+// ─── Org Secrets ───────────────────────────────────────────────────────────
+// Operator-only at the RLS layer; this helper additionally refuses to write
+// secrets for test orgs.
+
 export async function setOrgSecret(orgId, kind, value) {
   if (!orgId) throw new Error('setOrgSecret: orgId is required')
   await requireUser()

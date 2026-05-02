@@ -1,8 +1,14 @@
 /**
- * Velo CRM — org settings helpers.
+ * Velo CRM — org settings helpers (new schema).
  *
- * Targets the legacy `organizations` table for compatibility with current
- * pages; will be retargeted to `orgs` (new schema) when the cutover lands.
+ * Targets the `orgs` table (was `organizations`). Schema columns:
+ *   id, name, slug, locale, currency, timezone, status, operator_notes,
+ *   created_by_operator_id, created_at.
+ *
+ * Legacy `tagline` and `industry` columns from the old schema do not exist
+ * on the new table; updates that include them will be rejected by Postgres.
+ *
+ * The legacy `departments` table is gone — `insertDepartments` was deleted.
  */
 
 import { supabase } from './supabase'
@@ -11,19 +17,19 @@ import { logAuditEvent } from './audit'
 import { sanitizeText, LIMITS } from './sanitize'
 
 function sanitizeOrgUpdate(updates) {
-  const out = { ...updates }
-  if (out.name !== undefined) out.name = sanitizeText(out.name, LIMITS.name)
-  if (out.tagline !== undefined) out.tagline = sanitizeText(out.tagline, 200)
-  if (out.industry !== undefined) out.industry = sanitizeText(out.industry, 50)
-  if (out.timezone !== undefined) out.timezone = sanitizeText(out.timezone, 64)
-  if (out.locale !== undefined) out.locale = sanitizeText(out.locale, 8)
-  if (out.currency !== undefined) out.currency = sanitizeText(out.currency, 8)
+  const out = {}
+  if (updates.name !== undefined) out.name = sanitizeText(updates.name, LIMITS.name)
+  if (updates.slug !== undefined) out.slug = sanitizeText(updates.slug, 64)
+  if (updates.timezone !== undefined) out.timezone = sanitizeText(updates.timezone, 64)
+  if (updates.locale !== undefined) out.locale = sanitizeText(updates.locale, 8)
+  if (updates.currency !== undefined) out.currency = sanitizeText(updates.currency, 8)
+  if (updates.operator_notes !== undefined) out.operator_notes = sanitizeText(updates.operator_notes, 2000)
   return out
 }
 
 /**
- * Update an org row. `orgId` must equal the caller's current org_id (or be
- * an org the caller is authorized for via RLS). Throws on mismatch.
+ * Update an org row. `orgId` must equal the caller's current org_id (or the
+ * caller must be an operator — RLS enforces this independently).
  */
 export async function updateOrgSettings(orgId, updates) {
   await requireUser()
@@ -36,7 +42,7 @@ export async function updateOrgSettings(orgId, updates) {
   const sanitized = sanitizeOrgUpdate(updates)
 
   const { data, error } = await supabase
-    .from('organizations')
+    .from('orgs')
     .update(sanitized)
     .eq('id', orgId)
     .select()
@@ -46,44 +52,9 @@ export async function updateOrgSettings(orgId, updates) {
   await logAuditEvent({
     orgId,
     action: 'org.update',
-    entityType: 'organization',
+    entityType: 'org',
     entityId: orgId,
     payload: { fields: Object.keys(sanitized) },
-  })
-
-  return data
-}
-
-/**
- * Bulk-insert default departments for a new org during onboarding. Takes a
- * pre-built array of rows ([{ name, color, org_id }, ...]).
- */
-export async function insertDepartments(orgId, rows) {
-  await requireUser()
-  if (!orgId) throw new Error('insertDepartments: orgId is required')
-  const myOrgId = await getCurrentOrgId()
-  if (orgId !== myOrgId) {
-    throw new Error('insertDepartments: org_id mismatch with current session')
-  }
-
-  const sanitized = (rows || []).map(r => ({
-    ...r,
-    org_id: orgId,
-    name: sanitizeText(r.name || '', LIMITS.name),
-  }))
-
-  const { data, error } = await supabase
-    .from('departments')
-    .insert(sanitized)
-    .select()
-  if (error) throw error
-
-  await logAuditEvent({
-    orgId,
-    action: 'department.bulk_insert',
-    entityType: 'department',
-    entityId: null,
-    payload: { count: sanitized.length },
   })
 
   return data

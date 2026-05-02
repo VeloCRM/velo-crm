@@ -1,9 +1,15 @@
 /**
- * Velo CRM — inventory helpers.
+ * Velo CRM — inventory helpers (new schema).
  *
- * Targets the legacy `items` table for compatibility with the current
- * InventoryPage. The new-schema equivalent is `inventory_items` and will
- * be retargeted at cutover.
+ * Targets the `inventory_items` table (was `items`). Schema columns:
+ *   id, org_id, name, category, quantity, unit, low_stock_threshold,
+ *   last_restocked_at, created_at, updated_at.
+ *
+ * Category enum: consumables | equipment | medications | lab_materials |
+ *                sterilization | other
+ *
+ * Legacy columns (supplier, notes, cost_price, min_quantity) are gone.
+ * `min_quantity` is now `low_stock_threshold`.
  */
 
 import { supabase } from './supabase'
@@ -11,17 +17,26 @@ import { requireUser, getCurrentOrgId } from './auth_session'
 import { logAuditEvent } from './audit'
 import { sanitizeText, LIMITS, toSafeNumber } from './sanitize'
 
+const CATEGORIES = new Set([
+  'consumables', 'equipment', 'medications', 'lab_materials',
+  'sterilization', 'other',
+])
+
+function sanitizeCategory(c) {
+  const safe = sanitizeText(c || 'other', 32).toLowerCase().replace(/\s+/g, '_')
+  return CATEGORIES.has(safe) ? safe : 'other'
+}
+
 function sanitizeItem(item) {
   return {
-    ...item,
     name: sanitizeText(item.name || '', LIMITS.name),
-    category: sanitizeText(item.category || '', 32),
-    unit: sanitizeText(item.unit || '', 16),
-    supplier: sanitizeText(item.supplier || '', 100),
-    notes: sanitizeText(item.notes || '', LIMITS.notes),
+    category: sanitizeCategory(item.category),
+    unit: sanitizeText(item.unit || 'unit', 16),
     quantity: Math.max(0, toSafeNumber(item.quantity, 0)),
-    min_quantity: Math.max(0, toSafeNumber(item.min_quantity, 0)),
-    cost_price: Math.max(0, toSafeNumber(item.cost_price, 0)),
+    low_stock_threshold: Math.max(0, toSafeNumber(
+      item.low_stock_threshold ?? item.lowStockThreshold ?? item.min_quantity, 0
+    )),
+    last_restocked_at: item.last_restocked_at || item.lastRestockedAt || null,
   }
 }
 
@@ -29,7 +44,7 @@ export async function fetchInventoryItems() {
   await requireUser()
   const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
-    .from('items')
+    .from('inventory_items')
     .select('*')
     .eq('org_id', orgId)
     .order('name')
@@ -43,7 +58,7 @@ export async function insertInventoryItem(item) {
   const payload = { ...sanitizeItem(item), org_id: orgId }
 
   const { data, error } = await supabase
-    .from('items')
+    .from('inventory_items')
     .insert([payload])
     .select()
     .single()
@@ -65,7 +80,7 @@ export async function updateInventoryItem(id, item) {
   const payload = sanitizeItem(item)
 
   const { error } = await supabase
-    .from('items')
+    .from('inventory_items')
     .update(payload)
     .eq('id', id)
     .eq('org_id', orgId)
@@ -85,7 +100,7 @@ export async function deleteInventoryItem(id) {
   const orgId = await getCurrentOrgId()
 
   const { error } = await supabase
-    .from('items')
+    .from('inventory_items')
     .delete()
     .eq('id', id)
     .eq('org_id', orgId)

@@ -124,7 +124,8 @@ function snippetFromHtml(html, max = 80) {
 }
 
 // ─── Main Component ─────────────────────────────────────────────────────────
-export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }) {
+export default function DocsPage({ t, lang, dir, isRTL, contacts, toast }) {
+  void t
   const [docs, setDocs] = useState(loadDocs)
   const [folders, setFolders] = useState(loadFolders)
   const [selectedFolder, setSelectedFolder] = useState('general')
@@ -157,7 +158,6 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
       content: '',
       folderId: selectedFolder,
       linkedContacts: [],
-      linkedDeals: [],
       createdAt: now,
       updatedAt: now,
     }
@@ -203,13 +203,6 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
     const linked = selectedDoc.linkedContacts || []
     const next = linked.includes(cid) ? linked.filter(x => x !== cid) : [...linked, cid]
     updateDoc('linkedContacts', next)
-  }
-
-  const toggleLinkedDeal = (did) => {
-    if (!selectedDoc) return
-    const linked = selectedDoc.linkedDeals || []
-    const next = linked.includes(did) ? linked.filter(x => x !== did) : [...linked, did]
-    updateDoc('linkedDeals', next)
   }
 
   const folderName = (f) => isRTL ? (f.nameAr || f.name) : f.name
@@ -402,8 +395,8 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
                 </button>
               </div>
 
-              {/* Linked items pills */}
-              {((selectedDoc.linkedContacts?.length > 0) || (selectedDoc.linkedDeals?.length > 0)) && (
+              {/* Linked patients pills */}
+              {(selectedDoc.linkedContacts?.length > 0) && (
                 <div style={{ padding: '8px 20px', borderBottom: `1px solid ${C.borderLight}`, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
                   {(selectedDoc.linkedContacts || []).map(cid => {
                     const c = (contacts || []).find(x => x.id === cid)
@@ -413,23 +406,8 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
                         display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px',
                         borderRadius: 12, background: C.primaryBg, color: C.primary, fontSize: 12, fontWeight: 500,
                       }}>
-                        {Icons.user(11)} {c.name}
+                        {Icons.user(11)} {c.full_name || c.name}
                         <button type="button" onClick={() => toggleLinkedContact(cid)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: C.primary, padding: 0, display: 'flex', alignItems: 'center' }}>
-                          {Icons.x(11)}
-                        </button>
-                      </span>
-                    )
-                  })}
-                  {(selectedDoc.linkedDeals || []).map(did => {
-                    const d = (deals || []).find(x => x.id === did)
-                    if (!d) return null
-                    return (
-                      <span key={did} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 10px',
-                        borderRadius: 12, background: C.successBg, color: C.success, fontSize: 12, fontWeight: 500,
-                      }}>
-                        {Icons.dollar(11)} {d.name || d.title}
-                        <button type="button" onClick={() => toggleLinkedDeal(did)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: C.success, padding: 0, display: 'flex', alignItems: 'center' }}>
                           {Icons.x(11)}
                         </button>
                       </span>
@@ -531,7 +509,7 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
               >
                 <option value="">{isRTL ? '\u0627\u062E\u062A\u0631 \u062C\u0647\u0629 \u0627\u062A\u0635\u0627\u0644...' : 'Select contact...'}</option>
                 {(contacts || []).filter(c => !(selectedDoc.linkedContacts || []).includes(c.id)).map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
+                  <option key={c.id} value={c.id}>{c.full_name || c.name}</option>
                 ))}
               </select>
               {(selectedDoc.linkedContacts || []).length > 0 && (
@@ -544,41 +522,8 @@ export default function DocsPage({ t, lang, dir, isRTL, contacts, deals, toast }
                         display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px',
                         borderRadius: 12, background: C.primaryBg, color: C.primary, fontSize: 12, fontWeight: 500,
                       }}>
-                        {Icons.user(11)} {c.name}
+                        {Icons.user(11)} {c.full_name || c.name}
                         <button type="button" onClick={() => toggleLinkedContact(cid)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: C.primary, padding: 0, display: 'flex', alignItems: 'center' }}>
-                          {Icons.x(11)}
-                        </button>
-                      </span>
-                    )
-                  })}
-                </div>
-              )}
-            </FormField>
-
-            {/* Deals */}
-            <FormField label={isRTL ? '\u0627\u0644\u0635\u0641\u0642\u0627\u062A' : 'Deals'} dir={dir}>
-              <select
-                style={selectStyle(dir)}
-                value=""
-                onChange={e => { if (e.target.value) toggleLinkedDeal(e.target.value) }}
-              >
-                <option value="">{isRTL ? '\u0627\u062E\u062A\u0631 \u0635\u0641\u0642\u0629...' : 'Select deal...'}</option>
-                {(deals || []).filter(d => !(selectedDoc.linkedDeals || []).includes(d.id)).map(d => (
-                  <option key={d.id} value={d.id}>{d.name || d.title}</option>
-                ))}
-              </select>
-              {(selectedDoc.linkedDeals || []).length > 0 && (
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                  {(selectedDoc.linkedDeals || []).map(did => {
-                    const d = (deals || []).find(x => x.id === did)
-                    if (!d) return null
-                    return (
-                      <span key={did} style={{
-                        display: 'inline-flex', alignItems: 'center', gap: 4, padding: '4px 10px',
-                        borderRadius: 12, background: C.successBg, color: C.success, fontSize: 12, fontWeight: 500,
-                      }}>
-                        {Icons.dollar(11)} {d.name || d.title}
-                        <button type="button" onClick={() => toggleLinkedDeal(did)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: C.success, padding: 0, display: 'flex', alignItems: 'center' }}>
                           {Icons.x(11)}
                         </button>
                       </span>

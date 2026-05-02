@@ -1,4 +1,4 @@
--- ============================================================================
+- ============================================================================
 -- Velo CRM v2.0 — Dental Schema (Sprint 0, Phase 2)
 -- ============================================================================
 -- Single source of truth. Run on a fresh Supabase project.
@@ -250,7 +250,11 @@ CREATE TABLE treatment_plan_items (
   id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id             uuid NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
   treatment_plan_id  uuid NOT NULL REFERENCES treatment_plans(id) ON DELETE CASCADE,
-  tooth_number       int CHECK (tooth_number BETWEEN 1 AND 32),
+  -- FDI two-digit notation: quadrant (1-4) + position (1-8). Codes ending in
+  -- 0 or 9 are invalid, but a tighter CHECK with explicit OR per quadrant
+  -- works the same as the simple range, so we keep the range check and let
+  -- the client-side validator reject 19/20/29/30/39/40.
+  tooth_number       int CHECK (tooth_number BETWEEN 11 AND 48),
   surface            text,
   procedure_code     text NOT NULL,
   procedure_label    text NOT NULL,
@@ -268,7 +272,8 @@ CREATE TABLE dental_chart_entries (
   id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   org_id        uuid NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
   patient_id    uuid NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
-  tooth_number  int NOT NULL CHECK (tooth_number BETWEEN 1 AND 32),
+  -- FDI two-digit notation: see treatment_plan_items.tooth_number.
+  tooth_number  int NOT NULL CHECK (tooth_number BETWEEN 11 AND 48),
   surface       text,
   finding       dental_finding NOT NULL,
   notes         text,
@@ -1179,7 +1184,16 @@ CREATE POLICY messages_delete_operator ON messages
 CREATE TABLE ai_usage (id uuid primary key default gen_random_uuid(), org_id uuid not null references orgs(id) on delete cascade, requested_at timestamptz not null default now());
 CREATE INDEX idx_ai_usage_org_time ON ai_usage(org_id, requested_at DESC);
 ALTER TABLE ai_usage ENABLE ROW LEVEL SECURITY;
-CREATE POLICY ai_usage_operator ON ai_usage FOR ALL USING (is_operator()) WITH CHECK (is_operator());
+
+-- Per-operation policies (Phase 2 invariant — no FOR ALL).
+-- Writes go through the service-role key in /api/ai/chat.js, which bypasses
+-- RLS entirely; the policies here only govern client-side reads + operator
+-- maintenance.
+CREATE POLICY ai_usage_org_select ON ai_usage FOR SELECT USING (org_id = current_org_id());
+CREATE POLICY ai_usage_op_select  ON ai_usage FOR SELECT USING (is_operator());
+CREATE POLICY ai_usage_op_insert  ON ai_usage FOR INSERT WITH CHECK (is_operator());
+CREATE POLICY ai_usage_op_update  ON ai_usage FOR UPDATE USING (is_operator()) WITH CHECK (is_operator());
+CREATE POLICY ai_usage_op_delete  ON ai_usage FOR DELETE USING (is_operator());
 
 
 -- ============================================================================
@@ -1191,136 +1205,200 @@ CREATE POLICY ai_usage_operator ON ai_usage FOR ALL USING (is_operator()) WITH C
 CREATE TABLE whatsapp_usage (id uuid primary key default gen_random_uuid(), org_id uuid not null references orgs(id) on delete cascade, sent_at timestamptz not null default now());
 CREATE INDEX idx_whatsapp_usage_org_time ON whatsapp_usage(org_id, sent_at DESC);
 ALTER TABLE whatsapp_usage ENABLE ROW LEVEL SECURITY;
-CREATE POLICY whatsapp_usage_operator ON whatsapp_usage FOR ALL USING (is_operator()) WITH CHECK (is_operator());
+
+-- Per-operation policies (Phase 2 invariant — no FOR ALL).
+-- Writes go through the service-role key in /api/whatsapp/send.js, which
+-- bypasses RLS entirely; the policies here only govern client-side reads
+-- + operator maintenance.
+CREATE POLICY whatsapp_usage_org_select ON whatsapp_usage FOR SELECT USING (org_id = current_org_id());
+CREATE POLICY whatsapp_usage_op_select  ON whatsapp_usage FOR SELECT USING (is_operator());
+CREATE POLICY whatsapp_usage_op_insert  ON whatsapp_usage FOR INSERT WITH CHECK (is_operator());
+CREATE POLICY whatsapp_usage_op_update  ON whatsapp_usage FOR UPDATE USING (is_operator()) WITH CHECK (is_operator());
+CREATE POLICY whatsapp_usage_op_delete  ON whatsapp_usage FOR DELETE USING (is_operator());
 
 
 -- ============================================================================
--- MIGRATION — Phase 6 (Sprint 0): atomic contact JSON helpers
+-- MIGRATION — Sprint 0 Wave A: social_connections (Social Monitor)
 -- ----------------------------------------------------------------------------
--- The legacy `contacts.notes` column stores a JSON string (TEXT) with shape
---    { "bio": "...", "timeline": [...], "documents": [...] }
--- The previous client-side flow was read → parse → mutate → stringify →
--- write, which is a last-write-wins race. These functions take a row lock,
--- mutate in-memory, and write back atomically. SECURITY INVOKER so RLS
--- still applies — operators bypass via the contacts operator policy.
+-- One row per (org, platform). Numbers are entered manually by the operator
+-- in the SocialMonitor page; automated sync is deferred. Per-operation
+-- policies for clinic users + per-operation operator-bypass policies.
+-- ============================================================================
+CREATE TYPE social_platform AS ENUM ('instagram', 'facebook', 'tiktok', 'google_maps', 'youtube', 'twitter');
+
+CREATE TABLE social_connections (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  platform social_platform NOT NULL,
+  page_name text,
+  profile_url text,
+  profile_pic_url text,
+  followers_count bigint NOT NULL DEFAULT 0,
+  following_count bigint NOT NULL DEFAULT 0,
+  posts_count bigint NOT NULL DEFAULT 0,
+  engagement_rate numeric(5,2),
+  bio text,
+  notes text,
+  last_synced_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (org_id, platform)
+);
+
+CREATE INDEX idx_social_connections_org ON social_connections(org_id);
+ALTER TABLE social_connections ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY social_connections_org_select ON social_connections FOR SELECT USING (org_id = current_org_id());
+CREATE POLICY social_connections_org_insert ON social_connections FOR INSERT WITH CHECK (org_id = current_org_id());
+CREATE POLICY social_connections_org_update ON social_connections FOR UPDATE USING (org_id = current_org_id()) WITH CHECK (org_id = current_org_id());
+CREATE POLICY social_connections_org_delete ON social_connections FOR DELETE USING (org_id = current_org_id());
+
+CREATE POLICY social_connections_op_select ON social_connections FOR SELECT USING (is_operator());
+CREATE POLICY social_connections_op_insert ON social_connections FOR INSERT WITH CHECK (is_operator());
+CREATE POLICY social_connections_op_update ON social_connections FOR UPDATE USING (is_operator()) WITH CHECK (is_operator());
+CREATE POLICY social_connections_op_delete ON social_connections FOR DELETE USING (is_operator());
+
+
+-- ============================================================================
+-- MIGRATION — Sprint 0 Wave A Part 2: invitations
+-- ----------------------------------------------------------------------------
+-- Link-only invitation flow. Owner generates a /join?token=... URL and
+-- shares it via their own channel (WhatsApp, email, etc.). No mail
+-- infrastructure. Only owners can create/revoke. Operators have full
+-- bypass.
 -- ============================================================================
 
-CREATE OR REPLACE FUNCTION public.contact_append_timeline(
-  p_contact_id uuid,
-  p_entry jsonb
-)
-RETURNS text
+CREATE TYPE invitation_status AS ENUM ('pending', 'accepted', 'revoked', 'expired');
+
+CREATE TABLE invitations (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id uuid NOT NULL REFERENCES orgs(id) ON DELETE CASCADE,
+  email text NOT NULL,
+  role profile_role NOT NULL,
+  token text NOT NULL UNIQUE DEFAULT replace(gen_random_uuid()::text, '-', ''),
+  status invitation_status NOT NULL DEFAULT 'pending',
+  invited_by uuid NOT NULL REFERENCES auth.users(id),
+  invited_at timestamptz NOT NULL DEFAULT now(),
+  expires_at timestamptz NOT NULL DEFAULT (now() + INTERVAL '7 days'),
+  accepted_at timestamptz,
+  accepted_by uuid REFERENCES auth.users(id),
+  CONSTRAINT email_lowercase CHECK (email = lower(email))
+);
+
+CREATE INDEX idx_invitations_org_status ON invitations(org_id, status);
+CREATE INDEX idx_invitations_token ON invitations(token);
+CREATE INDEX idx_invitations_email ON invitations(email);
+
+ALTER TABLE invitations ENABLE ROW LEVEL SECURITY;
+
+-- Owners can read pending invitations for their own org
+CREATE POLICY invitations_owner_select ON invitations FOR SELECT USING (
+  org_id = current_org_id()
+  AND EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'owner')
+);
+
+-- Owners can create invitations for their own org. WITH CHECK enforces this on INSERT.
+CREATE POLICY invitations_owner_insert ON invitations FOR INSERT WITH CHECK (
+  org_id = current_org_id()
+  AND EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'owner')
+  AND invited_by = auth.uid()
+);
+
+-- Owners can revoke (soft-delete via status update) their own org's invitations
+CREATE POLICY invitations_owner_update ON invitations FOR UPDATE USING (
+  org_id = current_org_id()
+  AND EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'owner')
+) WITH CHECK (
+  org_id = current_org_id()
+  AND EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'owner')
+);
+
+-- Operator bypass — full CRUD on any org's invitations
+CREATE POLICY invitations_op_select ON invitations FOR SELECT USING (is_operator());
+CREATE POLICY invitations_op_insert ON invitations FOR INSERT WITH CHECK (is_operator());
+CREATE POLICY invitations_op_update ON invitations FOR UPDATE USING (is_operator()) WITH CHECK (is_operator());
+CREATE POLICY invitations_op_delete ON invitations FOR DELETE USING (is_operator());
+
+-- get_invitation_preview: unauthenticated SECURITY DEFINER. Returns minimal
+-- info so the /join page can render the welcome screen without exposing the
+-- org's other invitations.
+CREATE OR REPLACE FUNCTION get_invitation_preview(invite_token text)
+RETURNS TABLE (org_name text, invite_email text, invite_role profile_role, expires_at timestamptz, status invitation_status)
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT o.name, i.email, i.role, i.expires_at, i.status
+  FROM invitations i
+  JOIN orgs o ON o.id = i.org_id
+  WHERE i.token = invite_token
+    AND i.status = 'pending'
+    AND i.expires_at > now()
+  LIMIT 1;
+$$;
+
+-- accept_invitation: SECURITY DEFINER. Called by an authenticated user from
+-- /join. Validates the token, confirms the caller's email matches, creates
+-- a profile, marks the invitation accepted. Atomic.
+CREATE OR REPLACE FUNCTION accept_invitation(invite_token text)
+RETURNS uuid
 LANGUAGE plpgsql
-SECURITY INVOKER
+SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
-  current_text text;
-  parsed jsonb;
-  new_notes text;
+  inv invitations%ROWTYPE;
+  caller_email text;
+  new_profile_id uuid;
 BEGIN
-  SELECT notes INTO current_text FROM public.contacts WHERE id = p_contact_id FOR UPDATE;
+  IF auth.uid() IS NULL THEN
+    RAISE EXCEPTION 'Not authenticated';
+  END IF;
+
+  SELECT email INTO caller_email FROM auth.users WHERE id = auth.uid();
+  IF caller_email IS NULL THEN
+    RAISE EXCEPTION 'Caller email not found';
+  END IF;
+
+  -- Lock the invitation row to prevent double-accept races
+  SELECT * INTO inv FROM invitations WHERE token = invite_token FOR UPDATE;
   IF NOT FOUND THEN
-    RAISE EXCEPTION 'contact not found: %', p_contact_id;
+    RAISE EXCEPTION 'Invitation not found';
   END IF;
-  IF current_text IS NULL OR current_text = '' THEN
-    parsed := '{"bio":"", "timeline":[], "documents":[]}'::jsonb;
-  ELSE
-    BEGIN
-      parsed := current_text::jsonb;
-    EXCEPTION WHEN OTHERS THEN
-      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
-    END;
-    IF jsonb_typeof(parsed) <> 'object' THEN
-      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
-    END IF;
+  IF inv.status <> 'pending' THEN
+    RAISE EXCEPTION 'Invitation is %', inv.status;
   END IF;
-  parsed := jsonb_set(parsed, '{timeline}', COALESCE(parsed->'timeline', '[]'::jsonb) || p_entry);
-  new_notes := parsed::text;
-  UPDATE public.contacts SET notes = new_notes WHERE id = p_contact_id;
-  RETURN new_notes;
+  IF inv.expires_at <= now() THEN
+    UPDATE invitations SET status = 'expired' WHERE id = inv.id;
+    RAISE EXCEPTION 'Invitation expired';
+  END IF;
+  IF lower(inv.email) <> lower(caller_email) THEN
+    RAISE EXCEPTION 'Invitation email does not match signed-in user';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid()) THEN
+    RAISE EXCEPTION 'User already belongs to an organization';
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM orgs WHERE id = inv.org_id AND status = 'test') THEN
+    RAISE EXCEPTION 'Cannot accept invitations for test accounts';
+  END IF;
+
+  INSERT INTO profiles (id, org_id, role, full_name, locale)
+  VALUES (auth.uid(), inv.org_id, inv.role, '', 'en')
+  RETURNING id INTO new_profile_id;
+
+  UPDATE invitations
+  SET status = 'accepted', accepted_at = now(), accepted_by = auth.uid()
+  WHERE id = inv.id;
+
+  INSERT INTO audit_log (org_id, acting_user_id, action, entity_type, entity_id, payload)
+  VALUES (inv.org_id, auth.uid(), 'invitation.accept', 'invitation', inv.id, jsonb_build_object('role', inv.role));
+
+  RETURN inv.org_id;
 END;
 $$;
 
-CREATE OR REPLACE FUNCTION public.contact_add_document(
-  p_contact_id uuid,
-  p_doc jsonb
-)
-RETURNS text
-LANGUAGE plpgsql
-SECURITY INVOKER
-AS $$
-DECLARE
-  current_text text;
-  parsed jsonb;
-  new_notes text;
-BEGIN
-  SELECT notes INTO current_text FROM public.contacts WHERE id = p_contact_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'contact not found: %', p_contact_id;
-  END IF;
-  IF current_text IS NULL OR current_text = '' THEN
-    parsed := '{"bio":"", "timeline":[], "documents":[]}'::jsonb;
-  ELSE
-    BEGIN
-      parsed := current_text::jsonb;
-    EXCEPTION WHEN OTHERS THEN
-      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
-    END;
-    IF jsonb_typeof(parsed) <> 'object' THEN
-      parsed := jsonb_build_object('bio', current_text, 'timeline', '[]'::jsonb, 'documents', '[]'::jsonb);
-    END IF;
-  END IF;
-  parsed := jsonb_set(parsed, '{documents}', COALESCE(parsed->'documents', '[]'::jsonb) || p_doc);
-  new_notes := parsed::text;
-  UPDATE public.contacts SET notes = new_notes WHERE id = p_contact_id;
-  RETURN new_notes;
-END;
-$$;
+GRANT EXECUTE ON FUNCTION get_invitation_preview(text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION accept_invitation(text) TO authenticated;
 
-CREATE OR REPLACE FUNCTION public.contact_remove_document(
-  p_contact_id uuid,
-  p_doc_id text
-)
-RETURNS text
-LANGUAGE plpgsql
-SECURITY INVOKER
-AS $$
-DECLARE
-  current_text text;
-  parsed jsonb;
-  filtered_docs jsonb;
-  new_notes text;
-BEGIN
-  SELECT notes INTO current_text FROM public.contacts WHERE id = p_contact_id FOR UPDATE;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'contact not found: %', p_contact_id;
-  END IF;
-  IF current_text IS NULL OR current_text = '' THEN
-    RETURN current_text;
-  END IF;
-  BEGIN
-    parsed := current_text::jsonb;
-  EXCEPTION WHEN OTHERS THEN
-    RETURN current_text;
-  END;
-  IF jsonb_typeof(parsed) <> 'object' THEN
-    RETURN current_text;
-  END IF;
-  -- Filter the documents array, dropping the row whose .id matches p_doc_id.
-  SELECT COALESCE(jsonb_agg(d), '[]'::jsonb)
-    INTO filtered_docs
-    FROM jsonb_array_elements(COALESCE(parsed->'documents', '[]'::jsonb)) AS d
-    WHERE d->>'id' IS DISTINCT FROM p_doc_id;
-  parsed := jsonb_set(parsed, '{documents}', filtered_docs);
-  new_notes := parsed::text;
-  UPDATE public.contacts SET notes = new_notes WHERE id = p_contact_id;
-  RETURN new_notes;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.contact_append_timeline(uuid, jsonb)  FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.contact_add_document(uuid, jsonb)     FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.contact_remove_document(uuid, text)   FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.contact_append_timeline(uuid, jsonb)  TO authenticated;
-GRANT EXECUTE ON FUNCTION public.contact_add_document(uuid, jsonb)     TO authenticated;
-GRANT EXECUTE ON FUNCTION public.contact_remove_document(uuid, text)   TO authenticated;

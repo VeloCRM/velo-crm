@@ -1,12 +1,12 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
-import { sanitizeText, sanitizeName, maskApiKey, isValidEmail } from '../lib/sanitize'
+import { sanitizeName, isValidEmail } from '../lib/sanitize'
 import { isSupabaseConfigured } from '../lib/supabase'
-import { callClaude, clearAgencyKeyCache } from '../lib/ai'
 import { createInvitation, listPendingInvitations, revokeInvitation, buildInviteUrl } from '../lib/invitations'
-import { listDoctorsInOrg, updateProfile, demoteDoctor } from '../lib/profiles'
+import { listDoctorsInOrg, updateProfile, listTeamMembersInOrg, fetchMyProfile } from '../lib/profiles'
 import { getCurrentOrgId } from '../lib/auth_session'
+
 import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
 import { SAMPLE_DENTAL_DOCTORS } from '../sampleData'
 
@@ -43,10 +43,10 @@ const CURRENCIES = [
 const BRAND_COLORS = ['#00FFB2','#7c3aed','#00ff88','#ef4444','#f59e0b','#E16F24','#0D9488','#6366F1','#EC4899','#e2e8f0']
 
 const SAMPLE_TEAM = [
-  { id: 'tm1', name: 'Admin User', email: 'admin@velo.app', role: 'admin', avatar: 'A' },
-  { id: 'tm2', name: 'Ahmed Hassan', email: 'ahmed@velo.app', role: 'editor', avatar: 'A' },
-  { id: 'tm3', name: 'Sarah Kim', email: 'sarah@velo.app', role: 'editor', avatar: 'S' },
-  { id: 'tm4', name: 'Maria Lopez', email: 'maria@velo.app', role: 'viewer', avatar: 'M' },
+  { id: 'tm1', name: 'Owner User',   email: 'owner@velo.app',   role: 'owner',        avatar: 'O' },
+  { id: 'tm2', name: 'Ahmed Hassan', email: 'ahmed@velo.app',   role: 'doctor',       avatar: 'A' },
+  { id: 'tm3', name: 'Sarah Kim',    email: 'sarah@velo.app',   role: 'receptionist', avatar: 'S' },
+  { id: 'tm4', name: 'Maria Lopez',  email: 'maria@velo.app',   role: 'assistant',    avatar: 'M' },
 ]
 
 export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate, isOperator }) {
@@ -93,7 +93,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
-          {tab === 'apikeys' && <ApiKeysTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} toast={toast} />}
+          {tab === 'apikeys' && <ApiKeysTab lang={lang} />}
           {tab === 'agencyai' && isOperator && <AgencyAITab lang={lang} dir={dir} toast={toast} />}
         </div>
       </div>
@@ -102,6 +102,8 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
 }
 
 function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
+  void t
+  void isRTL
   const [form, setForm] = useState({
     name: orgSettings.name || '',
     industry: orgSettings.industry || 'general',
@@ -110,7 +112,6 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
     timezone: orgSettings.timezone || 'America/New_York',
   })
   const [saved, setSaved] = useState(false)
-  const logoRef = useRef(null)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   const handleSave = () => {
@@ -204,6 +205,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
 }
 
 function ProfileTab({ t, lang, dir, isRTL, user }) {
+  void isRTL
   const [form, setForm] = useState({
     fullName: user?.user_metadata?.full_name || 'Admin User',
     email: user?.email || 'admin@velo.app',
@@ -258,47 +260,60 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
   )
 }
 
-function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
-  const [team, setTeam] = useState(() => isSupabaseConfigured() ? [] : SAMPLE_TEAM)
+// Roles a clinic owner can invite. Owners can never invite other owners
+// (one owner per org). Operators can flip ownership through dedicated
+// operator endpoints.
+const INVITABLE_ROLES = ['doctor', 'receptionist', 'assistant']
+
+function TeamTab({ t, lang, dir, isRTL, toast }) {
+  // Identity gating: only owners see the invite form. Everyone in the org
+  // sees the team list.
+  const [myRole, setMyRole] = useState(null)
+  const [identityLoading, setIdentityLoading] = useState(true)
+  const [team, setTeam] = useState([])
+  const [pending, setPending] = useState([])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteRole, setInviteRole] = useState('receptionist')
   const [inviting, setInviting] = useState(false)
-  const [pending, setPending] = useState([])
   const [inviteLink, setInviteLink] = useState(null) // { url, email }
   const [copied, setCopied] = useState(false)
 
-  const orgId = orgSettings?.id || null
+  const isOwner = myRole === 'owner'
 
-  // Load real team members + pending invites from Supabase
   useEffect(() => {
-    if (!isSupabaseConfigured() || !orgId) return
+    if (!isSupabaseConfigured()) {
+      setTeam(SAMPLE_TEAM)
+      setIdentityLoading(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       try {
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, full_name, email, role')
-          .eq('org_id', orgId)
+        const profile = await fetchMyProfile()
         if (cancelled) return
-        setTeam((profiles || []).map(p => ({
+        setMyRole(profile?.role || null)
+        const members = await listTeamMembersInOrg()
+        if (cancelled) return
+        setTeam((members || []).map(p => ({
           id: p.id,
-          name: p.full_name || (p.email || '').split('@')[0] || 'Member',
-          email: p.email || '',
-          role: p.role || 'editor',
-          avatar: (p.full_name || p.email || 'M').charAt(0).toUpperCase(),
+          name: p.full_name || 'Team Member',
+          role: p.role || 'assistant',
+          avatar: (p.full_name || 'T').charAt(0).toUpperCase(),
         })))
-        const invites = await listPendingInvitations(orgId)
-        if (!cancelled) setPending(invites)
+        if (profile?.role === 'owner') {
+          const invites = await listPendingInvitations()
+          if (!cancelled) setPending(invites || [])
+        }
       } catch (err) {
         if (!cancelled) console.error('Team load error:', err)
+      } finally {
+        if (!cancelled) setIdentityLoading(false)
       }
     })()
     return () => { cancelled = true }
-  }, [orgId])
+  }, [])
 
-  const notify = (msg, type = 'success') => {
-    if (toast) toast(msg, type)
-  }
+  const notify = (msg, type = 'success') => { if (toast) toast(msg, type) }
 
   const invite = async () => {
     if (inviting) return
@@ -308,21 +323,17 @@ function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
       notify(isRTL ? 'البريد الإلكتروني غير صالح' : 'Invalid email address', 'error')
       return
     }
-    if (!orgId) {
-      notify(isRTL ? 'لم يتم العثور على المؤسسة' : 'Organization not found', 'error')
-      return
-    }
     setInviting(true)
     try {
-      const row = await createInvitation({ orgId, email, role: inviteRole })
-      const url = buildInviteUrl(row.token, email)
+      const row = await createInvitation({ email, role: inviteRole })
+      const url = buildInviteUrl(row.token)
       setInviteLink({ url, email })
       setPending(prev => [row, ...prev])
       setInviteEmail('')
       notify(isRTL ? 'تم إنشاء رابط الدعوة' : 'Invitation link created')
     } catch (err) {
       console.error('Create invitation error:', err)
-      notify(isRTL ? 'فشل إنشاء الدعوة' : 'Failed to create invitation', 'error')
+      notify(err?.message || (isRTL ? 'فشل إنشاء الدعوة' : 'Failed to create invitation'), 'error')
     } finally {
       setInviting(false)
     }
@@ -335,7 +346,7 @@ function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
       notify(isRTL ? 'تم إلغاء الدعوة' : 'Invitation revoked')
     } catch (err) {
       console.error('Revoke invitation error:', err)
-      notify(isRTL ? 'فشل الإلغاء' : 'Failed to revoke', 'error')
+      notify(err?.message || (isRTL ? 'فشل الإلغاء' : 'Failed to revoke'), 'error')
     }
   }
 
@@ -346,72 +357,99 @@ function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // Fallback: select the input so user can copy manually.
       const el = document.getElementById('velo-invite-link-input')
-      if (el && el.select) { el.select() }
+      if (el && el.select) el.select()
     }
+  }
+
+  if (identityLoading) {
+    return <p style={{ color: C.textMuted, fontSize: 13 }}>{isRTL ? 'جاري التحميل...' : 'Loading…'}</p>
   }
 
   return (
     <div>
-      {/* Invite */}
-      <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>{t.inviteMember}</h2>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <input value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} type="email" maxLength={255} placeholder="email@company.com" style={{ ...inputStyle(dir), flex: 1 }} onKeyDown={e => e.key === 'Enter' && invite()} />
-          <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ ...selectStyle(dir), width: 160 }}>
-            {ROLES.map(r => (
-              <option key={r} value={r}>
-                {(ROLE_LABELS[lang] || ROLE_LABELS.en)[r]}
-              </option>
-            ))}
-          </select>
-          <button onClick={invite} disabled={inviting} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: inviting ? 0.6 : 1, cursor: inviting ? 'wait' : 'pointer' }}>
-            {inviting ? (isRTL ? '...' : '…') : t.inviteMember}
-          </button>
+      {/* Owner-gated invite form */}
+      {isOwner ? (
+        <div style={{ ...card, padding: 20, marginBottom: 20 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>{t.inviteMember}</h2>
+          <div style={{ display: 'flex', gap: 10 }}>
+            <input
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
+              type="email"
+              maxLength={255}
+              placeholder="email@company.com"
+              style={{ ...inputStyle(dir), flex: 1 }}
+              onKeyDown={e => e.key === 'Enter' && invite()}
+            />
+            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ ...selectStyle(dir), width: 160 }}>
+              {INVITABLE_ROLES.map(r => (
+                <option key={r} value={r}>
+                  {(ROLE_LABELS[lang] || ROLE_LABELS.en)[r] || r}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={invite}
+              disabled={inviting}
+              className="velo-btn-primary"
+              style={{ ...makeBtn('primary'), opacity: inviting ? 0.6 : 1, cursor: inviting ? 'wait' : 'pointer' }}
+            >
+              {inviting ? '…' : t.inviteMember}
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: C.textMuted, margin: '10px 0 0' }}>
+            <strong style={{ color: C.textSec }}>
+              {(ROLE_LABELS[lang] || ROLE_LABELS.en)[inviteRole] || inviteRole}
+            </strong>
+            {(ROLE_DESCRIPTIONS[lang] || ROLE_DESCRIPTIONS.en)[inviteRole]
+              ? ' — ' + (ROLE_DESCRIPTIONS[lang] || ROLE_DESCRIPTIONS.en)[inviteRole]
+              : ''}
+          </p>
+          <p style={{ fontSize: 11, color: C.textMuted, margin: '6px 0 0' }}>
+            {isRTL
+              ? 'سيتم إنشاء رابط دعوة يمكنك نسخه وإرساله يدوياً (واتساب، بريد إلكتروني). صالح 7 أيام.'
+              : 'Generates a copyable invite link you can send manually (WhatsApp, SMS, email). Expires in 7 days.'}
+          </p>
         </div>
-        <p style={{ fontSize: 11, color: C.textMuted, margin: '10px 0 0' }}>
-          <strong style={{ color: C.textSec }}>
-            {(ROLE_LABELS[lang] || ROLE_LABELS.en)[inviteRole]}
-          </strong>
-          {' — '}
-          {(ROLE_DESCRIPTIONS[lang] || ROLE_DESCRIPTIONS.en)[inviteRole]}
-        </p>
-        <p style={{ fontSize: 11, color: C.textMuted, margin: '6px 0 0' }}>
-          {isRTL
-            ? 'سيتم إنشاء رابط دعوة يمكنك نسخه وإرساله يدوياً (واتساب، بريد إلكتروني).'
-            : 'Creates a copyable invite link you can send manually (WhatsApp, email, etc.).'}
-        </p>
-      </div>
+      ) : (
+        <div style={{ ...card, padding: 20, marginBottom: 20 }}>
+          <p style={{ fontSize: 13, color: C.textMuted, margin: 0 }}>
+            {isRTL
+              ? 'إدارة الفريق متاحة لمالكي العيادة فقط.'
+              : 'Team management is available to clinic owners.'}
+          </p>
+        </div>
+      )}
 
-      {/* Invite link modal */}
-      {inviteLink && (
+      {/* Invite link modal — owner only (only shown after a successful create) */}
+      {isOwner && inviteLink && (
         <div
           onClick={() => setInviteLink(null)}
-          style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.55)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:9999, padding:16 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
         >
-          <div onClick={e => e.stopPropagation()} style={{ ...card, padding:24, maxWidth:560, width:'100%', direction:dir }}>
-            <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 8px' }}>
+          <div onClick={e => e.stopPropagation()} style={{ ...card, padding: 24, maxWidth: 560, width: '100%', direction: dir }}>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
               {isRTL ? 'رابط الدعوة جاهز' : 'Invitation link ready'}
             </h3>
-            <p style={{ fontSize:12, color:C.textMuted, margin:'0 0 14px' }}>
+            <p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 14px' }}>
               {isRTL
-                ? `أرسل هذا الرابط إلى ${inviteLink.email} عبر واتساب أو البريد الإلكتروني. صالح لمدة 48 ساعة.`
-                : `Send this link to ${inviteLink.email} via WhatsApp or email. Expires in 48 hours.`}
+                ? `أرسل هذا الرابط إلى ${inviteLink.email} عبر واتساب أو الرسائل أو البريد الإلكتروني. صالح لمدة 7 أيام.`
+                : `Share this link with ${inviteLink.email} via WhatsApp, SMS, or email. The link expires in 7 days.`}
             </p>
-            <div style={{ display:'flex', gap:8 }}>
+            <div style={{ display: 'flex', gap: 8 }}>
               <input
                 id="velo-invite-link-input"
                 readOnly
                 value={inviteLink.url}
                 onFocus={e => e.target.select()}
-                style={{ ...inputStyle(dir), flex:1, fontFamily:'monospace', fontSize:12 }}
+                style={{ ...inputStyle(dir), flex: 1, fontFamily: 'monospace', fontSize: 12 }}
               />
               <button onClick={copyLink} className="velo-btn-primary" style={makeBtn('primary')}>
                 {copied ? (isRTL ? 'تم النسخ' : 'Copied!') : (isRTL ? 'نسخ' : 'Copy')}
               </button>
             </div>
-            <div style={{ display:'flex', justifyContent:'flex-end', marginTop:16 }}>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
               <button onClick={() => setInviteLink(null)} style={makeBtn('secondary')}>
                 {isRTL ? 'إغلاق' : 'Done'}
               </button>
@@ -420,8 +458,8 @@ function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
         </div>
       )}
 
-      {/* Pending invitations */}
-      {pending.length > 0 && (
+      {/* Pending invitations — owner only */}
+      {isOwner && pending.length > 0 && (
         <div style={{ ...card, overflow: 'hidden', marginBottom: 20 }}>
           <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
             <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>
@@ -429,41 +467,52 @@ function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
             </h3>
           </div>
           {pending.map(inv => {
-            const url = buildInviteUrl(inv.token, inv.email)
+            const url = buildInviteUrl(inv.token)
+            const expires = inv.expires_at ? new Date(inv.expires_at).toLocaleDateString(lang === 'ar' ? 'ar-IQ' : 'en-US', { month: 'short', day: 'numeric' }) : ''
             return (
               <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
                 <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.bg, color: C.textSec, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>{(inv.email || '?').charAt(0).toUpperCase()}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{inv.email}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{url}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {(ROLE_LABELS[lang] || ROLE_LABELS.en)[inv.role] || inv.role}
+                    {expires ? ` · ${isRTL ? 'تنتهي' : 'expires'} ${expires}` : ''}
+                  </div>
                 </div>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: C.bg, color: C.textSec }}>{(ROLE_LABELS[lang] || ROLE_LABELS.en)[inv.role] || inv.role}</span>
                 <button onClick={() => setInviteLink({ url, email: inv.email })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.primary, fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
                   {isRTL ? 'نسخ الرابط' : 'Copy link'}
                 </button>
-                <button onClick={() => revoke(inv.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }} title={isRTL ? 'إلغاء' : 'Revoke'}>{Icons.trash(14)}</button>
+                <button onClick={() => revoke(inv.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }} title={isRTL ? 'إلغاء' : 'Revoke'}>
+                  {Icons.trash(14)}
+                </button>
               </div>
             )
           })}
         </div>
       )}
 
-      {/* Team list */}
+      {/* Team list — visible to everyone in the org */}
       <div style={{ ...card, overflow: 'hidden' }}>
         <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>{t.teamMembers} ({team.length})</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>
+            {t.teamMembers} ({team.length})
+          </h3>
         </div>
         {team.map(member => (
           <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.primaryBg, color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>{member.avatar}</div>
+            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.primaryBg, color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>
+              {member.avatar}
+            </div>
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{member.name}</div>
-              <div style={{ fontSize: 12, color: C.textMuted }}>{member.email}</div>
             </div>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: member.role === 'admin' ? C.primaryBg : C.bg, color: member.role === 'admin' ? C.primary : C.textSec }}>{(ROLE_LABELS[lang] || ROLE_LABELS.en)[member.role] || member.role}</span>
-            {member.role !== 'admin' && (
-              <button onClick={() => setTeam(prev => prev.filter(m => m.id !== member.id))} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{Icons.trash(14)}</button>
-            )}
+            <span style={{
+              fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
+              background: member.role === 'owner' ? C.primaryBg : C.bg,
+              color: member.role === 'owner' ? C.primary : C.textSec,
+            }}>
+              {(ROLE_LABELS[lang] || ROLE_LABELS.en)[member.role] || member.role}
+            </span>
           </div>
         ))}
       </div>
@@ -472,6 +521,7 @@ function TeamTab({ t, lang, dir, isRTL, orgSettings, toast }) {
 }
 
 function NotificationsTab({ t, lang, dir }) {
+  void dir
   const [notifs, setNotifs] = useState({
     emailNotif: true, whatsappNotif: false, browserNotif: true,
     dealUpdates: true, contactActivity: true, ticketUpdates: true,
@@ -499,7 +549,7 @@ function NotificationsTab({ t, lang, dir }) {
       <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 24px' }}>{t.notifications}</h2>
       {sections.map((sec, si) => (
         <div key={si} style={{ marginBottom: 28 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.textSec, margin: '0 0 14px', textTransform: 'uppercase', fontSize: 11, letterSpacing: '.5px' }}>{sec.title}</h3>
+          <h3 style={{ fontSize: 11, fontWeight: 600, color: C.textSec, margin: '0 0 14px', textTransform: 'uppercase', letterSpacing: '.5px' }}>{sec.title}</h3>
           {sec.items.map(item => (
             <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
               <span style={{ fontSize: 13, color: C.text }}>{item.label}</span>
@@ -516,6 +566,7 @@ function NotificationsTab({ t, lang, dir }) {
 }
 
 function BillingTab({ t, lang, dir }) {
+  void dir
   const invoices = [
     { id: 'inv1', date: 'Apr 1, 2026', amount: '$49.00', status: 'Paid' },
     { id: 'inv2', date: 'Mar 1, 2026', amount: '$49.00', status: 'Paid' },
@@ -540,7 +591,7 @@ function BillingTab({ t, lang, dir }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginTop: 20 }}>
           {[
             { label: t.contacts_used, used: 248, total: 1000 },
-            { label: t.deals_used, used: 34, total: 100 },
+            { label: t.appointments_used || (lang === 'ar' ? 'المواعيد' : 'Appointments'), used: 34, total: 100 },
             { label: t.storage_used, used: 1.2, total: 5, unit: 'GB' },
           ].map((u, i) => (
             <div key={i}>
@@ -573,194 +624,82 @@ function BillingTab({ t, lang, dir }) {
   )
 }
 
-function ApiKeysTab({ t, lang, dir, isRTL, orgSettings, onSave, toast }) {
-  const STORAGE_KEY = 'velo_api_keys'
-  const loadStored = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') } catch { return {} } }
-  const [stored, setStored] = useState(loadStored)
-  const [keys, setKeys] = useState(() => stored.generatedKeys || [])
-  const [showKey, setShowKey] = useState(null)
-  const [newKeyName, setNewKeyName] = useState('')
-  const [showNewForm, setShowNewForm] = useState(false)
-  const [anthropicKey, setAnthropicKey] = useState(() => stored.anthropic || orgSettings?.anthropic_api_key || '')
-  const [metaToken, setMetaToken] = useState(() => stored.meta || '')
-  const [googleKey, setGoogleKey] = useState(() => stored.google || '')
-  const [testingAnthropic, setTestingAnthropic] = useState(false)
-  const [testResult, setTestResult] = useState(null)
-  const [saved, setSaved] = useState(false)
+function ApiKeysTab({ lang }) {
+  // Sprint 0 cleanup: this tab used to let clinics paste their own
+  // Anthropic / Meta / Google API keys into localStorage. As of Phase 4 the
+  // Anthropic key lives only on the server, and Phase 5 moved WhatsApp /
+  // other integration credentials into org_secrets (operator-managed). No
+  // client-side key persistence remains.
   const ar = lang === 'ar'
-
-  const persist = (updates) => {
-    const next = { ...stored, ...updates }
-    setStored(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }
-
-  const generateKey = () => {
-    if (!newKeyName.trim()) return
-    const raw = Array.from(crypto.getRandomValues(new Uint8Array(24))).map(b => b.toString(16).padStart(2, '0')).join('')
-    const key = `velo_pk_live_${raw}`
-    const newEntry = { id: `key_${Date.now()}`, name: sanitizeName(newKeyName), key, created: new Date().toISOString(), lastUsed: null }
-    const next = [...keys, newEntry]
-    setKeys(next); persist({ generatedKeys: next })
-    setNewKeyName(''); setShowNewForm(false)
-    if (toast) toast(ar ? 'تم إنشاء المفتاح' : 'API key generated', 'success')
-  }
-
-  const revokeKey = (id) => {
-    const next = keys.filter(k => k.id !== id)
-    setKeys(next); persist({ generatedKeys: next })
-    if (toast) toast(ar ? 'تم إلغاء المفتاح' : 'API key revoked', 'success')
-  }
-
-  const maskKey = (key) => maskApiKey(key)
-
-  const saveExternal = () => {
-    persist({ anthropic: anthropicKey, meta: metaToken, google: googleKey })
-    // Also push Anthropic key to orgSettings so AIAssistant picks it up live
-    if (onSave) onSave({ anthropic_api_key: anthropicKey })
-    setSaved(true); setTimeout(() => setSaved(false), 2000)
-    if (toast) toast(ar ? 'تم حفظ المفاتيح' : 'API keys saved', 'success')
-  }
-
-  const testAnthropicKey = async () => {
-    if (!anthropicKey) { setTestResult({ ok: false, msg: ar ? 'أدخل المفتاح أولاً' : 'Enter a key first' }); return }
-    setTestingAnthropic(true); setTestResult(null)
-    try {
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' },
-        body: JSON.stringify({ model: 'claude-sonnet-4-20250514', max_tokens: 16, messages: [{ role: 'user', content: 'Say OK' }] }),
-      })
-      if (res.ok) { setTestResult({ ok: true, msg: ar ? 'المفتاح يعمل بنجاح!' : 'Key is valid and working!' }) }
-      else { const err = await res.json().catch(() => ({})); setTestResult({ ok: false, msg: err.error?.message || `Error ${res.status}` }) }
-    } catch (err) { setTestResult({ ok: false, msg: ar ? 'فشل الاتصال بالخادم' : 'Connection failed. Check your network.' }) }
-    finally { setTestingAnthropic(false) }
-  }
-
-  const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString(ar ? 'ar-SA' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—'
+  const operatorContact = import.meta.env.VITE_OPERATOR_CONTACT || ''
 
   return (
     <div>
-      {/* ── Your API Keys ─────────────────────────────────── */}
-      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{ar ? 'مفاتيح API الخاصة بك' : 'Your API Keys'}</h2>
-          <button onClick={() => setShowNewForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.plus(14)} {ar ? 'إنشاء مفتاح' : 'Generate Key'}</button>
-        </div>
-        <p style={{ fontSize: 13, color: C.textSec, marginBottom: 16, lineHeight: 1.5 }}>
-          {ar ? 'استخدم هذه المفاتيح للوصول إلى Velo API من التطبيقات الخارجية.' : 'Use these keys to access Velo API from external applications.'}
-        </p>
-
-        {/* Generate key form */}
-        {showNewForm && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16, padding: 14, borderRadius: 10, background: C.bg, border: `1px solid ${C.border}` }}>
-            <input value={newKeyName} onChange={e => setNewKeyName(e.target.value)} placeholder={ar ? 'اسم المفتاح (مثال: تطبيق الموبايل)' : 'Key name (e.g. Mobile App)'} style={{ ...inputStyle(dir), flex: 1 }} onKeyDown={e => e.key === 'Enter' && generateKey()} />
-            <button onClick={generateKey} className="velo-btn-primary" style={makeBtn('primary', { fontSize: 12 })}>{ar ? 'إنشاء' : 'Generate'}</button>
-            <button onClick={() => setShowNewForm(false)} style={makeBtn('secondary', { fontSize: 12 })}>{ar ? 'إلغاء' : 'Cancel'}</button>
-          </div>
-        )}
-
-        {/* Keys list */}
-        {keys.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '28px 16px', color: C.textMuted }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>🔑</div>
-            <div style={{ fontSize: 13 }}>{ar ? 'لم تنشئ أي مفاتيح بعد' : 'No API keys generated yet'}</div>
-          </div>
-        ) : keys.map(k => (
-          <div key={k.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 0', borderTop: `1px solid ${C.border}` }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: C.bg, color: C.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{Icons.key(16)}</div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{k.name}</div>
-              <div style={{ fontSize: 11, fontFamily: 'monospace', color: C.textMuted, marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {showKey === k.id ? k.key : maskKey(k.key)}
-              </div>
-            </div>
-            <div style={{ fontSize: 10, color: C.textMuted, textAlign: 'center', minWidth: 70, flexShrink: 0 }}>
-              <div>{ar ? 'أُنشئ' : 'Created'}</div>
-              <div style={{ fontWeight: 500 }}>{fmtDate(k.created)}</div>
-            </div>
-            <div style={{ fontSize: 10, color: C.textMuted, textAlign: 'center', minWidth: 70, flexShrink: 0 }}>
-              <div>{ar ? 'آخر استخدام' : 'Last used'}</div>
-              <div style={{ fontWeight: 500 }}>{k.lastUsed ? fmtDate(k.lastUsed) : (ar ? 'أبداً' : 'Never')}</div>
-            </div>
-            <button onClick={() => setShowKey(showKey === k.id ? null : k.id)} title={showKey === k.id ? 'Hide' : 'Show'} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex', padding: 4 }}>{Icons.eye(14)}</button>
-            <button onClick={() => { navigator.clipboard?.writeText(k.key); if (toast) toast(ar ? 'تم النسخ' : 'Copied to clipboard', 'info') }} title="Copy" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex', padding: 4 }}>{Icons.copy(14)}</button>
-            <button onClick={() => revokeKey(k.id)} title="Revoke" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#ef4444', display: 'flex', padding: 4 }}>{Icons.trash(14)}</button>
-          </div>
-        ))}
-      </div>
-
-      {/* ── External API Keys ─────────────────────────────── */}
       <div style={{ ...card, padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, #8250DF, ${C.primary})`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            {Icons.link(18, '#fff')}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: `linear-gradient(135deg, ${C.primary}, #8250DF)`,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            </svg>
           </div>
           <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{ar ? 'مفاتيح API الخارجية' : 'External API Keys'}</h2>
-            <p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>{ar ? 'اربط خدمات الطرف الثالث مع Velo' : 'Connect third-party services with Velo'}</p>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>
+              {ar ? 'بيانات الاعتماد يديرها المشغّل' : 'Credentials are managed by the operator'}
+            </h2>
+            <p style={{ fontSize: 12, color: C.textMuted, margin: '2px 0 0' }}>
+              {ar ? 'لم تعد العيادات تخزن مفاتيح API محلياً' : 'Clinics no longer store API keys locally'}
+            </p>
           </div>
         </div>
 
-        {/* Anthropic */}
-        <div style={{ marginTop: 20, padding: 18, borderRadius: 12, border: `1px solid ${C.border}`, background: C.bg }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <span style={{ fontSize: 22 }}>🧠</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{ar ? 'مفتاح Anthropic API' : 'Anthropic API Key'}</div>
-              <div style={{ fontSize: 11, color: C.textMuted }}>{ar ? 'لتشغيل مساعد الذكاء الاصطناعي (Claude)' : 'Powers the AI Assistant (Claude)'}</div>
-            </div>
-            <button onClick={testAnthropicKey} disabled={testingAnthropic} style={makeBtn('secondary', { fontSize: 11, padding: '5px 12px', gap: 4 })}>
-              {testingAnthropic ? '...' : '🧪'} {ar ? 'اختبار' : 'Test'}
-            </button>
-          </div>
-          <input value={anthropicKey} onChange={e => setAnthropicKey(e.target.value)} type="password" placeholder="sk-ant-api03-..." style={inputStyle(dir)} />
-          <p style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{ar ? 'احصل على مفتاحك من console.anthropic.com' : 'Get your key from console.anthropic.com'}</p>
-          {testResult && (
-            <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, fontSize: 12, fontWeight: 500, background: testResult.ok ? 'rgba(0,255,136,0.1)' : 'rgba(239,68,68,0.1)', color: testResult.ok ? '#00ff88' : '#ef4444', display: 'flex', alignItems: 'center', gap: 6 }}>
-              {testResult.ok ? '✓' : '✗'} {testResult.msg}
-            </div>
-          )}
-        </div>
+        <p style={{ fontSize: 14, color: C.textSec, lineHeight: 1.6, margin: '0 0 12px' }}>
+          {ar
+            ? 'تتم إدارة ميزات الذكاء الاصطناعي و WhatsApp والتكاملات الأخرى بواسطة المشغل. تواصل مع المشغل لتفعيل أي ميزة لهذه العيادة.'
+            : 'AI features, WhatsApp, and other integrations are configured by the operator. Contact the operator to enable AI for this clinic.'}
+        </p>
 
-        {/* Meta */}
-        <div style={{ marginTop: 14, padding: 18, borderRadius: 12, border: `1px solid ${C.border}`, background: C.bg }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <span style={{ fontSize: 22 }}>📱</span>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{ar ? 'رمز وصول Meta' : 'Meta Access Token'}</div>
-              <div style={{ fontSize: 11, color: C.textMuted }}>{ar ? 'لتكامل WhatsApp و Facebook' : 'For WhatsApp & Facebook integration'}</div>
-            </div>
+        {operatorContact ? (
+          <a
+            href={operatorContact}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '10px 18px', borderRadius: 8, marginTop: 4,
+              background: C.primary, color: '#07080E',
+              fontSize: 13, fontWeight: 600, textDecoration: 'none',
+              fontFamily: 'inherit',
+            }}
+          >
+            {ar ? 'تواصل مع المشغل' : 'Contact the operator'}
+          </a>
+        ) : (
+          <div style={{
+            marginTop: 8, padding: '10px 14px', borderRadius: 8,
+            background: 'rgba(245,158,11,0.08)',
+            border: '1px solid rgba(245,158,11,0.2)',
+            color: '#D29922', fontSize: 12,
+          }}>
+            {ar
+              ? 'لم يتم إعداد جهة اتصال المشغل بعد.'
+              : 'Operator contact has not been configured yet.'}
           </div>
-          <input value={metaToken} onChange={e => setMetaToken(e.target.value)} type="password" placeholder="EAABs..." style={inputStyle(dir)} />
-          <p style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{ar ? 'من developers.facebook.com' : 'From developers.facebook.com'}</p>
-        </div>
-
-        {/* Google */}
-        <div style={{ marginTop: 14, padding: 18, borderRadius: 12, border: `1px solid ${C.border}`, background: C.bg }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <span style={{ fontSize: 22 }}>📅</span>
-            <div>
-              <div style={{ fontSize: 14, fontWeight: 600, color: C.text }}>{ar ? 'مفتاح Google API' : 'Google API Key'}</div>
-              <div style={{ fontSize: 11, color: C.textMuted }}>{ar ? 'لمزامنة التقويم' : 'For Calendar sync'}</div>
-            </div>
-          </div>
-          <input value={googleKey} onChange={e => setGoogleKey(e.target.value)} type="password" placeholder="AIza..." style={inputStyle(dir)} />
-          <p style={{ fontSize: 10, color: C.textMuted, marginTop: 4 }}>{ar ? 'من console.cloud.google.com' : 'From console.cloud.google.com'}</p>
-        </div>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
-          <button onClick={saveExternal} style={makeBtn(saved ? 'success' : 'primary', { gap: 6, minWidth: 120 })}>
-            {saved ? Icons.check(14) : Icons.shield(14)} {saved ? (ar ? 'تم الحفظ!' : 'Saved!') : (ar ? 'حفظ المفاتيح' : 'Save Keys')}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   )
 }
 
 function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
-  const [apiKey, setApiKey] = useState(orgSettings.anthropic_api_key || '')
+  void t
+  // The Anthropic key lives only on the server now (Phase 4). Clinic users
+  // configure prompt/personality/knowledge here; the secret never leaves the
+  // server proxy at /api/ai/chat.
   const [personality, setPersonality] = useState(orgSettings.ai_personality || 'professional')
   const [knowledgeBase, setKnowledgeBase] = useState(orgSettings.ai_knowledge_base || '')
   const [channels, setChannels] = useState(orgSettings.ai_enabled_channels || { whatsapp: false, instagram: false, email: false })
@@ -775,7 +714,7 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
   const fileRef = useRef(null)
 
   const handleSave = () => {
-    if (onSave) onSave({ anthropic_api_key: apiKey, ai_personality: personality, ai_knowledge_base: knowledgeBase, ai_enabled_channels: channels, ai_working_hours: workingHours, ai_escalation_keywords: escalationKeywords, ai_response_delay: responseDelay })
+    if (onSave) onSave({ ai_personality: personality, ai_knowledge_base: knowledgeBase, ai_enabled_channels: channels, ai_working_hours: workingHours, ai_escalation_keywords: escalationKeywords, ai_response_delay: responseDelay })
     setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
@@ -792,18 +731,22 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 
   return (
     <div>
-      {/* API Key */}
+      {/* Header — credentials are operator-managed now (Phase 4) */}
       <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
           <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.primary}, #8250DF)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           </div>
-          <div><h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{lang === 'ar' ? 'إعدادات الذكاء الاصطناعي' : 'AI Agent Settings'}</h2><p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>Powered by Claude (Anthropic)</p></div>
+          <div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{lang === 'ar' ? 'إعدادات الذكاء الاصطناعي' : 'AI Agent Settings'}</h2>
+            <p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>Powered by Claude (Anthropic)</p>
+          </div>
         </div>
-        <FormField label={lang === 'ar' ? 'مفتاح Anthropic API' : 'Anthropic API Key'} dir={dir}>
-          <input value={apiKey} onChange={e => setApiKey(e.target.value)} type="password" placeholder="sk-ant-..." style={inputStyle(dir)} />
-          <p style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>{lang === 'ar' ? 'احصل على مفتاحك من console.anthropic.com' : 'Get your key from console.anthropic.com'}</p>
-        </FormField>
+        <p style={{ fontSize: 13, color: C.textSec, lineHeight: 1.6, margin: 0 }}>
+          {lang === 'ar'
+            ? 'يقوم المشغّل بإدارة بيانات اعتماد Anthropic. الإعدادات أدناه (الشخصية، قاعدة المعرفة، القنوات، ساعات العمل) تُحفظ على مستوى العيادة وتُمرَّر إلى الخادم عند الرد التلقائي.'
+            : 'Anthropic credentials are managed by the operator. The settings below (personality, knowledge base, channels, working hours) are saved per-clinic and forwarded to the server when auto-replies fire.'}
+        </p>
       </div>
 
       {/* Personality */}
@@ -908,9 +851,9 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
                   setTestMessages(prev=>[...prev, {role:'user',content:msg}])
                   try {
                     const { callClaude, buildAutoReplySystem } = await import('../lib/ai')
-                    const reply = await callClaude({ apiKey, messages:[{role:'user',content:msg}], system: buildAutoReplySystem(knowledgeBase, personality, 'Test Customer'), maxTokens:256 })
+                    const reply = await callClaude({ messages:[{role:'user',content:msg}], system: buildAutoReplySystem(knowledgeBase, personality, 'Test Customer'), maxTokens:256 })
                     setTestMessages(prev=>[...prev, {role:'assistant',content:reply}])
-                  } catch(err) { setTestMessages(prev=>[...prev, {role:'assistant',content: lang === 'ar' ? 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.' : 'An error occurred while contacting the AI service.'}]) }
+                  } catch { setTestMessages(prev=>[...prev, {role:'assistant',content: lang === 'ar' ? 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.' : 'An error occurred while contacting the AI service.'}]) }
                 }
               }} />
           </div>
@@ -925,7 +868,10 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 }
 
 function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
-  const defaultSecret = orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10)
+  void t
+  // Math.random() is impure during render; pin it to a useState lazy
+  // initializer so the secret is generated exactly once per mount.
+  const [defaultSecret] = useState(() => orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10))
   const [wa, setWa] = useState({ phone_id: orgSettings.whatsapp_phone_id || '', token: orgSettings.whatsapp_access_token || '', secret: orgSettings.whatsapp_webhook_secret || defaultSecret, waba_id: orgSettings.whatsapp_waba_id || '' })
   const [gmail, setGmail] = useState({ email: orgSettings.gmail_email || '' })
   const [meta, setMeta] = useState({ token: orgSettings.meta_access_token || '' })
@@ -1037,161 +983,40 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 }
 
 // ─── Agency AI Settings (Super Admin Only) ──────────────────────────────────
-function AgencyAITab({ lang, dir, toast }) {
-  const isRTL = dir === 'rtl'
-  const [apiKey, setApiKey] = useState('')
-  const [showKey, setShowKey] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [testing, setTesting] = useState(false)
-  const [testResult, setTestResult] = useState(null)
-
-  // Load existing key
-  useState(() => {
-    if (!supabase) { setLoading(false); return }
-    import('../lib/agency_settings').then(({ fetchAgencySetting }) =>
-      fetchAgencySetting('anthropic_api_key')
-    )
-      .then(row => { if (row?.value) setApiKey(row.value); setLoading(false) })
-      .catch(() => setLoading(false))
-  })
-
-  const handleSave = async () => {
-    if (!supabase || !apiKey.trim()) return
-    setSaving(true)
-    setTestResult(null)
-    try {
-      const { upsertAgencySetting } = await import('../lib/agency_settings')
-      await upsertAgencySetting('anthropic_api_key', apiKey.trim())
-      clearAgencyKeyCache()
-      if (toast) toast(isRTL ? 'تم حفظ مفتاح الوكالة' : 'Agency API key saved', 'success')
-    } catch (error) {
-      console.error('Save agency key error:', error)
-      if (toast) toast(isRTL ? 'خطأ في الحفظ' : 'Error saving key', 'error')
-    }
-    setSaving(false)
-  }
-
-  const handleTest = async () => {
-    if (!apiKey.trim()) return
-    setTesting(true)
-    setTestResult(null)
-    try {
-      await callClaude({
-        apiKey: apiKey.trim(),
-        messages: [{ role: 'user', content: 'Reply with exactly: OK' }],
-        system: 'Reply with exactly one word: OK',
-        maxTokens: 8,
-      })
-      setTestResult({ ok: true, message: isRTL ? 'المفتاح يعمل!' : 'Key is valid!' })
-    } catch (err) {
-      setTestResult({ ok: false, message: err.message || (isRTL ? 'فشل الاتصال' : 'Connection failed') })
-    }
-    setTesting(false)
-  }
-
+function AgencyAITab({ lang }) {
+  // Phase 4 moved the Anthropic key to the server-side ANTHROPIC_API_KEY env
+  // var. The agency_settings table is gone. This tab is preserved as an
+  // operator-only notice so the navigation doesn't 404 — there's nothing
+  // to configure here from the UI anymore.
+  const isRTL = lang === 'ar'
   return (
     <div>
-      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-          <div style={{ width: 40, height: 40, borderRadius: 10, background: 'linear-gradient(135deg, rgb(var(--velo-accent-solid)), #7c3aed)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      <div style={{ ...card, padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: 'linear-gradient(135deg, rgb(var(--velo-accent-solid)), #7c3aed)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
             </svg>
           </div>
           <div>
             <h2 style={{ fontSize: 18, fontWeight: 700, color: 'rgb(var(--velo-text-primary))', margin: 0 }}>
-              {isRTL ? 'إعدادات AI الوكالة' : 'Agency AI Settings'}
+              {isRTL ? 'AI الوكالة' : 'Agency AI'}
             </h2>
             <p style={{ fontSize: 12, color: 'rgb(var(--velo-text-secondary))', margin: '2px 0 0' }}>
-              {isRTL ? 'مفتاح API مشترك لجميع المؤسسات' : 'Shared API key for all organizations'}
+              {isRTL ? 'يدار خادمياً' : 'Server-managed'}
             </p>
           </div>
         </div>
-
-        <div style={{ padding: '12px 16px', borderRadius: 8, background: 'rgba(0,255,178,0.06)', border: '1px solid rgba(0,255,178,0.1)', fontSize: 12, color: 'rgb(var(--velo-accent-solid))', lineHeight: 1.5, marginBottom: 20 }}>
+        <p style={{ fontSize: 14, color: 'rgb(var(--velo-text-secondary))', lineHeight: 1.6, margin: 0 }}>
           {isRTL
-            ? 'هذا المفتاح يُستخدم كمفتاح افتراضي لجميع المؤسسات التي ليس لديها مفتاح خاص. يتيح لك تشغيل AI Growth Agent والمساعد الذكي لجميع العملاء.'
-            : 'This key serves as the default for all organizations without their own key. It powers the AI Growth Agent and AI Assistant for all clients.'}
-        </div>
-
-        {loading ? (
-          <div style={{ padding: 20, textAlign: 'center', color: 'rgb(var(--velo-text-secondary))', fontSize: 13 }}>
-            {isRTL ? 'جاري التحميل...' : 'Loading...'}
-          </div>
-        ) : (
-          <>
-            <FormField label={isRTL ? 'مفتاح Anthropic API' : 'Anthropic API Key'} dir={dir}>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <div style={{ flex: 1, position: 'relative' }}>
-                  <input
-                    type={showKey ? 'text' : 'password'}
-                    value={apiKey}
-                    onChange={e => { setApiKey(e.target.value); setTestResult(null) }}
-                    placeholder="sk-ant-api03-..."
-                    style={{ ...inputStyle(dir), paddingRight: 40 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowKey(v => !v)}
-                    style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', border: 'none', background: 'transparent', cursor: 'pointer', color: 'rgb(var(--velo-text-secondary))', display: 'flex', padding: 4 }}
-                  >
-                    {showKey ? Icons.eyeOff(16) : Icons.eye(16)}
-                  </button>
-                </div>
-              </div>
-            </FormField>
-
-            {testResult && (
-              <div style={{ marginBottom: 16, padding: '10px 14px', borderRadius: 8, fontSize: 12, fontWeight: 500, background: testResult.ok ? 'rgba(0,255,136,0.08)' : 'rgba(239,68,68,0.08)', color: testResult.ok ? '#00ff88' : '#ef4444', border: `1px solid ${testResult.ok ? 'rgba(0,255,136,0.15)' : 'rgba(239,68,68,0.15)'}`, display: 'flex', alignItems: 'center', gap: 8 }}>
-                {testResult.ok
-                  ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6L9 17l-5-5"/></svg>
-                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>}
-                {testResult.message}
-              </div>
-            )}
-
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                onClick={handleTest}
-                disabled={testing || !apiKey.trim()}
-                style={makeBtn('secondary', { gap: 6, opacity: testing || !apiKey.trim() ? 0.5 : 1 })}
-              >
-                {testing
-                  ? (isRTL ? 'جاري الاختبار...' : 'Testing...')
-                  : (isRTL ? 'اختبار المفتاح' : 'Test Key')}
-              </button>
-              <button
-                onClick={handleSave}
-                disabled={saving || !apiKey.trim()}
-                className="velo-btn-primary" style={makeBtn('primary', { gap: 6, opacity: saving || !apiKey.trim() ? 0.5 : 1 })}
-              >
-                {saving
-                  ? (isRTL ? 'جاري الحفظ...' : 'Saving...')
-                  : (isRTL ? 'حفظ مفتاح الوكالة' : 'Save Agency Key')}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Info card */}
-      <div style={{ ...card, padding: 20 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'rgb(var(--velo-text-primary))', margin: '0 0 12px' }}>
-          {isRTL ? 'كيف يعمل' : 'How it works'}
-        </h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {[
-            { icon: '1️⃣', text: isRTL ? 'أضف مفتاح Anthropic API أعلاه' : 'Add your Anthropic API key above' },
-            { icon: '2️⃣', text: isRTL ? 'جميع المؤسسات تستخدم هذا المفتاح تلقائياً' : 'All organizations automatically use this key' },
-            { icon: '3️⃣', text: isRTL ? 'المؤسسات يمكنها تجاوزه بمفتاحها الخاص' : 'Organizations can override with their own key' },
-          ].map((step, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: 'rgb(var(--velo-text-secondary))' }}>
-              <span>{step.icon}</span>
-              <span>{step.text}</span>
-            </div>
-          ))}
-        </div>
+            ? 'يتم تكوين ميزات الذكاء الاصطناعي عبر المتغير البيئي للخادم ANTHROPIC_API_KEY بواسطة المشغل. لم تعد هناك إعدادات قابلة للتعديل من واجهة المستخدم.'
+            : 'AI features are configured by the operator via the server-side ANTHROPIC_API_KEY env var. Nothing is configurable from the UI anymore — contact support to enable or rotate the key.'}
+        </p>
       </div>
     </div>
   )
@@ -1201,15 +1026,25 @@ function AgencyAITab({ lang, dir, toast }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // CLINIC TAB — Manage Doctors, Working Hours
 // ═══════════════════════════════════════════════════════════════════════════
-const DOC_COLORS = ['#4DA6FF','#00FFB2','#a855f7','#f59e0b','#ef4444','#6366f1','#ec4899','#14b8a6','#ff6b6b','#1dd1a1']
-const SPECIALTIES = ['General Dentistry','Orthodontics','Cosmetic Dentistry','Periodontics','Endodontics','Oral Surgery','Pediatric Dentistry','Prosthodontics']
 const WEEK_DAYS_EN = ['Saturday','Sunday','Monday','Tuesday','Wednesday','Thursday','Friday']
 const WEEK_DAYS_AR = ['السبت','الاحد','الاثنين','الثلاثاء','الاربعاء','الخميس','الجمعة']
 
+// Deterministic palette assignment for the avatar tint. The new `profiles`
+// schema doesn't store a color column, but the doctor list looks dead
+// without one — we hash the id so each doctor gets a stable shade.
+const DOCTOR_PALETTE = ['#4DA6FF','#00FFB2','#a855f7','#f59e0b','#ef4444','#6366f1','#ec4899','#14b8a6']
+function doctorTint(id) {
+  const s = String(id || '')
+  if (!s) return DOCTOR_PALETTE[0]
+  let h = 0
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0
+  return DOCTOR_PALETTE[h % DOCTOR_PALETTE.length]
+}
+
 function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
-  const [orgId, setOrgId] = useState(() => isSupabaseConfigured() ? null : 'demo-org')
+  void lang
   const [doctors, setDoctors] = useState(() =>
-    isSupabaseConfigured() ? [] : SAMPLE_DENTAL_DOCTORS.map(d => ({ ...d, is_active: true }))
+    isSupabaseConfigured() ? [] : SAMPLE_DENTAL_DOCTORS
   )
   const [loading, setLoading] = useState(() => isSupabaseConfigured())
   const [editDoc, setEditDoc] = useState(null)
@@ -1225,8 +1060,7 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
     if (!isSupabaseConfigured()) return
     ;(async () => {
       try {
-        const oid = await getCurrentOrgId()
-        setOrgId(oid)
+        await getCurrentOrgId()
         await fetchAll()
       } catch {
         setLoading(false)
@@ -1246,6 +1080,9 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
     }
   }
 
+  // Save the editable subset of profile fields. The new `profiles` table only
+  // has full_name, avatar_url, locale that a clinic user can self-edit; role
+  // and org_id are operator-managed (and the trigger blocks them anyway).
   const saveDoctor = async (form) => {
     if (!isSupabaseConfigured()) {
       toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
@@ -1255,27 +1092,11 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
     try {
       await updateProfile(editDoc.id, {
         full_name: form.full_name,
-        specialization: form.specialization,
-        color: form.color,
-        phone: form.phone,
-        is_active: form.is_active,
+        avatar_url: form.avatar_url || null,
+        locale: form.locale || null,
       })
       toast?.(isRTL ? 'تم تحديث الطبيب' : 'Doctor updated', 'success')
       setShowDocForm(false); setEditDoc(null)
-      await fetchAll()
-    } catch (err) {
-      toast?.('Error: ' + err.message, 'error')
-    }
-  }
-
-  const deleteDoctor = async (id) => {
-    if (!isSupabaseConfigured()) {
-      toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإدارة الأطباء' : 'Demo mode: connect Supabase to manage doctors', 'info')
-      return
-    }
-    try {
-      await demoteDoctor(id)
-      toast?.(isRTL ? 'تم تنزيل الطبيب إلى عضو' : 'Doctor demoted to member', 'success')
       await fetchAll()
     } catch (err) {
       toast?.('Error: ' + err.message, 'error')
@@ -1288,18 +1109,13 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
     toast?.('Working hours saved', 'success')
   }
 
-  // Doctors are Velo users (profiles backed by auth users) — adding one
-  // goes through the Team invite flow with role='doctor', not an INSERT
-  // here. This redirects with an explanatory toast.
+  // "Add Doctor" → Team tab. The invitations flow assigns role='doctor' on
+  // accept, then the new user shows up here automatically.
   const handleAddDoctor = () => {
-    if (!isSupabaseConfigured()) {
-      toast?.(isRTL ? 'الوضع التجريبي: اتصل بـ Supabase لإضافة الأطباء' : 'Demo mode: connect Supabase to add doctors', 'info')
-      return
-    }
     toast?.(
       isRTL
-        ? 'الأطباء مستخدمو Velo — ادعهم من تبويب الفريق، ثم عد هنا لتعيين التخصص واللون'
-        : 'Doctors are Velo users — invite them from Team tab, then return here to set their specialization and color',
+        ? 'الأطباء مستخدمو Velo — ادعهم من تبويب الفريق بدور "طبيب"'
+        : 'Doctors are Velo users — invite them from the Team tab with role "Doctor"',
       'info'
     )
     if (setTab) setTab('team')
@@ -1314,36 +1130,44 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
           <div>
             <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'الاطباء' : 'Doctors'}</h3>
-            <p style={{ fontSize: 13, color: C.textSec, margin: '4px 0 0' }}>{isRTL ? 'ادارة اطباء العيادة' : 'Manage clinic doctors and providers'}</p>
+            <p style={{ fontSize: 13, color: C.textSec, margin: '4px 0 0' }}>
+              {isRTL
+                ? 'الأطباء مستخدمو Velo — ادعهم من تبويب الفريق بدور "طبيب"'
+                : 'Doctors are Velo users — invite from the Team tab with role "Doctor"'}
+            </p>
           </div>
-          <button onClick={handleAddDoctor} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.plus(14)} {isRTL ? 'اضافة طبيب' : 'Add Doctor'}</button>
+          <button onClick={handleAddDoctor} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.users(14)} {isRTL ? 'تبويب الفريق' : 'Go to Team'}</button>
         </div>
 
         {doctors.length === 0 ? (
           <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13, border: '1px dashed var(--border-subtle)', borderRadius: 10 }}>
-            {isRTL ? 'لا يوجد اطباء. اضف طبيبك الاول.' : 'No doctors yet. Add your first doctor.'}
+            {isRTL ? 'لا يوجد أطباء بعد. ادعهم من تبويب الفريق.' : 'No doctors yet — invite them from the Team tab.'}
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {doctors.map(doc => (
-              <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--bg-void)', transition: 'border-color 0.15s' }}
-                onMouseEnter={e => e.currentTarget.style.borderColor = doc.color}
-                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border-subtle)'}>
-                <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${doc.color}20`, border: `2px solid ${doc.color}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: doc.color, fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
-                  {doc.full_name?.charAt(0)}
+            {doctors.map(doc => {
+              const tint = doctorTint(doc.id)
+              return (
+                <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--bg-void)' }}>
+                  {doc.avatar_url ? (
+                    <img src={doc.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                  ) : (
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${tint}20`, border: `2px solid ${tint}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: tint, fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
+                      {(doc.full_name || 'D').charAt(0)}
+                    </div>
+                  )}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{doc.full_name || '—'}</div>
+                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                      {ROLE_LABELS[isRTL ? 'ar' : 'en'].doctor}
+                    </div>
+                  </div>
+                  <button onClick={() => { setEditDoc(doc); setShowDocForm(true) }} style={{ ...makeBtn('ghost'), padding: 6, height: 30 }} title={isRTL ? 'تعديل' : 'Edit'}>
+                    {Icons.edit(14)}
+                  </button>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{doc.full_name}</div>
-                  <div style={{ fontSize: 12, color: doc.color, fontWeight: 500, marginTop: 1 }}>{doc.specialization}</div>
-                  {doc.phone && <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{doc.phone}</div>}
-                </div>
-                <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 10, background: doc.is_active ? 'rgba(0,255,178,0.1)' : 'rgba(255,107,107,0.1)', color: doc.is_active ? '#00FFB2' : '#FF6B6B' }}>
-                  {doc.is_active ? (isRTL ? 'نشط' : 'Active') : (isRTL ? 'غير نشط' : 'Inactive')}
-                </span>
-                <button onClick={() => { setEditDoc(doc); setShowDocForm(true) }} style={{ ...makeBtn('ghost'), padding: 6, height: 30 }}>{Icons.edit(14)}</button>
-                <button onClick={() => deleteDoctor(doc.id)} style={{ ...makeBtn('ghost'), padding: 6, height: 30, color: '#FF6B6B' }}>{Icons.trash(14)}</button>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
@@ -1389,13 +1213,13 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
   )
 }
 
+// New profiles schema only allows clinic-side edits to full_name, avatar_url,
+// and locale. Role / org_id are operator-managed and locked by trigger.
 function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
   const [form, setForm] = useState({
     full_name: doc?.full_name || '',
-    specialization: doc?.specialization || 'General Dentistry',
-    color: doc?.color || '#4DA6FF',
-    phone: doc?.phone || '',
-    is_active: doc?.is_active ?? true,
+    avatar_url: doc?.avatar_url || '',
+    locale: doc?.locale || '',
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -1405,35 +1229,26 @@ function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
         <FormField label={isRTL ? 'الاسم' : 'Name'} dir={dir}>
           <input value={form.full_name} onChange={e => set('full_name', e.target.value)} style={inputStyle(dir)} placeholder="Dr. ..." />
         </FormField>
-        <FormField label={isRTL ? 'التخصص' : 'Specialty'} dir={dir}>
-          <select value={form.specialization} onChange={e => set('specialization', e.target.value)} style={selectStyle(dir)}>
-            {SPECIALTIES.map(s => <option key={s} value={s}>{s}</option>)}
+        <FormField label={isRTL ? 'اللغة' : 'Locale'} dir={dir}>
+          <select value={form.locale} onChange={e => set('locale', e.target.value)} style={selectStyle(dir)}>
+            <option value="">{isRTL ? '— تلقائي —' : '— Auto —'}</option>
+            <option value="en">English</option>
+            <option value="ar">العربية</option>
           </select>
         </FormField>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <FormField label={isRTL ? 'الهاتف' : 'Phone'} dir={dir}>
-          <input value={form.phone} onChange={e => set('phone', e.target.value)} style={inputStyle(dir)} placeholder="+964 ..." />
-        </FormField>
-        <FormField label={isRTL ? 'اللون' : 'Color'} dir={dir}>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', paddingTop: 4 }}>
-            {DOC_COLORS.map(c => (
-              <div key={c} onClick={() => set('color', c)}
-                style={{ width: 28, height: 28, borderRadius: '50%', background: c, cursor: 'pointer', border: form.color === c ? '3px solid #fff' : '3px solid transparent', boxShadow: form.color === c ? `0 0 0 2px ${c}` : 'none', transition: 'all 0.15s' }} />
-            ))}
-          </div>
-        </FormField>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 8, marginBottom: 12 }}>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, color: C.text, fontWeight: 500 }}>
-          <input type="checkbox" checked={form.is_active} onChange={e => set('is_active', e.target.checked)} style={{ accentColor: '#00FFB2' }} />
-          {isRTL ? 'نشط' : 'Active'}
-        </label>
+      <FormField label={isRTL ? 'رابط الصورة' : 'Avatar URL'} dir={dir}>
+        <input value={form.avatar_url} onChange={e => set('avatar_url', e.target.value)} style={inputStyle(dir)} placeholder="https://..." />
+      </FormField>
+      <div style={{ marginTop: 4, marginBottom: 12, fontSize: 11, color: C.textMuted, fontStyle: 'italic' }}>
+        {isRTL
+          ? 'يتم إدارة الدور (طبيب / موظف استقبال) من قبل المشغل، لا يمكن تعديله من هنا.'
+          : 'Role (doctor / receptionist / etc.) is operator-managed and cannot be changed from this form.'}
       </div>
       <div style={{ display: 'flex', gap: 8 }}>
         <button onClick={onCancel} style={makeBtn('secondary')}>{isRTL ? 'الغاء' : 'Cancel'}</button>
         <button onClick={() => { if (form.full_name.trim()) onSave(form) }} disabled={!form.full_name.trim()} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: form.full_name.trim() ? 1 : 0.5 }}>
-          {doc?.id ? (isRTL ? 'تحديث' : 'Update') : (isRTL ? 'اضافة' : 'Add')}
+          {isRTL ? 'تحديث' : 'Update'}
         </button>
       </div>
     </div>

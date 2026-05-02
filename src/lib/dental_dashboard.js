@@ -1,78 +1,78 @@
 /**
- * Velo CRM — dashboard query helpers.
+ * Velo CRM — dashboard query helpers (new schema).
  *
- * Powers DentalDashboard's stats panel. Bundles every parallel query into a
- * single helper so the page doesn't pierce the lib/ boundary.
+ * Powers DentalDashboard's stats panel. Returns the rows the page needs in
+ * one round-trip so the page doesn't pierce the lib/ boundary.
+ *
+ * The legacy `deals` table is gone; the "active deals" stat is dropped.
+ * `payments` no longer has a `status` column (every recorded payment is
+ * paid by definition); the "pending payments" stat is dropped too.
  */
 
 import { supabase } from './supabase'
 import { requireUser, getCurrentOrgId } from './auth_session'
 
 /**
+ * @param {object} args
+ * @param {string} args.dayStartIso  - ISO timestamp marking start-of-today (UTC) for `scheduled_at` filtering
+ * @param {string} args.dayEndIso    - ISO timestamp marking end-of-today (UTC, exclusive)
+ * @param {string} args.firstOfMonthIso - ISO timestamp at the first of the current month
  * @returns {object} {
- *   appointmentsToday,
- *   recentContacts,
- *   newPatientsThisMonth,
- *   pendingPayments,
- *   activeDeals,
- *   totalContacts,
+ *   appointmentsToday: row[],
+ *   recentPatients:    row[],   // 5 most recent
+ *   newPatientsThisMonth: number,
+ *   totalPatients:     number,
  * }
  */
-export async function fetchDentalDashboardStats({ todayDate, firstOfMonthDate } = {}) {
+export async function fetchDentalDashboardStats({ dayStartIso, dayEndIso, firstOfMonthIso } = {}) {
   await requireUser()
   const orgId = await getCurrentOrgId()
 
-  if (!todayDate || !firstOfMonthDate) {
-    throw new Error('fetchDentalDashboardStats: todayDate and firstOfMonthDate are required')
+  if (!dayStartIso || !dayEndIso || !firstOfMonthIso) {
+    throw new Error(
+      'fetchDentalDashboardStats: dayStartIso, dayEndIso, and firstOfMonthIso are required'
+    )
   }
 
   const [
     apptsRes,
     recentRes,
     newThisMonthRes,
-    pendingRes,
-    activeDealsRes,
-    totalContactsRes,
+    totalPatientsRes,
   ] = await Promise.all([
     supabase
       .from('appointments')
-      .select('*')
+      .select('id, patient_id, doctor_id, type, status, scheduled_at, duration_minutes, chair_id, notes, patients:patient_id(id, full_name, phone)')
       .eq('org_id', orgId)
-      .eq('appointment_date', todayDate)
-      .order('appointment_time', { ascending: true }),
+      .gte('scheduled_at', dayStartIso)
+      .lt('scheduled_at', dayEndIso)
+      .order('scheduled_at', { ascending: true }),
     supabase
-      .from('contacts')
-      .select('*')
+      .from('patients')
+      .select('id, full_name, phone, email, dob, created_at')
       .eq('org_id', orgId)
       .order('created_at', { ascending: false })
       .limit(5),
     supabase
-      .from('contacts')
+      .from('patients')
       .select('*', { count: 'exact', head: true })
       .eq('org_id', orgId)
-      .gte('created_at', firstOfMonthDate),
+      .gte('created_at', firstOfMonthIso),
     supabase
-      .from('payments')
-      .select('amount,status,contact_id,id')
-      .eq('org_id', orgId)
-      .in('status', ['pending', 'overdue']),
-    supabase
-      .from('deals')
-      .select('*', { count: 'exact', head: true })
-      .eq('org_id', orgId)
-      .not('stage', 'in', '("won","lost")'),
-    supabase
-      .from('contacts')
+      .from('patients')
       .select('*', { count: 'exact', head: true })
       .eq('org_id', orgId),
   ])
 
+  if (apptsRes.error) throw apptsRes.error
+  if (recentRes.error) throw recentRes.error
+  if (newThisMonthRes.error) throw newThisMonthRes.error
+  if (totalPatientsRes.error) throw totalPatientsRes.error
+
   return {
     appointmentsToday: apptsRes.data || [],
-    recentContacts: recentRes.data || [],
+    recentPatients: recentRes.data || [],
     newPatientsThisMonth: newThisMonthRes.count ?? 0,
-    pendingPayments: pendingRes.data || [],
-    activeDealsCount: activeDealsRes.count ?? 0,
-    totalContacts: totalContactsRes.count ?? 0,
+    totalPatients: totalPatientsRes.count ?? 0,
   }
 }

@@ -1,98 +1,125 @@
+/**
+ * Velo CRM — invitations helpers (link-only flow).
+ *
+ * Owner generates a /join?token=... URL → owner shares it via WhatsApp /
+ * email / etc. → invitee clicks the link → /join page calls
+ * accept_invitation. No email infrastructure.
+ *
+ * Reads (listPendingInvitations) and the revoke UPDATE go through Supabase
+ * directly with defense-in-depth org_id filtering. Writes (create) go
+ * through /api/invitations/create so the server can do JWT verify, role
+ * check (must be owner), test-org refusal, and audit logging in one place.
+ *
+ * The two RPCs (`get_invitation_preview`, `accept_invitation`) are
+ * SECURITY DEFINER on the database — see schema.sql for the function
+ * definitions. Helpers wrap them.
+ */
+
 import { supabase, isSupabaseConfigured } from './supabase'
 import { requireUser, getCurrentOrgId } from './auth_session'
 import { logAuditEvent } from './audit'
-import { sanitizeEmail, sanitizeText } from './sanitize'
 
-// App URL used in the invite link shown to the admin. Override with
-// VITE_APP_URL in the environment if the deployment URL changes.
-export const APP_URL =
-  (import.meta.env && import.meta.env.VITE_APP_URL) ||
-  'https://velo-crm-coral.vercel.app'
+// ─── Build the invite URL the owner shares ──────────────────────────────────
+//
+// Pure function. Uses VITE_APP_URL when set (production builds), falls back
+// to window.location.origin in dev/preview where the env var isn't pinned.
+
+const APP_URL =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_APP_URL) || ''
+
+export function buildInviteUrl(token) {
+  if (!token) return ''
+  const base = APP_URL || (typeof window !== 'undefined' ? window.location.origin : '')
+  return `${base}/join?token=${encodeURIComponent(token)}`
+}
+
+// ─── localStorage round-trip helpers ────────────────────────────────────────
+// Survive the auth round-trip: invitee clicks /join?token, we capture the
+// token before redirecting through sign-in / sign-up, and replay it after.
 
 const PENDING_INVITE_KEY = 'velo_pending_invite'
 
 export function rememberPendingInvite(token) {
-  try { localStorage.setItem(PENDING_INVITE_KEY, String(token)) } catch {}
+  try { localStorage.setItem(PENDING_INVITE_KEY, String(token)) }
+  catch { /* storage may be unavailable */ }
 }
+
 export function getPendingInvite() {
-  try { return localStorage.getItem(PENDING_INVITE_KEY) || null } catch { return null }
+  try { return localStorage.getItem(PENDING_INVITE_KEY) || null }
+  catch { return null }
 }
+
 export function clearPendingInvite() {
-  try { localStorage.removeItem(PENDING_INVITE_KEY) } catch {}
+  try { localStorage.removeItem(PENDING_INVITE_KEY) }
+  catch { /* storage may be unavailable */ }
 }
 
-// Admin creates an invitation. Returns the full row (incl. token), which the
-// caller turns into a /join link for the admin to copy-paste.
-export async function createInvitation({ orgId, email, role }) {
-  if (!isSupabaseConfigured()) throw new Error('Supabase not configured')
-  const user = await requireUser()
-  const myOrgId = await getCurrentOrgId()
-  if (!orgId) throw new Error('createInvitation: orgId is required')
-  if (orgId !== myOrgId) {
-    throw new Error('createInvitation: org_id mismatch with current session')
-  }
+// ─── Server-mediated create ─────────────────────────────────────────────────
+// Goes through /api/invitations/create so the server enforces the
+// owner-only rule, refuses test orgs, and writes the audit row.
+//
+// Returns the new invitation row: { id, token, expires_at, role, email,
+// org_id, status }.
 
-  const safeEmail = sanitizeEmail(email || '')
-  const safeRole = sanitizeText(role || 'member', 32)
-  const token = (typeof crypto !== 'undefined' && crypto.randomUUID)
-    ? crypto.randomUUID()
-    : undefined // let the DB default fill it
-  const payload = {
-    org_id: orgId,
-    email: safeEmail,
-    role: safeRole,
-    invited_by: user.id,
-  }
-  if (token) payload.token = token
-  const { data, error } = await supabase
-    .from('invitations')
-    .insert(payload)
-    .select()
-    .single()
-  if (error) throw error
+export async function createInvitation({ email, role }) {
+  if (!isSupabaseConfigured()) throw new Error('Supabase is not configured')
+  await requireUser()
 
-  await logAuditEvent({
-    orgId,
-    action: 'invitation.create',
-    entityType: 'invitation',
-    entityId: data?.id || null,
-    payload: { email: safeEmail, role: safeRole },
+  const { data: { session } } = await supabase.auth.getSession()
+  const accessToken = session?.access_token
+  if (!accessToken) throw new Error('Not signed in')
+
+  const res = await fetch('/api/invitations/create', {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${accessToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      email: String(email || '').toLowerCase().trim(),
+      role: String(role || ''),
+    }),
   })
 
-  return data
-}
-
-export function buildInviteUrl(token, email) {
-  const params = new URLSearchParams({ token })
-  if (email) params.set('email', email)
-  return `${APP_URL}/join?${params.toString()}`
-}
-
-export async function listPendingInvitations(orgId) {
-  if (!isSupabaseConfigured() || !orgId) return []
-  await requireUser()
-  const myOrgId = await getCurrentOrgId()
-  if (orgId !== myOrgId) {
-    throw new Error('listPendingInvitations: org_id mismatch with current session')
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}))
+    throw new Error(body?.error || `Create invitation failed (${res.status})`)
   }
+  return res.json()
+}
+
+// ─── Direct read: pending invitations for the caller's org ──────────────────
+// RLS allows owners to read their org's invitations; the helper just adds
+// the explicit org_id filter for defense in depth.
+
+export async function listPendingInvitations() {
+  if (!isSupabaseConfigured()) return []
+  await requireUser()
+  const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('invitations')
-    .select('*')
+    .select('id, org_id, email, role, token, status, invited_at, expires_at')
     .eq('org_id', orgId)
     .eq('status', 'pending')
-    .order('created_at', { ascending: false })
+    .order('invited_at', { ascending: false })
   if (error) throw error
   return data || []
 }
 
+// ─── Direct revoke (status update) ──────────────────────────────────────────
+// Owners can revoke their own org's pending invitations. RLS enforces it
+// server-side; we add the org_id filter as defense in depth and audit-log
+// the action.
+
 export async function revokeInvitation(id) {
-  if (!isSupabaseConfigured()) return
   if (!id) throw new Error('revokeInvitation: id is required')
+  if (!isSupabaseConfigured()) throw new Error('Supabase is not configured')
   await requireUser()
   const orgId = await getCurrentOrgId()
+
   const { error } = await supabase
     .from('invitations')
-    .delete()
+    .update({ status: 'revoked' })
     .eq('id', id)
     .eq('org_id', orgId)
   if (error) throw error
@@ -105,30 +132,48 @@ export async function revokeInvitation(id) {
   })
 }
 
-// Called on the /join page (unauthenticated). Returns { orgName, email, role }
-// or null if the token is invalid / expired.
+// ─── /join-page helpers ─────────────────────────────────────────────────────
+// `getInvitationPreview` is callable while signed-out (the RPC is granted
+// to `anon`). `acceptInvitation` requires a session.
+
 export async function getInvitationPreview(token) {
-  if (!isSupabaseConfigured() || !token) return null
+  if (!token || !isSupabaseConfigured()) return null
   const { data, error } = await supabase.rpc('get_invitation_preview', {
     invite_token: token,
   })
-  // Errors here usually mean a bad / expired token — return null so the UI
-  // can fall back to the generic "your invite link is invalid" state.
   if (error) return null
   const row = Array.isArray(data) ? data[0] : data
   if (!row) return null
-  return { orgName: row.org_name, email: row.invite_email, role: row.invite_role }
+  return {
+    orgName: row.org_name,
+    email: row.invite_email,
+    role: row.invite_role,
+    expiresAt: row.expires_at,
+    status: row.status,
+  }
 }
 
-// Called after the invitee signs in/signs up. Assigns their profile to the
-// inviting org and deletes the token. Returns { orgId, orgName, role }.
 export async function acceptInvitation(token) {
-  if (!isSupabaseConfigured() || !token) throw new Error('Invalid token')
-  const { data, error } = await supabase.rpc('accept_invitation', {
-    invite_token: token,
+  if (!token) throw new Error('acceptInvitation: token is required')
+  if (!isSupabaseConfigured()) throw new Error('Supabase is not configured')
+  await requireUser()
+
+  const { data: { session } } = await supabase.auth.getSession()
+  const accessToken = session?.access_token
+  if (!accessToken) throw new Error('Not signed in')
+
+  const res = await fetch('/api/invitations/accept', {
+    method: 'POST',
+    headers: {
+      'authorization': `Bearer ${accessToken}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ token }),
   })
-  if (error) throw error
-  const row = Array.isArray(data) ? data[0] : data
-  if (!row) throw new Error('Invitation not applied')
-  return { orgId: row.assigned_org_id, orgName: row.org_name, role: row.assigned_role }
+
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok || !body?.ok) {
+    throw new Error(body?.error || 'Could not accept invitation')
+  }
+  return body.orgId
 }
