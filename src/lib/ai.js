@@ -1,94 +1,63 @@
 /**
- * Velo CRM — AI Service (Claude API)
- * Key resolution order:
- *   1. Explicit apiKey param (org-level, from orgSettings or localStorage)
- *   2. Agency-level key from Supabase agency_settings table (cached 5 min)
+ * Velo CRM — Client-side AI helpers.
+ *
+ * As of Phase 4 (Sprint 0), the Anthropic key never lives in the browser.
+ * All Claude calls go through the server proxy at POST /api/ai/chat, which:
+ *   - validates the caller's Supabase JWT,
+ *   - resolves their org_id,
+ *   - rate-limits per org,
+ *   - wraps user-supplied content in <patient_message> tags for prompt-
+ *     injection protection,
+ *   - and returns sanitized error text on failure.
+ *
+ * Existing call-site signatures are preserved. The legacy `apiKey` argument
+ * is silently ignored — it's accepted via JS object spread so we don't have
+ * to chase down every caller.
  */
 
-let _agencyKeyCache = { key: null, expiry: 0 }
+import { supabase } from './supabase'
 
-/**
- * Fetch the agency-level Anthropic API key from Supabase.
- * Cached in memory for 5 minutes to avoid repeated queries.
- */
-export async function getAgencyApiKey() {
-  if (_agencyKeyCache.key && Date.now() < _agencyKeyCache.expiry) {
-    return _agencyKeyCache.key
+async function getAccessToken() {
+  if (!supabase) {
+    throw new Error('Supabase is not configured')
   }
-  try {
-    const { supabase } = await import('./supabase.js')
-    if (!supabase) return null
-    const { data } = await supabase
-      .from('agency_settings')
-      .select('value')
-      .eq('key', 'anthropic_api_key')
-      .single()
-    if (data?.value) {
-      _agencyKeyCache = { key: data.value, expiry: Date.now() + 5 * 60 * 1000 }
-      return data.value
-    }
-  } catch {
-    // Table may not exist yet or user has no access — fall through
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session?.access_token) {
+    throw new Error('Not signed in')
   }
-  return null
-}
-
-/** Clear the agency key cache (call after saving a new key) */
-export function clearAgencyKeyCache() {
-  _agencyKeyCache = { key: null, expiry: 0 }
+  return session.access_token
 }
 
 /**
- * Resolve the best available API key.
- * @param {string} [explicitKey] - Key passed directly (org-level)
+ * Send a chat completion request to the server proxy.
+ * @param {object} opts
+ * @param {Array<{role: 'user'|'assistant', content: string}>} opts.messages
+ * @param {string} [opts.system]
+ * @param {number} [opts.maxTokens=1024]
+ * @returns {Promise<string>} The assistant's text reply.
  */
-export async function resolveApiKey(explicitKey) {
-  // 1. Explicit key (org-level from settings or prop)
-  if (explicitKey) return explicitKey
+export async function callClaude({ messages, system, maxTokens = 1024 }) {
+  const token = await getAccessToken()
 
-  // 2. localStorage org-level key
-  try {
-    const stored = JSON.parse(localStorage.getItem('velo_api_keys') || '{}').anthropic
-    if (stored) return stored
-  } catch {}
-
-  // 3. Agency-level key from Supabase
-  const agencyKey = await getAgencyApiKey()
-  if (agencyKey) return agencyKey
-
-  return null
-}
-
-export async function callClaude({ apiKey, messages, system, maxTokens = 1024 }) {
-  // Resolve key if not provided
-  const resolvedKey = apiKey || await resolveApiKey()
-  if (!resolvedKey) throw new Error('No Anthropic API key configured. Go to Settings → AI to add your key.')
-
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('/api/ai/chat', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': resolvedKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
+      'content-type': 'application/json',
+      'authorization': `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      system: system || 'You are a helpful CRM assistant for Velo CRM. Be concise and professional.',
-      messages,
-    }),
+    body: JSON.stringify({ messages, system, maxTokens }),
   })
 
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    const rawMsg = err.error?.message || ''
-    const safeMsg = resolvedKey && rawMsg.includes(resolvedKey) ? `Claude API error: ${res.status}` : (rawMsg || `Claude API error: ${res.status}`)
-    throw new Error(safeMsg)
+    const body = await res.json().catch(() => ({}))
+    const msg = typeof body?.error === 'string' && body.error
+      ? body.error
+      : `AI request failed (${res.status})`
+    throw new Error(msg)
   }
 
-  const data = await res.json()
-  return data.content?.[0]?.text || ''
+  const data = await res.json().catch(() => ({}))
+  return typeof data?.text === 'string' ? data.text : ''
 }
 
 export function buildAutoReplySystem(knowledgeBase, personality, contactName) {
@@ -119,27 +88,37 @@ ${context ? `CURRENT CONTEXT:\n${context}` : ''}
 Be concise and actionable. Format responses with bullet points when listing multiple items.`
 }
 
-export async function generateAutoReply({ apiKey, knowledgeBase, personality, contactName, messageHistory }) {
+export async function generateAutoReply({ knowledgeBase, personality, contactName, messageHistory }) {
   const system = buildAutoReplySystem(knowledgeBase, personality, contactName)
   const messages = messageHistory.map(m => ({
     role: m.sender === 'me' ? 'assistant' : 'user',
     content: m.text || m.content,
   }))
-
-  return callClaude({ apiKey, messages, system, maxTokens: 512 })
+  return callClaude({ messages, system, maxTokens: 512 })
 }
 
-export async function askAssistant({ apiKey, question, context, history = [] }) {
+export async function askAssistant({ question, context, history = [] }) {
   const system = buildAssistantSystem(context)
   const messages = [
     ...history.map(m => ({ role: m.role, content: m.content })),
     { role: 'user', content: question },
   ]
-
-  return callClaude({ apiKey, messages, system, maxTokens: 1024 })
+  return callClaude({ messages, system, maxTokens: 1024 })
 }
 
-export function calculateLeadScore(contact, deals, activities) {
+// ── Legacy compatibility stubs ───────────────────────────────────────────
+// Phase 4 moved key resolution to the server. These exports remain so
+// existing call sites (SettingsPage, GrowthDashboard) keep linking; they all
+// just resolve to "no client-side key" now.
+
+export async function getAgencyApiKey() { return null }
+export function clearAgencyKeyCache() { /* no-op — server has the key */ }
+export async function resolveApiKey() { return null }
+
+// ── Pure local computation (no API call) ─────────────────────────────────
+// Note: call sites historically passed an `activities` array as the third
+// arg; it was never used and is silently ignored by JS spread.
+export function calculateLeadScore(contact, deals) {
   let score = 30
 
   const contactDeals = deals.filter(d => d.contactId === contact.id)

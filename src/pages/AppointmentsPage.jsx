@@ -1,20 +1,30 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Icons, Modal, FormField } from '../components/shared'
-import { isSupabaseConfigured, supabase } from '../lib/supabase'
+import { isSupabaseConfigured } from '../lib/supabase'
 import { fmtLocalDate as fmtDate } from '../lib/date'
+import { getCurrentUser, getCurrentOrgId } from '../lib/auth_session'
+import { listDoctorsInOrg } from '../lib/profiles'
+import {
+  listAppointmentsBetween,
+  updateAppointmentStatus,
+  deleteAppointment as deleteAppointmentRow,
+  upsertAppointment,
+} from '../lib/appointments'
 import {
   SAMPLE_DENTAL_DOCTORS,
   getSampleDentalAppointmentsWeek,
 } from '../sampleData'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-// Status -> Tailwind className map (replaces former bg/text/border hex map).
-// Mint discipline: only `confirmed` (active state) carries accent.
+// Appointment status enum (matches schema.sql appointment_status):
+//   scheduled | confirmed | in_progress | completed | no_show | cancelled
 const STATUS_STYLE = {
-  pending:   'bg-status-warning-bg text-status-warning-fg',
-  confirmed: 'bg-accent-subtle text-accent-fg',
-  completed: 'bg-status-success-bg text-status-success-fg',
-  cancelled: 'bg-status-danger-bg text-status-danger-fg',
+  scheduled:   'bg-status-warning-bg text-status-warning-fg',
+  confirmed:   'bg-accent-subtle text-accent-fg',
+  in_progress: 'bg-accent-muted text-accent-fg',
+  completed:   'bg-status-success-bg text-status-success-fg',
+  no_show:     'bg-status-danger-bg/60 text-status-danger-fg',
+  cancelled:   'bg-status-danger-bg text-status-danger-fg',
 }
 
 const APT_TYPES = [
@@ -27,8 +37,9 @@ const APT_TYPES = [
   { value: 'whitening',    en: 'Whitening',    ar: 'تبييض' },
   { value: 'consultation', en: 'Consultation', ar: 'استشارة' },
   { value: 'emergency',    en: 'Emergency',    ar: 'طوارئ' },
-  { value: 'other',        en: 'Other',        ar: 'اخرى' },
 ]
+
+const STATUS_OPTIONS = ['scheduled', 'confirmed', 'in_progress', 'completed', 'no_show', 'cancelled']
 
 const DURATIONS = [15, 30, 45, 60, 90, 120]
 
@@ -48,13 +59,15 @@ const LABELS = {
     today: 'Today', day: 'Day', week: 'Week', newApt: '+ New Appointment',
     doctors: 'Doctors', patient: 'Patient', doctor: 'Doctor',
     date: 'Date', startTime: 'Start Time', duration: 'Duration',
-    endTime: 'End Time', type: 'Type', price: 'Price', notes: 'Notes',
+    endTime: 'End Time', type: 'Type', notes: 'Notes',
     status: 'Status', save: 'Save', cancel: 'Cancel', confirm: 'Confirm',
     complete: 'Complete', reschedule: 'Reschedule', delete: 'Delete',
     sendReminder: 'Send WhatsApp Reminder', conflict: 'has another appointment at this time',
     noApts: 'No appointments', searchPatient: 'Search patient...',
-    mins: 'min', pending: 'Pending', confirmed: 'Confirmed', completed: 'Completed',
-    cancelled: 'Cancelled', createApt: 'Create Appointment', editApt: 'Edit Appointment',
+    mins: 'min',
+    scheduled: 'Scheduled', confirmed: 'Confirmed', in_progress: 'In Progress',
+    completed: 'Completed', no_show: 'No Show', cancelled: 'Cancelled',
+    createApt: 'Create Appointment', editApt: 'Edit Appointment',
     allDoctors: 'All Doctors', aptDetails: 'Appointment Details',
     sat: 'Sat', sun: 'Sun', mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri',
     filterDoctor: 'Filter by Doctor',
@@ -63,19 +76,22 @@ const LABELS = {
     today: 'اليوم', day: 'يوم', week: 'اسبوع', newApt: '+ موعد جديد',
     doctors: 'الاطباء', patient: 'المريض', doctor: 'الطبيب',
     date: 'التاريخ', startTime: 'وقت البدء', duration: 'المدة',
-    endTime: 'وقت الانتهاء', type: 'النوع', price: 'السعر', notes: 'ملاحظات',
+    endTime: 'وقت الانتهاء', type: 'النوع', notes: 'ملاحظات',
     status: 'الحالة', save: 'حفظ', cancel: 'الغاء', confirm: 'تاكيد',
     complete: 'اكمال', reschedule: 'اعادة جدولة', delete: 'حذف',
     sendReminder: 'ارسال تذكير واتساب', conflict: 'لديه موعد اخر في هذا الوقت',
     noApts: 'لا توجد مواعيد', searchPatient: 'ابحث عن مريض...',
-    mins: 'د', pending: 'قيد الانتظار', confirmed: 'مؤكد', completed: 'مكتمل',
-    cancelled: 'ملغي', createApt: 'انشاء موعد', editApt: 'تعديل موعد',
+    mins: 'د',
+    scheduled: 'مجدول', confirmed: 'مؤكد', in_progress: 'قيد التنفيذ',
+    completed: 'مكتمل', no_show: 'لم يحضر', cancelled: 'ملغي',
+    createApt: 'انشاء موعد', editApt: 'تعديل موعد',
     allDoctors: 'كل الاطباء', aptDetails: 'تفاصيل الموعد',
     sat: 'سبت', sun: 'احد', mon: 'اثنين', tue: 'ثلاثاء', wed: 'اربعاء', thu: 'خميس', fri: 'جمعة',
     filterDoctor: 'تصفية حسب الطبيب',
   }
 }
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
 // Iraq week: Sat=0 .. Fri=6
 const IRAQ_DAYS = [1, 2, 3, 4, 5, 6, 0] // JS day → Iraq index
 function iraqWeekStart(d) {
@@ -101,9 +117,62 @@ function minToTime(m) {
   return `${String(h).padStart(2,'0')}:${String(mm).padStart(2,'0')}`
 }
 
+// scheduled_at (ISO) → local YYYY-MM-DD
+function aptDateStr(apt) {
+  if (!apt?.scheduled_at) return ''
+  return fmtDate(new Date(apt.scheduled_at))
+}
+
+// scheduled_at (ISO) → local 'HH:MM'
+function aptTimeStr(apt) {
+  if (!apt?.scheduled_at) return ''
+  const d = new Date(apt.scheduled_at)
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
+// scheduled_at (ISO) → minutes since 00:00 local
+function aptStartMin(apt) {
+  if (!apt?.scheduled_at) return 0
+  const d = new Date(apt.scheduled_at)
+  return d.getHours() * 60 + d.getMinutes()
+}
+
+// Combine local YYYY-MM-DD + HH:MM into ISO timestamp.
+function combineDateTime(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return null
+  const [y, mo, da] = dateStr.split('-').map(Number)
+  const [h, mi] = timeStr.split(':').map(Number)
+  return new Date(y, mo - 1, da, h, mi, 0, 0).toISOString()
+}
+
+// Whole-day [start, end] ISO range covering local YYYY-MM-DD.
+function dayRangeIso(dayStr) {
+  const [y, mo, da] = dayStr.split('-').map(Number)
+  const start = new Date(y, mo - 1, da, 0, 0, 0, 0)
+  const end = new Date(y, mo - 1, da, 23, 59, 59, 999)
+  return [start.toISOString(), end.toISOString()]
+}
+
+// Deterministic palette assignment for real-schema doctors (no `color` column).
+// Demo doctors carry an explicit `color`; for real rows we hash the id.
+const DOCTOR_PALETTE = [
+  '#4DA6FF', '#A78BFA', '#9D6F4F', '#F48FB1',
+  '#81C784', '#FFB74D', '#64B5F6', '#BA68C8',
+]
+function doctorColor(doctor) {
+  if (!doctor) return null
+  if (doctor.color) return doctor.color
+  const id = String(doctor.id || '')
+  if (!id) return DOCTOR_PALETTE[0]
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return DOCTOR_PALETTE[hash % DOCTOR_PALETTE.length]
+}
+
 
 // ─── Main Component ─────────────────────────────────────────────────────────
-export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast, setPage }) {
+export default function AppointmentsPage({ t, lang, dir, isRTL, patients, toast, setPage }) {
+  void t
   const L = LABELS[lang] || LABELS.en
   const [viewMode, setViewMode] = useState('day')
   const [currentDate, setCurrentDate] = useState(() => { const d = new Date(); d.setHours(0,0,0,0); return d })
@@ -127,20 +196,16 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
       return
     }
     ;(async () => {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getCurrentUser()
       if (!user) return
-      const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', user.id).single()
-      if (!profile?.org_id) return
-      setOrgId(profile.org_id)
-      const { data: docs, error: docsError } = await supabase
-        .from('profiles')
-        .select('id, full_name, color, specialization, role, is_active')
-        .eq('org_id', profile.org_id)
-        .eq('role', 'doctor')
-        .eq('is_active', true)
-        .order('full_name')
-      if (docsError) console.warn('[AppointmentsPage] doctors fetch failed:', docsError)
-      setDoctors(docs || [])
+      try {
+        const oid = await getCurrentOrgId()
+        setOrgId(oid)
+        const docs = await listDoctorsInOrg()
+        setDoctors(docs)
+      } catch {
+        // Fall through to empty state; page renders with no doctor filter.
+      }
     })()
   }, [])
 
@@ -149,42 +214,41 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
     if (!orgId) return
     setLoading(true)
     try {
-      let startDate, endDate
+      let startTs, endTs
       if (viewMode === 'day') {
-        startDate = endDate = fmtDate(currentDate)
+        ;[startTs, endTs] = dayRangeIso(fmtDate(currentDate))
       } else {
         const ws = iraqWeekStart(currentDate)
-        startDate = fmtDate(ws)
-        endDate = fmtDate(addDays(ws, 6))
+        const we = addDays(ws, 6)
+        const [s] = dayRangeIso(fmtDate(ws))
+        const [, e] = dayRangeIso(fmtDate(we))
+        startTs = s
+        endTs = e
       }
       if (!isSupabaseConfigured()) {
         const all = getSampleDentalAppointmentsWeek()
-        const inRange = all.filter(a => a.appointment_date >= startDate && a.appointment_date <= endDate)
+        const inRange = all.filter(a => a.scheduled_at >= startTs && a.scheduled_at <= endTs)
         // Preserve user-created rows (id starts with 'demo-new-') within the active range
         // so toggling day↔week doesn't wipe optimistic local inserts.
         setAppointments(prev => {
           const userCreated = prev.filter(a =>
             typeof a.id === 'string' &&
             a.id.startsWith('demo-new-') &&
-            a.appointment_date >= startDate &&
-            a.appointment_date <= endDate
+            a.scheduled_at >= startTs &&
+            a.scheduled_at <= endTs
           )
           return [...inRange, ...userCreated]
         })
         setLoading(false)
         return
       }
-      const { data, error } = await supabase
-        .from('appointments')
-        .select('*, contacts:contact_id(id, name, phone)')
-        .eq('org_id', orgId)
-        .gte('appointment_date', startDate)
-        .lte('appointment_date', endDate)
-        .order('appointment_time', { ascending: true })
-      if (!error) setAppointments(data || [])
-    } catch (e) { console.warn(e) }
-    finally { setLoading(false) }
-  }, [orgId, currentDate, viewMode])
+      const data = await listAppointmentsBetween(startTs, endTs)
+      setAppointments(data)
+    } catch (e) {
+      console.error('[AppointmentsPage] fetch failed:', e)
+      toast?.(e.message || 'Failed to load appointments', 'error')
+    } finally { setLoading(false) }
+  }, [orgId, currentDate, viewMode, toast])
 
   useEffect(() => { fetchAppointments() }, [fetchAppointments])
 
@@ -230,8 +294,8 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
     setAppointments(prev => prev.map(a => a.id === id ? { ...a, status } : a))
     setSelectedApt(prev => prev?.id === id ? { ...prev, status } : prev)
     if (isSupabaseConfigured()) {
-      const { error } = await supabase.from('appointments').update({ status }).eq('id', id)
-      if (error) { toast?.('Error updating status', 'error'); return }
+      try { await updateAppointmentStatus(id, status) }
+      catch (err) { toast?.(err.message || 'Error updating status', 'error'); return }
     }
     toast?.(`Status updated to ${status}`, 'success')
   }
@@ -241,31 +305,41 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
     setAppointments(prev => prev.filter(a => a.id !== id))
     setSelectedApt(null)
     if (isSupabaseConfigured()) {
-      const { error } = await supabase.from('appointments').delete().eq('id', id)
-      if (error) { toast?.('Error deleting', 'error'); return }
+      try { await deleteAppointmentRow(id) }
+      catch (err) { toast?.(err.message || 'Error deleting', 'error'); return }
     }
     toast?.('Appointment deleted', 'success')
   }
 
   const handleSave = async (data) => {
     if (editApt) {
-      // Optimistic local update — always
       setAppointments(prev => prev.map(a => a.id === editApt.id ? { ...a, ...data } : a))
       if (isSupabaseConfigured()) {
-        const { error } = await supabase.from('appointments').update(data).eq('id', editApt.id)
-        if (error) { toast?.('Error updating', 'error') }
-        else { toast?.('Appointment updated', 'success'); fetchAppointments() }
+        try {
+          await upsertAppointment({ id: editApt.id, ...data })
+          toast?.('Appointment updated', 'success'); fetchAppointments()
+        } catch (err) {
+          toast?.(err.message || 'Error updating', 'error')
+        }
       } else {
         toast?.('Appointment updated', 'success')
       }
     } else {
-      // Optimistic local insert with synthetic id (preserved across day↔week toggle in demo).
       const tempId = 'demo-new-' + Date.now()
-      setAppointments(prev => [...prev, { id: tempId, org_id: orgId, ...data }])
+      const patient = patients?.find(p => p.id === data.patient_id) || null
+      setAppointments(prev => [...prev, {
+        id: tempId,
+        org_id: orgId,
+        ...data,
+        patients: patient ? { id: patient.id, full_name: patient.full_name, phone: patient.phone } : null,
+      }])
       if (isSupabaseConfigured()) {
-        const { error } = await supabase.from('appointments').insert({ ...data, org_id: orgId })
-        if (error) { toast?.('Error creating: ' + error.message, 'error') }
-        else { toast?.('Appointment created', 'success'); fetchAppointments() }
+        try {
+          await upsertAppointment(data)
+          toast?.('Appointment created', 'success'); fetchAppointments()
+        } catch (err) {
+          toast?.('Error creating: ' + (err.message || 'unknown'), 'error')
+        }
       } else {
         toast?.('Appointment created', 'success')
       }
@@ -288,7 +362,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
   }
 
   const handleSlotClick = (time, doctorId, date) => {
-    openNewModal({ appointment_time: time, doctor_id: doctorId, appointment_date: date || fmtDate(currentDate) })
+    openNewModal({ time, doctor_id: doctorId, date: date || fmtDate(currentDate) })
   }
 
   // ─── Render ──────────────────────────────────────────────────────────────
@@ -377,16 +451,19 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
               <div className="text-caption uppercase text-content-tertiary mb-2.5">{L.doctors}</div>
               {doctors.length === 0 ? (
                 <div className="text-caption text-content-tertiary">No doctors added</div>
-              ) : doctors.map(d => (
-                <label key={d.id}
-                  className="flex items-center gap-2 ps-1 pe-1 py-1.5 rounded-md cursor-pointer transition-colors duration-fast ease-standard hover:bg-surface-canvas">
-                  <input type="checkbox" checked={!hiddenDoctors.has(d.id)}
-                    onChange={() => setHiddenDoctors(prev => { const n = new Set(prev); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n })}
-                    style={{ accentColor: d.color }} />
-                  <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: d.color }} />
-                  <span className="text-body-sm text-content-primary font-medium truncate">{d.full_name}</span>
-                </label>
-              ))}
+              ) : doctors.map(d => {
+                const c = doctorColor(d)
+                return (
+                  <label key={d.id}
+                    className="flex items-center gap-2 ps-1 pe-1 py-1.5 rounded-md cursor-pointer transition-colors duration-fast ease-standard hover:bg-surface-canvas">
+                    <input type="checkbox" checked={!hiddenDoctors.has(d.id)}
+                      onChange={() => setHiddenDoctors(prev => { const n = new Set(prev); n.has(d.id) ? n.delete(d.id) : n.add(d.id); return n })}
+                      style={{ accentColor: c }} />
+                    <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: c }} />
+                    <span className="text-body-sm text-content-primary font-medium truncate">{d.full_name}</span>
+                  </label>
+                )
+              })}
             </div>
           </div>
 
@@ -398,7 +475,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
               <DayView
                 scrollRef={scrollRef}
                 doctors={visibleDoctors}
-                appointments={filteredApts.filter(a => a.appointment_date === fmtDate(currentDate))}
+                appointments={filteredApts.filter(a => aptDateStr(a) === fmtDate(currentDate))}
                 getDoctorById={getDoctorById}
                 onSlotClick={handleSlotClick}
                 onAptClick={setSelectedApt}
@@ -431,7 +508,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
               onStatusChange={handleStatusChange}
               onDelete={handleDeleteApt}
               onEdit={() => { openEditModal(selectedApt); setSelectedApt(null) }}
-              onGoToPatient={() => setPage && setPage('contacts/' + selectedApt.contact_id)}
+              onGoToPatient={() => setPage && setPage('patients/' + selectedApt.patient_id)}
               isRTL={isRTL}
               lang={lang}
               L={L}
@@ -446,7 +523,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
         <AppointmentModal
           onClose={() => { setShowModal(false); setEditApt(null); setModalDefaults(null) }}
           onSave={handleSave}
-          contacts={contacts}
+          patients={patients}
           doctors={doctors}
           editApt={editApt}
           defaults={modalDefaults}
@@ -467,6 +544,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, contacts, toast,
 // MINI CALENDAR
 // ═══════════════════════════════════════════════════════════════════════════
 function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }) {
+  void isRTL
   const [viewMonth, setViewMonth] = useState(() => new Date(currentDate.getFullYear(), currentDate.getMonth(), 1))
 
   const daysInMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 0).getDate()
@@ -480,7 +558,10 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
 
   const monthLabel = viewMonth.toLocaleDateString(lang === 'ar' ? 'ar-IQ' : 'en-US', { month: 'long', year: 'numeric' })
 
-  const aptDates = new Set(appointments.map(a => a.appointment_date))
+  const aptDates = useMemo(
+    () => new Set(appointments.map(a => aptDateStr(a))),
+    [appointments]
+  )
 
   return (
     <div>
@@ -534,6 +615,8 @@ function MiniCalendar({ currentDate, setCurrentDate, lang, isRTL, appointments }
 // DAY VIEW
 // ═══════════════════════════════════════════════════════════════════════════
 function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick, onAptClick, isRTL, lang, L, currentDate }) {
+  void isRTL
+  void L
   const cols = doctors.length > 0 ? doctors : [{ id: '__none', full_name: lang === 'ar' ? 'لا يوجد أطباء' : 'No doctors', color: null }]
 
   return (
@@ -541,13 +624,16 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
       {/* Doctor Headers */}
       <div className="flex border-b border-stroke-subtle flex-shrink-0">
         <div className="w-[60px] flex-shrink-0 border-e border-stroke-subtle" />
-        {cols.map(col => (
-          <div key={col.id}
-            className="flex-1 px-3 py-2.5 text-center border-e border-stroke-subtle bg-surface-sunken/40 border-b-2 border-solid"
-            style={{ borderBottomColor: col.color || 'rgb(var(--velo-border-default))' }}>
-            <div className="font-display text-h3 !text-content-primary truncate">{col.full_name}</div>
-          </div>
-        ))}
+        {cols.map(col => {
+          const c = doctorColor(col)
+          return (
+            <div key={col.id}
+              className="flex-1 px-3 py-2.5 text-center border-e border-stroke-subtle bg-surface-sunken/40 border-b-2 border-solid"
+              style={{ borderBottomColor: c || 'rgb(var(--velo-border-default))' }}>
+              <div className="font-display text-h3 !text-content-primary truncate">{col.full_name}</div>
+            </div>
+          )
+        })}
       </div>
 
       {/* Time Grid */}
@@ -582,15 +668,15 @@ function DayView({ scrollRef, doctors, appointments, getDoctorById, onSlotClick,
 
                 {/* Appointment Cards */}
                 {colApts.map(apt => {
-                  const startMin = timeToMin(apt.appointment_time)
+                  const startMin = aptStartMin(apt)
                   const duration = apt.duration_minutes || 30
                   const gridStart = timeToMin('08:00')
                   const topPx = ((startMin - gridStart) / 30) * SLOT_H
                   const heightPx = (duration / 30) * SLOT_H - 2
                   const doc = getDoctorById(apt.doctor_id)
-                  const docColor = doc?.color
-                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
-                  const patientName = apt.contacts?.name || 'Unknown'
+                  const docColor = doctorColor(doc)
+                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.scheduled
+                  const patientName = apt.patients?.full_name || 'Unknown'
                   const typeDef = APT_TYPES.find(t => t.value === apt.type)
                   const typeLabel = typeDef ? (lang === 'ar' ? typeDef.ar : typeDef.en) : apt.type || ''
 
@@ -662,6 +748,9 @@ function CurrentTimeLine() {
 // WEEK VIEW
 // ═══════════════════════════════════════════════════════════════════════════
 function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClick, onAptClick, isRTL, lang, L }) {
+  void doctors
+  void isRTL
+  void lang
   const weekStart = iraqWeekStart(currentDate)
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i))
   const dayKeys = ['sat','sun','mon','tue','wed','thu','fri']
@@ -671,7 +760,9 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
       <div className="grid grid-cols-7 gap-2 min-h-full">
         {days.map((day, i) => {
           const dateStr = fmtDate(day)
-          const dayApts = appointments.filter(a => a.appointment_date === dateStr)
+          const dayApts = appointments
+            .filter(a => aptDateStr(a) === dateStr)
+            .sort((a, b) => aptStartMin(a) - aptStartMin(b))
           const isTod = dateStr === fmtDate(new Date())
 
           return (
@@ -701,9 +792,9 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
                   <div className="p-3 text-center text-content-tertiary text-caption">{L.noApts}</div>
                 ) : dayApts.map(apt => {
                   const doc = getDoctorById(apt.doctor_id)
-                  const docColor = doc?.color
-                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
-                  const patientName = apt.contacts?.name || 'Unknown'
+                  const docColor = doctorColor(doc)
+                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.scheduled
+                  const patientName = apt.patients?.full_name || 'Unknown'
                   return (
                     <div key={apt.id} onClick={(e) => { e.stopPropagation(); onAptClick(apt) }}
                       className="px-2 py-1.5 rounded-md cursor-pointer bg-surface-raised border border-stroke-subtle border-s-[3px] hover:bg-surface-canvas hover:shadow-1 transition-[background,box-shadow] duration-fast ease-standard"
@@ -711,7 +802,7 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
                       <div className="flex items-center justify-between mb-0.5">
                         <span className="text-caption font-bold tabular-nums lining-nums"
                           style={{ color: docColor || 'rgb(var(--velo-text-secondary))' }}>
-                          {apt.appointment_time?.slice(0,5)}
+                          {aptTimeStr(apt)}
                         </span>
                         <span className={`text-[9px] font-bold uppercase rounded-sm px-1.5 py-0.5 ${ssClass}`}>
                           {apt.status?.slice(0,4)}
@@ -735,12 +826,17 @@ function WeekView({ currentDate, appointments, doctors, getDoctorById, onDayClic
 // DETAIL PANEL (right side)
 // ═══════════════════════════════════════════════════════════════════════════
 function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, onGoToPatient, isRTL, lang, L, dir }) {
-  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
-  const patientName = apt.contacts?.name || 'Unknown'
-  const patientPhone = apt.contacts?.phone || ''
+  void isRTL
+  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.scheduled
+  const patientName = apt.patients?.full_name || 'Unknown'
+  const patientPhone = apt.patients?.phone || ''
   const typeDef = APT_TYPES.find(t => t.value === apt.type)
   const typeLabel = typeDef ? (lang === 'ar' ? typeDef.ar : typeDef.en) : apt.type || ''
-  const endTime = apt.end_time || minToTime(timeToMin(apt.appointment_time) + (apt.duration_minutes || 30))
+  const startMin = aptStartMin(apt)
+  const duration = apt.duration_minutes || 30
+  const startTime = aptTimeStr(apt)
+  const endTime = minToTime(startMin + duration)
+  const docColor = doctorColor(doctor)
 
   return (
     <div dir={dir}
@@ -774,24 +870,14 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
 
         {/* Details */}
         <div className="flex flex-col gap-3">
-          <DetailRow icon={Icons.calendar(14)} label={L.date} value={apt.appointment_date} tabular />
-          <DetailRow icon={Icons.clock(14)} label={L.startTime} value={`${apt.appointment_time?.slice(0,5)} - ${endTime.slice(0,5)}`} tabular />
-          <DetailRow icon={Icons.clock(14)} label={L.duration} value={`${apt.duration_minutes || 30} ${L.mins}`} tabular />
+          <DetailRow icon={Icons.calendar(14)} label={L.date} value={aptDateStr(apt)} tabular />
+          <DetailRow icon={Icons.clock(14)} label={L.startTime} value={`${startTime} - ${endTime}`} tabular />
+          <DetailRow icon={Icons.clock(14)} label={L.duration} value={`${duration} ${L.mins}`} tabular />
           <DetailRow label={L.type} value={typeLabel} />
           {doctor && (
             <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: doctor.color }} />
+              <div className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: docColor }} />
               <span className="text-body-sm text-content-primary font-semibold">{doctor.full_name}</span>
-              <span className="text-caption text-content-tertiary">({doctor.specialization})</span>
-            </div>
-          )}
-          {(apt.price > 0) && (
-            <div className="flex items-center gap-2">
-              <span className="text-caption text-content-tertiary font-semibold uppercase min-w-[70px]">{L.price}:</span>
-              <span className="font-display text-body-lg font-bold text-content-primary tabular-nums lining-nums">
-                {Number(apt.price).toLocaleString()}
-              </span>
-              <span className="text-caption text-content-secondary">{apt.currency || 'IQD'}</span>
             </div>
           )}
           {apt.notes && (
@@ -807,13 +893,13 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
 
       {/* Action Buttons */}
       <div className="px-5 py-4 border-t border-stroke-subtle flex flex-col gap-2">
-        {apt.status === 'pending' && (
+        {apt.status === 'scheduled' && (
           <button onClick={() => onStatusChange(apt.id, 'confirmed')}
             className="w-full justify-center h-[38px] rounded-md bg-surface-canvas hover:bg-accent-subtle border border-stroke-subtle hover:border-accent text-content-primary hover:text-accent-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
             {Icons.check(14)} {L.confirm}
           </button>
         )}
-        {(apt.status === 'pending' || apt.status === 'confirmed') && (
+        {(apt.status === 'scheduled' || apt.status === 'confirmed' || apt.status === 'in_progress') && (
           <button onClick={() => onStatusChange(apt.id, 'completed')}
             className="w-full justify-center h-[38px] rounded-md bg-surface-canvas hover:bg-status-success-bg border border-stroke-subtle hover:border-status-success-border text-content-primary hover:text-status-success-fg text-body-sm font-semibold cursor-pointer flex items-center gap-2 transition-colors duration-fast ease-standard">
             {Icons.check(14)} {L.complete}
@@ -838,10 +924,10 @@ function DetailPanel({ apt, doctor, onClose, onStatusChange, onDelete, onEdit, o
         </button>
 
         {/* WhatsApp Reminder — neutral outline (NOT WhatsApp brand green) */}
-        {apt.contacts?.phone && (
+        {apt.patients?.phone && (
           <button onClick={() => {
-            const msg = encodeURIComponent(`Reminder: Your appointment is on ${apt.appointment_date} at ${apt.appointment_time?.slice(0,5)}`)
-            const phone = apt.contacts.phone.replace(/[^0-9]/g, '')
+            const msg = encodeURIComponent(`Reminder: Your appointment is on ${aptDateStr(apt)} at ${startTime}`)
+            const phone = apt.patients.phone.replace(/[^0-9]/g, '')
             window.open(`https://wa.me/${phone}?text=${msg}`, '_blank')
           }}
             className="w-full justify-center h-[38px] rounded-md bg-transparent hover:bg-surface-canvas border border-stroke-subtle text-content-secondary hover:text-content-primary text-body-sm font-semibold cursor-pointer flex items-center transition-colors duration-fast ease-standard">
@@ -869,35 +955,32 @@ function DetailRow({ icon, label, value, tabular }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // APPOINTMENT MODAL
 // ═══════════════════════════════════════════════════════════════════════════
-function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, defaults, allAppointments, dir, isRTL, lang, L, currentDate }) {
+function AppointmentModal({ onClose, onSave, patients, doctors, editApt, defaults, allAppointments, dir, isRTL, lang, L, currentDate }) {
+  void isRTL
+  const patientList = patients || []
+
   const [form, setForm] = useState(() => {
     if (editApt) return {
-      contact_id: editApt.contact_id || '',
+      patient_id: editApt.patient_id || '',
       doctor_id: editApt.doctor_id || '',
-      appointment_date: editApt.appointment_date || fmtDate(currentDate),
-      appointment_time: editApt.appointment_time?.slice(0,5) || '09:00',
+      date: aptDateStr(editApt) || fmtDate(currentDate),
+      time: aptTimeStr(editApt) || '09:00',
       duration_minutes: editApt.duration_minutes || 30,
       type: editApt.type || 'checkup',
-      title: editApt.title || '',
       notes: editApt.notes || '',
-      status: editApt.status || 'pending',
-      price: editApt.price || 0,
-      currency: editApt.currency || 'IQD',
-      reminder_sent: false,
+      status: editApt.status || 'scheduled',
+      chair_id: editApt.chair_id || '',
     }
     return {
-      contact_id: '',
+      patient_id: '',
       doctor_id: defaults?.doctor_id || (doctors.length === 1 ? doctors[0].id : ''),
-      appointment_date: defaults?.appointment_date || fmtDate(currentDate),
-      appointment_time: defaults?.appointment_time || '09:00',
+      date: defaults?.date || fmtDate(currentDate),
+      time: defaults?.time || '09:00',
       duration_minutes: 30,
       type: 'checkup',
-      title: '',
       notes: '',
-      status: 'pending',
-      price: 0,
-      currency: 'IQD',
-      reminder_sent: false,
+      status: 'scheduled',
+      chair_id: '',
     }
   })
 
@@ -908,43 +991,51 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
   const upd = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
   const endTime = useMemo(() => {
-    return minToTime(timeToMin(form.appointment_time) + form.duration_minutes)
-  }, [form.appointment_time, form.duration_minutes])
+    return minToTime(timeToMin(form.time) + form.duration_minutes)
+  }, [form.time, form.duration_minutes])
 
-  // Conflict detection
+  // Conflict detection — compare overlapping intervals on the same doctor + date.
   const conflict = useMemo(() => {
-    if (!form.doctor_id || !form.appointment_date || !form.appointment_time) return null
-    const myStart = timeToMin(form.appointment_time)
+    if (!form.doctor_id || !form.date || !form.time) return null
+    const myStart = timeToMin(form.time)
     const myEnd = myStart + form.duration_minutes
     return allAppointments.find(a => {
       if (editApt && a.id === editApt.id) return false
       if (a.doctor_id !== form.doctor_id) return false
-      if (a.appointment_date !== form.appointment_date) return false
-      if (a.status === 'cancelled') return false
-      const aStart = timeToMin(a.appointment_time)
+      if (aptDateStr(a) !== form.date) return false
+      if (a.status === 'cancelled' || a.status === 'no_show') return false
+      const aStart = aptStartMin(a)
       const aEnd = aStart + (a.duration_minutes || 30)
       return myStart < aEnd && myEnd > aStart
     })
-  }, [form.doctor_id, form.appointment_date, form.appointment_time, form.duration_minutes, allAppointments, editApt])
+  }, [form.doctor_id, form.date, form.time, form.duration_minutes, allAppointments, editApt])
 
   const conflictDoctor = conflict ? doctors.find(d => d.id === form.doctor_id) : null
 
-  const filteredContacts = useMemo(() => {
-    if (!patientSearch.trim()) return contacts.slice(0, 20)
+  const filteredPatients = useMemo(() => {
+    if (!patientSearch.trim()) return patientList.slice(0, 20)
     const q = patientSearch.toLowerCase()
-    return contacts.filter(c => c.name?.toLowerCase().includes(q) || c.phone?.includes(q)).slice(0, 15)
-  }, [patientSearch, contacts])
+    return patientList.filter(p =>
+      p.full_name?.toLowerCase().includes(q) || p.phone?.includes(q)
+    ).slice(0, 15)
+  }, [patientSearch, patientList])
 
-  const selectedContact = contacts.find(c => c.id === form.contact_id)
+  const selectedPatient = patientList.find(p => p.id === form.patient_id)
 
   const handleSubmit = () => {
-    if (!form.contact_id) return
-    const data = {
-      ...form,
-      end_time: endTime,
-      title: form.title || APT_TYPES.find(t => t.value === form.type)?.en || form.type,
-    }
-    onSave(data)
+    if (!form.patient_id) return
+    const scheduled_at = combineDateTime(form.date, form.time)
+    if (!scheduled_at) return
+    onSave({
+      patient_id: form.patient_id,
+      doctor_id: form.doctor_id || null,
+      type: form.type,
+      status: form.status,
+      scheduled_at,
+      duration_minutes: form.duration_minutes,
+      chair_id: form.chair_id || null,
+      notes: form.notes || null,
+    })
   }
 
   return (
@@ -971,14 +1062,14 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
         {/* Patient Search */}
         <FormField label={L.patient} dir={dir}>
           <div className="relative" ref={searchRef}>
-            {selectedContact ? (
-              <div onClick={() => { upd('contact_id', ''); setShowDropdown(true) }}
+            {selectedPatient ? (
+              <div onClick={() => { upd('patient_id', ''); setShowDropdown(true) }}
                 className={`${FIELD_BASE} flex items-center justify-between cursor-pointer`}>
                 <div>
-                  <span className="font-semibold text-content-primary">{selectedContact.name}</span>
-                  {selectedContact.phone && (
+                  <span className="font-semibold text-content-primary">{selectedPatient.full_name}</span>
+                  {selectedPatient.phone && (
                     <span className="text-content-tertiary ms-2 text-caption tabular-nums lining-nums">
-                      {selectedContact.phone}
+                      {selectedPatient.phone}
                     </span>
                   )}
                 </div>
@@ -992,17 +1083,17 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
                 dir={dir}
                 className={FIELD_BASE} />
             )}
-            {showDropdown && !selectedContact && (
+            {showDropdown && !selectedPatient && (
               <div className="absolute top-full inset-x-0 z-dropdown bg-surface-raised border border-stroke-subtle rounded-md mt-1 max-h-[200px] overflow-y-auto shadow-3">
-                {filteredContacts.length === 0 ? (
+                {filteredPatients.length === 0 ? (
                   <div className="p-3 text-content-tertiary text-body-sm text-center">No results</div>
-                ) : filteredContacts.map(c => (
-                  <div key={c.id}
-                    onClick={() => { upd('contact_id', c.id); setPatientSearch(''); setShowDropdown(false) }}
+                ) : filteredPatients.map(p => (
+                  <div key={p.id}
+                    onClick={() => { upd('patient_id', p.id); setPatientSearch(''); setShowDropdown(false) }}
                     className="ps-3.5 pe-3.5 py-2.5 cursor-pointer border-b border-stroke-subtle transition-colors duration-fast ease-standard hover:bg-surface-canvas">
-                    <div className="text-body font-semibold text-content-primary">{c.name}</div>
-                    {c.phone && (
-                      <div className="text-caption text-content-tertiary mt-0.5 tabular-nums lining-nums">{c.phone}</div>
+                    <div className="text-body font-semibold text-content-primary">{p.full_name}</div>
+                    {p.phone && (
+                      <div className="text-caption text-content-tertiary mt-0.5 tabular-nums lining-nums">{p.phone}</div>
                     )}
                   </div>
                 ))}
@@ -1021,16 +1112,16 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
 
         {/* Date */}
         <FormField label={L.date} dir={dir}>
-          <input type="date" value={form.appointment_date}
-            onChange={e => upd('appointment_date', e.target.value)} dir={dir}
+          <input type="date" value={form.date}
+            onChange={e => upd('date', e.target.value)} dir={dir}
             className={`${FIELD_BASE} tabular-nums lining-nums`} />
         </FormField>
 
         {/* Time, Duration, End Time */}
         <div className="grid grid-cols-3 gap-3">
           <FormField label={L.startTime} dir={dir}>
-            <select value={form.appointment_time}
-              onChange={e => upd('appointment_time', e.target.value)} dir={dir}
+            <select value={form.time}
+              onChange={e => upd('time', e.target.value)} dir={dir}
               className={`${FIELD_BASE} tabular-nums lining-nums`}>
               {TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
@@ -1055,25 +1146,6 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
           </select>
         </FormField>
 
-        {/* Price & Currency */}
-        <div className="grid grid-cols-[2fr_1fr] gap-3">
-          <FormField label={L.price} dir={dir}>
-            <input type="number" value={form.price}
-              onChange={e => upd('price', e.target.value)} min="0" dir={dir}
-              className={`${FIELD_BASE} tabular-nums lining-nums`} />
-          </FormField>
-          <FormField label="" dir={dir}>
-            <div className="flex rounded-md bg-surface-canvas border border-stroke-subtle overflow-hidden h-[42px] mt-5">
-              {['IQD', 'USD'].map(cur => (
-                <button key={cur} onClick={() => upd('currency', cur)}
-                  className={`flex-1 border-none text-body-sm font-semibold cursor-pointer transition-colors duration-fast ease-standard ${form.currency === cur ? 'bg-accent-subtle text-accent-fg' : 'bg-transparent text-content-tertiary hover:text-content-secondary'}`}>
-                  {cur}
-                </button>
-              ))}
-            </div>
-          </FormField>
-        </div>
-
         {/* Notes */}
         <FormField label={L.notes} dir={dir}>
           <textarea value={form.notes} onChange={e => upd('notes', e.target.value)} rows={3} dir={dir}
@@ -1084,19 +1156,12 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
         {editApt && (
           <FormField label={L.status} dir={dir}>
             <select value={form.status} onChange={e => upd('status', e.target.value)} dir={dir} className={FIELD_BASE}>
-              {['pending','confirmed','completed','cancelled'].map(s => (
-                <option key={s} value={s}>{L[s]}</option>
+              {STATUS_OPTIONS.map(s => (
+                <option key={s} value={s}>{L[s] || s}</option>
               ))}
             </select>
           </FormField>
         )}
-
-        {/* WhatsApp toggle */}
-        <label className="flex items-center gap-2.5 cursor-pointer py-2">
-          <input type="checkbox" checked={form.reminder_sent}
-            onChange={e => upd('reminder_sent', e.target.checked)} className="accent-accent" />
-          <span className="text-body-sm text-content-primary font-medium">{L.sendReminder}</span>
-        </label>
 
         {/* Actions — single mint moment is Save */}
         <div className="flex gap-2.5 mt-2">
@@ -1104,7 +1169,7 @@ function AppointmentModal({ onClose, onSave, contacts, doctors, editApt, default
             className="flex-1 justify-center h-[42px] rounded-md bg-surface-canvas border border-stroke-subtle text-content-primary text-body font-semibold cursor-pointer hover:bg-surface-sunken hover:border-stroke transition-colors duration-fast ease-standard flex items-center">
             {L.cancel}
           </button>
-          <button onClick={handleSubmit} disabled={!form.contact_id}
+          <button onClick={handleSubmit} disabled={!form.patient_id}
             className="flex-[2] justify-center h-[42px] rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent text-body font-semibold border-none cursor-pointer transition-colors duration-fast ease-standard hover:shadow-glow-mint disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center">
             {L.save}
           </button>

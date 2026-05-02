@@ -1,525 +1,373 @@
-import { supabase, isSupabaseConfigured } from './supabase'
+/**
+ * Velo CRM — core data-access helpers (new schema).
+ *
+ * Targets the post-Sprint-0 dental schema declared in src/lib/schema.sql:
+ * patients, appointments, payments, treatment_plans, profiles, orgs,
+ * audit_log, org_secrets, etc. The legacy tables (contacts, organizations,
+ * deals, items, treatments, prescriptions, xrays, agency_settings, etc.)
+ * are gone.
+ *
+ * Every helper:
+ *   - calls requireUser() (throws if not authenticated),
+ *   - resolves the caller's org_id via getCurrentOrgId() and pins it on
+ *     every query as `.eq('org_id', orgId)` for defense in depth on top of
+ *     RLS,
+ *   - sanitizes user-supplied text fields BEFORE the supabase call,
+ *   - calls logAuditEvent on every successful mutation.
+ */
 
-// ─── Notes JSON helpers ────────────────────────────────────────────────────
-// Notes field stores JSON: { bio: "", timeline: [...], documents: [...] }
-// Legacy contacts may have plain text — handle both.
+import { supabase } from './supabase'
+import {
+  sanitizeText,
+  sanitizeName,
+  sanitizeEmail,
+  sanitizePhone,
+  sanitizeNotes,
+  LIMITS,
+  toSafeNumber,
+} from './sanitize'
+import { requireUser, getCurrentOrgId } from './auth_session'
+import { logAuditEvent } from './audit'
 
-function parseNotesJson(notesStr) {
-  if (!notesStr) return { bio: '', timeline: [], documents: [] }
-  try {
-    const parsed = JSON.parse(notesStr)
-    if (parsed && typeof parsed === 'object' && Array.isArray(parsed.timeline)) {
-      return { bio: parsed.bio || '', timeline: parsed.timeline, documents: parsed.documents || [] }
-    }
-  } catch {}
-  return { bio: notesStr, timeline: [], documents: [] }
+
+// ─── Patients ──────────────────────────────────────────────────────────────
+// Replaces the legacy `contacts` table. Money / status / tags / category /
+// company / source columns from the old contacts shape do not exist on
+// patients — they were never patient-level concepts.
+
+export const PATIENTS_PAGE_SIZE = 100
+
+function mapPatient(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    fullName: row.full_name,
+    phone: row.phone,
+    email: row.email || '',
+    dob: row.dob || '',
+    gender: row.gender || null,
+    medicalHistory: row.medical_history || {},
+    allergies: row.allergies || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }
 }
 
-// ─── Contacts ───────────────────────────────────────────────────────────────
+function sanitizePatient(p) {
+  return {
+    full_name: sanitizeName(p.full_name || p.fullName || ''),
+    phone: sanitizePhone(p.phone || ''),
+    email: p.email ? sanitizeEmail(p.email) : null,
+    dob: p.dob || null,
+    gender: p.gender ? sanitizeText(p.gender, 32) : null,
+    medical_history: p.medical_history || p.medicalHistory || {},
+    allergies: p.allergies || [],
+  }
+}
 
-// Supabase caps rows at 1000 per request — paginate with .range() + exact count.
-// Page size is intentionally small so the initial load is fast; callers use
-// the Load More UI to pull the next page.
-export const CONTACTS_PAGE_SIZE = 100
-
-export async function fetchContacts(offset = 0, limit = CONTACTS_PAGE_SIZE) {
+export async function fetchPatients(offset = 0, limit = PATIENTS_PAGE_SIZE) {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
   const { data, error, count } = await supabase
-    .from('contacts')
+    .from('patients')
     .select('*', { count: 'exact' })
+    .eq('org_id', orgId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
   if (error) throw error
-  const rows = (data || []).map(mapContact)
+  const rows = (data || []).map(mapPatient)
   const total = count ?? rows.length
   return { rows, total, hasMore: offset + rows.length < total }
 }
 
-export async function insertContact(c, orgId) {
-  if (!orgId) throw new Error('insertContact: orgId is required')
-  const userId = (await supabase.auth.getUser()).data.user?.id
-  const notesJson = JSON.stringify({ bio: c.notes || '', timeline: [], documents: [] })
-  const { data, error } = await supabase
-    .from('contacts')
-    .insert({
-      org_id: orgId,
-      user_id: userId,
-      name: c.name,
-      email: c.email || '',
-      phone: c.phone || '',
-      company: c.company || '',
-      city: c.city || '',
-      category: c.category || 'prospect',
-      status: c.status || 'lead',
-      tags: c.tags || [],
-      source: c.source || 'inbound',
-      notes: notesJson,
-    })
-    .select()
-    .single()
-  if (error) throw error
-  return mapContact(data)
-}
-
-export async function patchContact(id, updates) {
-  const patch = {}
-  if (updates.name !== undefined) patch.name = updates.name
-  if (updates.email !== undefined) patch.email = updates.email
-  if (updates.phone !== undefined) patch.phone = updates.phone
-  if (updates.company !== undefined) patch.company = updates.company
-  if (updates.city !== undefined) patch.city = updates.city
-  if (updates.category !== undefined) patch.category = updates.category
-  if (updates.status !== undefined) patch.status = updates.status
-  if (updates.tags !== undefined) patch.tags = updates.tags
-  if (updates.source !== undefined) patch.source = updates.source
-  if (updates.notes !== undefined) patch.notes = updates.notes
-  if (updates._rawNotes !== undefined) patch.notes = updates._rawNotes
-
-  const { data, error } = await supabase
-    .from('contacts')
-    .update(patch)
-    .eq('id', id)
-    .select()
-    .single()
-  if (error) throw error
-  return mapContact(data)
-}
-
-export async function removeContact(id) {
-  const { error } = await supabase.from('contacts').delete().eq('id', id)
-  if (error) throw error
-}
-
-// ─── Contact Notes (timeline) ──────────────────────────────────────────────
-
-export async function addContactNote(contactId, note) {
-  const { data: current, error: fetchErr } = await supabase
-    .from('contacts').select('notes').eq('id', contactId).single()
-  if (fetchErr) throw fetchErr
-  const parsed = parseNotesJson(current.notes)
-  parsed.timeline.push(note)
-  const { data, error } = await supabase
-    .from('contacts')
-    .update({ notes: JSON.stringify(parsed) })
-    .eq('id', contactId).select().single()
-  if (error) throw error
-  return mapContact(data)
-}
-
-// ─── Contact Documents (Supabase Storage) ──────────────────────────────────
-
-export async function uploadContactDocument(contactId, file) {
-  const storagePath = `${contactId}/${Date.now()}_${file.name}`
-  const { error: uploadErr } = await supabase.storage
-    .from('documents').upload(storagePath, file, { upsert: false })
-  if (uploadErr) throw uploadErr
-
-  const { data: current } = await supabase
-    .from('contacts').select('notes').eq('id', contactId).single()
-  const parsed = parseNotesJson(current?.notes)
-  const doc = {
-    id: 'doc_' + Date.now(),
-    name: file.name,
-    size: (file.size / 1024).toFixed(1) + ' KB',
-    path: storagePath,
-    date: new Date().toLocaleDateString(),
+export async function insertPatient(patient, orgId) {
+  if (!orgId) throw new Error('insertPatient: orgId is required')
+  await requireUser()
+  const myOrgId = await getCurrentOrgId()
+  if (orgId !== myOrgId) {
+    throw new Error('insertPatient: org_id mismatch with current session')
   }
-  parsed.documents.push(doc)
-  const { data, error } = await supabase
-    .from('contacts')
-    .update({ notes: JSON.stringify(parsed) })
-    .eq('id', contactId).select().single()
-  if (error) throw error
-  return mapContact(data)
-}
+  await assertTestAccountLimit(orgId, 'patients')
 
-export async function removeContactDocument(contactId, docId, storagePath) {
-  if (storagePath) await supabase.storage.from('documents').remove([storagePath])
-  const { data: current } = await supabase
-    .from('contacts').select('notes').eq('id', contactId).single()
-  const parsed = parseNotesJson(current?.notes)
-  parsed.documents = parsed.documents.filter(d => d.id !== docId)
-  const { data, error } = await supabase
-    .from('contacts')
-    .update({ notes: JSON.stringify(parsed) })
-    .eq('id', contactId).select().single()
-  if (error) throw error
-  return mapContact(data)
-}
-
-export async function getDocumentSignedUrl(storagePath) {
-  const { data, error } = await supabase.storage
-    .from('documents').createSignedUrl(storagePath, 3600)
-  if (error) throw error
-  return data.signedUrl
-}
-
-function mapContact(row) {
-  const notes = parseNotesJson(row.notes)
-  return {
-    id: row.id,
-    name: row.name,
-    email: row.email,
-    phone: row.phone,
-    company: row.company,
-    city: row.city,
-    category: row.category,
-    status: row.status,
-    tags: row.tags || [],
-    source: row.source,
-    notes: notes.bio,
-    notesTimeline: notes.timeline,
-    documents: notes.documents,
-    _rawNotes: row.notes,
-    createdAt: row.created_at?.slice(0, 10) || '',
-    activityHistory: [],
-  }
-}
-
-
-// ─── Deals ──────────────────────────────────────────────────────────────────
-
-export async function fetchDeals() {
-  const { data, error } = await supabase
-    .from('deals')
-    .select('*')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapDeal)
-}
-
-export async function insertDeal(d, contacts) {
-  const userId = (await supabase.auth.getUser()).data.user?.id
-  const contact = contacts?.find(c => c.id === d.contactId)
-  const { data, error } = await supabase
-    .from('deals')
-    .insert({
-      user_id: userId,
-      contact_id: d.contactId || null,
-      title: d.name || d.title || '',
-      value: Number(d.value) || 0,
-      stage: d.stage || 'lead',
-      probability: Number(d.probability) || 20,
-      close_date: d.closeDate || null,
-      notes: d.notes || '',
-    })
-    .select()
-    .single()
-  if (error) throw error
-  return mapDeal(data, contact)
-}
-
-export async function patchDeal(id, updates) {
-  const patch = {}
-  if (updates.name !== undefined || updates.title !== undefined) patch.title = updates.name || updates.title
-  if (updates.value !== undefined) patch.value = Number(updates.value) || 0
-  if (updates.stage !== undefined) patch.stage = updates.stage
-  if (updates.probability !== undefined) patch.probability = Number(updates.probability) || 0
-  if (updates.closeDate !== undefined) patch.close_date = updates.closeDate
-  if (updates.notes !== undefined) patch.notes = updates.notes
-  if (updates.contactId !== undefined) patch.contact_id = updates.contactId
+  const sanitized = sanitizePatient(patient)
 
   const { data, error } = await supabase
-    .from('deals')
-    .update(patch)
-    .eq('id', id)
-    .select()
-    .single()
-  if (error) throw error
-  return mapDeal(data)
-}
-
-export async function removeDeal(id) {
-  const { error } = await supabase.from('deals').delete().eq('id', id)
-  if (error) throw error
-}
-
-function mapDeal(row, contact) {
-  return {
-    id: row.id,
-    name: row.title,
-    contactId: row.contact_id,
-    contact: contact?.name || '',
-    company: contact?.company || '',
-    value: Number(row.value) || 0,
-    stage: row.stage,
-    probability: row.probability,
-    closeDate: row.close_date || '',
-    createdAt: row.created_at?.slice(0, 10) || '',
-    notes: row.notes,
-  }
-}
-
-
-// ─── Tickets ────────────────────────────────────────────────────────────────
-
-export async function fetchTickets() {
-  const { data, error } = await supabase
-    .from('tickets')
-    .select('*, ticket_comments(*)')
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapTicket)
-}
-
-export async function insertTicket(tk, contacts) {
-  const userId = (await supabase.auth.getUser()).data.user?.id
-  const contact = contacts?.find(c => c.id === tk.contactId)
-
-  // Generate ticket number
-  const { data: existing } = await supabase
-    .from('tickets')
-    .select('ticket_number')
-    .order('created_at', { ascending: false })
-    .limit(1)
-  const lastNum = existing?.[0]?.ticket_number
-    ? parseInt(existing[0].ticket_number.replace('VLO-', ''))
-    : 0
-  const ticketNumber = 'VLO-' + String(lastNum + 1).padStart(3, '0')
-
-  const { data, error } = await supabase
-    .from('tickets')
-    .insert({
-      user_id: userId,
-      contact_id: tk.contactId || null,
-      ticket_number: ticketNumber,
-      subject: tk.subject || '',
-      description: tk.description || '',
-      priority: tk.priority || 'medium',
-      status: tk.status || 'open',
-      department: tk.department || 'support',
-      assigned_to: tk.assignee || '',
-      conversation_id: tk.conversationId || null,
-    })
+    .from('patients')
+    .insert({ org_id: orgId, ...sanitized })
     .select()
     .single()
   if (error) throw error
 
-  // Insert "created" timeline entry
-  await supabase.from('ticket_comments').insert({
-    ticket_id: data.id,
-    user_id: userId,
-    type: 'created',
-    content: 'Ticket created',
-    author_name: 'Admin User',
+  await logAuditEvent({
+    orgId,
+    action: 'patient.create',
+    entityType: 'patient',
+    entityId: data?.id || null,
   })
 
-  return mapTicket({ ...data, ticket_comments: [], _contactName: contact?.name, _company: contact?.company })
+  return mapPatient(data)
 }
 
-export async function patchTicket(id, updates) {
+export async function patchPatient(id, updates) {
+  if (!id) throw new Error('patchPatient: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
   const patch = {}
-  if (updates.status !== undefined) patch.status = updates.status
-  if (updates.priority !== undefined) patch.priority = updates.priority
-  if (updates.assignee !== undefined) patch.assigned_to = updates.assignee
-  if (updates.department !== undefined) patch.department = updates.department
-  if (updates.subject !== undefined) patch.subject = updates.subject
-  if (updates.description !== undefined) patch.description = updates.description
-
-  if (Object.keys(patch).length > 0) {
-    const { error } = await supabase.from('tickets').update(patch).eq('id', id)
-    if (error) throw error
+  if (updates.full_name !== undefined || updates.fullName !== undefined) {
+    patch.full_name = sanitizeName(updates.full_name ?? updates.fullName ?? '')
   }
+  if (updates.phone !== undefined) patch.phone = sanitizePhone(updates.phone)
+  if (updates.email !== undefined) patch.email = updates.email ? sanitizeEmail(updates.email) : null
+  if (updates.dob !== undefined) patch.dob = updates.dob || null
+  if (updates.gender !== undefined) patch.gender = updates.gender ? sanitizeText(updates.gender, 32) : null
+  if (updates.medical_history !== undefined) patch.medical_history = updates.medical_history
+  if (updates.medicalHistory !== undefined) patch.medical_history = updates.medicalHistory
+  if (updates.allergies !== undefined) patch.allergies = updates.allergies
 
-  // Insert timeline entries if provided
-  if (updates.timeline) {
-    const userId = (await supabase.auth.getUser()).data.user?.id
-    const newEntries = updates.timeline.filter(e => e._new)
-    for (const entry of newEntries) {
-      await supabase.from('ticket_comments').insert({
-        ticket_id: id,
-        user_id: userId,
-        type: entry.type || 'comment',
-        content: entry.text,
-        author_name: entry.author || 'Admin User',
-      })
-    }
-  }
-
-  // Re-fetch the ticket with comments
   const { data, error } = await supabase
-    .from('tickets')
-    .select('*, ticket_comments(*)')
+    .from('patients')
+    .update(patch)
     .eq('id', id)
+    .eq('org_id', orgId)
+    .select()
     .single()
   if (error) throw error
-  return mapTicket(data)
+
+  await logAuditEvent({
+    orgId,
+    action: 'patient.update',
+    entityType: 'patient',
+    entityId: id,
+    payload: { fields: Object.keys(patch) },
+  })
+
+  return mapPatient(data)
 }
 
-function mapTicket(row) {
-  const comments = (row.ticket_comments || []).sort((a, b) =>
-    new Date(a.created_at) - new Date(b.created_at)
-  )
-  return {
-    id: row.id,
-    ticketId: row.ticket_number,
-    subject: row.subject,
-    description: row.description,
-    contactId: row.contact_id,
-    contactName: row._contactName || '',
-    company: row._company || '',
-    priority: row.priority,
-    status: row.status,
-    department: row.department,
-    assignee: row.assigned_to,
-    conversationId: row.conversation_id,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    timeline: comments.map(c => ({
-      id: c.id,
-      type: c.type,
-      text: c.content,
-      author: c.author_name,
-      date: c.created_at,
-    })),
-  }
+export async function removePatient(id) {
+  if (!id) throw new Error('removePatient: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { error } = await supabase
+    .from('patients')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
+  if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'patient.delete',
+    entityType: 'patient',
+    entityId: id,
+  })
 }
 
 
 // ─── Payments ──────────────────────────────────────────────────────────────
+// New schema columns: org_id, patient_id, treatment_plan_id (nullable),
+// amount_minor (BIGINT), currency, method, recorded_at, recorded_by, notes.
+// No status, no deal_id, no source.
 
-export async function fetchPaymentsByContact(contactId) {
+const PAYMENT_METHODS = new Set(['cash', 'fib', 'zaincash', 'asia_hawala', 'card', 'other'])
+
+function mapPayment(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    patientId: row.patient_id,
+    treatmentPlanId: row.treatment_plan_id || null,
+    amountMinor: row.amount_minor != null ? Number(row.amount_minor) : 0,
+    currency: row.currency,
+    method: row.method,
+    recordedAt: row.recorded_at,
+    recordedBy: row.recorded_by || null,
+    notes: row.notes || '',
+    createdAt: row.created_at,
+  }
+}
+
+function sanitizePaymentMethod(m) {
+  const safe = sanitizeText(m || 'cash', 32).toLowerCase()
+  return PAYMENT_METHODS.has(safe) ? safe : 'other'
+}
+
+export async function fetchPaymentsByPatient(patientId) {
+  if (!patientId) throw new Error('fetchPaymentsByPatient: patientId is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('payments')
     .select('*')
-    .eq('contact_id', contactId)
-    .order('payment_date', { ascending: false })
+    .eq('org_id', orgId)
+    .eq('patient_id', patientId)
+    .order('recorded_at', { ascending: false })
   if (error) throw error
   return (data || []).map(mapPayment)
 }
 
 export async function fetchAllPayments() {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('payments')
     .select('*')
+    .eq('org_id', orgId)
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map(mapPayment)
 }
 
-export async function fetchAllPaymentsAdmin() {
-  const client = supabase
-  const [paymentsRes, profilesRes, orgsRes, contactsRes] = await Promise.all([
-    client.from('payments').select('*').order('created_at', { ascending: false }),
-    client.from('profiles').select('id, org_id'),
-    client.from('organizations').select('id, name'),
-    client.from('contacts').select('id, name, company'),
-  ])
-  if (paymentsRes.error) throw paymentsRes.error
-  const profileMap = Object.fromEntries((profilesRes.data || []).filter(p => p.org_id).map(p => [p.id, p.org_id]))
-  const orgMap = Object.fromEntries((orgsRes.data || []).map(o => [o.id, o.name]))
-  const contactMap = Object.fromEntries((contactsRes.data || []).map(c => [c.id, c.name]))
-  return (paymentsRes.data || []).map(row => ({
-    ...mapPayment(row),
-    contactName: contactMap[row.contact_id] || '',
-    orgId: profileMap[row.user_id] || null,
-    orgName: orgMap[profileMap[row.user_id]] || 'Unassigned',
-  }))
-}
+/**
+ * FinancePage helper. Returns payments joined with patient (full_name, phone)
+ * and treatment plan (notes, status) for the current org, supporting:
+ *
+ *   from, to       - ISO strings filtering on payments.recorded_at
+ *   patientQuery   - ILIKE filter on patient.full_name (server-side join filter)
+ *   method         - exact match on payments.method (payment_method enum)
+ *   limit          - row cap (default 100)
+ *
+ * Each row keeps the raw schema shape (snake_case) so the page can pass
+ * amount_minor straight into formatMoney without remapping.
+ */
+export async function fetchPaymentsWithJoins({ from, to, method, limit = 100 } = {}) {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
 
-export async function fetchTeamMembers(orgId) {
-  if (!orgId) return []
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, full_name, email, role')
+  let q = supabase
+    .from('payments')
+    .select(`
+      id, amount_minor, currency, method, recorded_at, notes, treatment_plan_id, patient_id,
+      patient:patient_id ( id, full_name, phone ),
+      plan:treatment_plan_id ( id, status, notes )
+    `)
     .eq('org_id', orgId)
+    .order('recorded_at', { ascending: false })
+    .limit(Math.max(1, Math.min(limit, 500)))
+
+  if (from) q = q.gte('recorded_at', from)
+  if (to)   q = q.lte('recorded_at', to)
+  if (method) {
+    const safeMethod = sanitizeText(String(method), 32).toLowerCase()
+    if (PAYMENT_METHODS.has(safeMethod)) q = q.eq('method', safeMethod)
+  }
+
+  const { data, error } = await q
   if (error) throw error
-  return (data || []).map(p => ({
-    id: p.id,
-    name: p.full_name || p.email?.split('@')[0] || 'Team Member',
-    email: p.email,
-    role: p.role,
-  }))
+  return data || []
 }
 
 export async function insertPayment(p) {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
   const userId = (await supabase.auth.getUser()).data.user?.id
+
+  if (!p.patient_id && !p.patientId) {
+    throw new Error('insertPayment: patient_id is required')
+  }
+
+  const sanitized = {
+    patient_id: p.patient_id || p.patientId,
+    treatment_plan_id: p.treatment_plan_id || p.treatmentPlanId || null,
+    amount_minor: Math.max(1, toSafeNumber(p.amount_minor ?? p.amountMinor, 0)),
+    currency: sanitizeText(p.currency || 'IQD', 8),
+    method: sanitizePaymentMethod(p.method),
+    recorded_at: p.recorded_at || p.recordedAt || new Date().toISOString(),
+    notes: p.notes ? sanitizeNotes(p.notes) : null,
+  }
+
   const { data, error } = await supabase
     .from('payments')
-    .insert({
-      user_id: userId,
-      contact_id: p.contactId || null,
-      amount: Number(p.amount) || 0,
-      currency: p.currency || 'IQD',
-      method: p.method || 'cash',
-      status: p.status || 'pending',
-      due_date: p.dueDate || null,
-      payment_date: p.paymentDate || null,
-      description: p.description || '',
-      deal_id: p.dealId || null,
-      source: p.source || 'manual',
-    })
+    .insert({ ...sanitized, org_id: orgId, recorded_by: userId })
     .select()
     .single()
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'payment.create',
+    entityType: 'payment',
+    entityId: data?.id || null,
+    payload: { amount_minor: sanitized.amount_minor, currency: sanitized.currency, method: sanitized.method },
+  })
+
   return mapPayment(data)
 }
 
 export async function patchPayment(id, updates) {
+  if (!id) throw new Error('patchPayment: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
   const patch = {}
-  if (updates.amount !== undefined) patch.amount = Number(updates.amount) || 0
-  if (updates.currency !== undefined) patch.currency = updates.currency
-  if (updates.method !== undefined) patch.method = updates.method
-  if (updates.status !== undefined) patch.status = updates.status
-  if (updates.dueDate !== undefined) patch.due_date = updates.dueDate
-  if (updates.paymentDate !== undefined) patch.payment_date = updates.paymentDate
-  if (updates.description !== undefined) patch.description = updates.description
-  if (updates.dealId !== undefined) patch.deal_id = updates.dealId
+  if (updates.amount_minor !== undefined || updates.amountMinor !== undefined) {
+    patch.amount_minor = Math.max(1, toSafeNumber(updates.amount_minor ?? updates.amountMinor, 0))
+  }
+  if (updates.currency !== undefined) patch.currency = sanitizeText(updates.currency, 8)
+  if (updates.method !== undefined) patch.method = sanitizePaymentMethod(updates.method)
+  if (updates.recorded_at !== undefined || updates.recordedAt !== undefined) {
+    patch.recorded_at = updates.recorded_at ?? updates.recordedAt
+  }
+  if (updates.treatment_plan_id !== undefined || updates.treatmentPlanId !== undefined) {
+    patch.treatment_plan_id = updates.treatment_plan_id ?? updates.treatmentPlanId ?? null
+  }
+  if (updates.notes !== undefined) patch.notes = updates.notes ? sanitizeNotes(updates.notes) : null
 
   const { data, error } = await supabase
     .from('payments')
     .update(patch)
     .eq('id', id)
+    .eq('org_id', orgId)
     .select()
     .single()
   if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'payment.update',
+    entityType: 'payment',
+    entityId: id,
+    payload: { fields: Object.keys(patch) },
+  })
+
   return mapPayment(data)
 }
 
 export async function removePayment(id) {
-  const { error } = await supabase.from('payments').delete().eq('id', id)
+  if (!id) throw new Error('removePayment: id is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { error } = await supabase
+    .from('payments')
+    .delete()
+    .eq('id', id)
+    .eq('org_id', orgId)
   if (error) throw error
-}
 
-function mapPayment(row) {
-  return {
-    id: row.id,
-    contactId: row.contact_id,
-    amount: Number(row.amount) || 0,
-    currency: row.currency || 'IQD',
-    method: row.method || 'cash',
-    status: row.status || 'paid',
-    dueDate: row.due_date || '',
-    paymentDate: row.payment_date || '',
-    description: row.description || '',
-    dealId: row.deal_id || '',
-    source: row.source || 'manual',
-    createdAt: row.created_at,
-  }
+  await logAuditEvent({
+    orgId,
+    action: 'payment.delete',
+    entityType: 'payment',
+    entityId: id,
+  })
 }
 
 
 // ─── Audit Log ────────────────────────────────────────────────────────────
-
-export async function logAuditEvent(action, entity, entityId, details) {
-  try {
-    const userId = (await supabase.auth.getUser()).data.user?.id
-    if (!userId) return
-    await supabase.from('audit_log').insert({
-      user_id: userId,
-      action,
-      entity,
-      entity_id: entityId || null,
-      details: details || null,
-    })
-  } catch (err) {
-    console.warn('Audit log error:', err)
-  }
-}
+// `logAuditEvent` lives in src/lib/audit.js. The read helper here is a
+// thin wrapper that scopes the query to the caller's org for defense in
+// depth.
 
 export async function fetchAuditLog(limit = 100) {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('audit_log')
     .select('*')
+    .eq('org_id', orgId)
     .order('created_at', { ascending: false })
     .limit(limit)
   if (error) throw error
@@ -527,103 +375,217 @@ export async function fetchAuditLog(limit = 100) {
 }
 
 
-// ─── Hydrate references ─────────────────────────────────────────────────────
-// After fetching all data, fill in contact names on deals & tickets
-
-export function hydrateReferences(contacts, deals, tickets) {
-  const contactMap = Object.fromEntries(contacts.map(c => [c.id, c]))
-  const hydratedDeals = deals.map(d => ({
-    ...d,
-    contact: contactMap[d.contactId]?.name || '',
-    company: contactMap[d.contactId]?.company || '',
-  }))
-  const hydratedTickets = tickets.map(tk => ({
-    ...tk,
-    contactName: contactMap[tk.contactId]?.name || tk.contactName || '',
-    company: contactMap[tk.contactId]?.company || tk.company || '',
-  }))
-  return { contacts, deals: hydratedDeals, tickets: hydratedTickets }
-}
-
-
-// ─── Organizations ─────────────────────────────────────────────────────────
+// ─── Organizations (orgs) ──────────────────────────────────────────────────
 
 export async function fetchOrganizations() {
-  const client = supabase
-  const { data, error } = await client.from('organizations').select('*').order('created_at', { ascending: false })
+  // Operator-only path (operators can read all orgs via the per-table
+  // operator policies). Clinic users see at most their own org.
+  await requireUser()
+  const { data, error } = await supabase
+    .from('orgs')
+    .select('*')
+    .order('created_at', { ascending: false })
   if (error) throw error
   return data || []
 }
 
-// ─── Impersonation (Admin) ──────────────────────────────────────────────────
-
 export async function fetchOrg(orgId) {
-  const client = supabase
-  const { data, error } = await client.from('organizations').select('*').eq('id', orgId).single()
+  if (!orgId) throw new Error('fetchOrg: orgId is required')
+  await requireUser()
+  const { data, error } = await supabase
+    .from('orgs')
+    .select('*')
+    .eq('id', orgId)
+    .single()
   if (error) throw error
   return data
 }
 
 export async function fetchOrgUserIds(orgId) {
-  const client = supabase
-  const { data, error } = await client.from('profiles').select('id').eq('org_id', orgId)
+  if (!orgId) throw new Error('fetchOrgUserIds: orgId is required')
+  await requireUser()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('org_id', orgId)
   if (error) throw error
   return (data || []).map(p => p.id)
 }
 
-export async function fetchContactsForOrg(orgId, userIds, offset = 0, limit = CONTACTS_PAGE_SIZE) {
-  const client = supabase
-  let query = client
-    .from('contacts')
+// Operator-impersonation path: read every patient/payment row in a given
+// org. RLS still applies — only operators can pull foreign org data.
+
+export async function fetchPatientsForOrg(orgId, offset = 0, limit = PATIENTS_PAGE_SIZE) {
+  if (!orgId) throw new Error('fetchPatientsForOrg: orgId is required')
+  await requireUser()
+  const { data, error, count } = await supabase
+    .from('patients')
     .select('*', { count: 'exact' })
+    .eq('org_id', orgId)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
-  if (orgId) {
-    query = query.eq('org_id', orgId)
-  } else if (userIds?.length) {
-    query = query.in('user_id', userIds)
-  } else {
-    return { rows: [], total: 0, hasMore: false }
-  }
-  const { data, error, count } = await query
   if (error) throw error
-  const rows = (data || []).map(mapContact)
+  const rows = (data || []).map(mapPatient)
   const total = count ?? rows.length
   return { rows, total, hasMore: offset + rows.length < total }
 }
 
-export async function fetchDealsForOrg(userIds) {
-  if (!userIds?.length) return []
-  const client = supabase
-  const { data, error } = await client
-    .from('deals')
-    .select('*')
-    .in('user_id', userIds)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapDeal)
-}
-
-export async function fetchTicketsForOrg(userIds) {
-  if (!userIds?.length) return []
-  const client = supabase
-  const { data, error } = await client
-    .from('tickets')
-    .select('*, ticket_comments(*)')
-    .in('user_id', userIds)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapTicket)
-}
-
-export async function fetchPaymentsForOrg(userIds) {
-  if (!userIds?.length) return []
-  const client = supabase
-  const { data, error } = await client
+export async function fetchPaymentsForOrg(orgId) {
+  if (!orgId) throw new Error('fetchPaymentsForOrg: orgId is required')
+  await requireUser()
+  const { data, error } = await supabase
     .from('payments')
     .select('*')
-    .in('user_id', userIds)
+    .eq('org_id', orgId)
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map(mapPayment)
+}
+
+
+// ─── Profiles (team members) ───────────────────────────────────────────────
+// New profiles columns: id, org_id, role, full_name, avatar_url, locale.
+// No email, color, specialization, phone, is_active.
+
+export async function fetchTeamMembers(orgId) {
+  if (!orgId) return []
+  await requireUser()
+  const myOrgId = await getCurrentOrgId()
+  if (orgId !== myOrgId) {
+    throw new Error('fetchTeamMembers: org_id mismatch with current session')
+  }
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .eq('org_id', orgId)
+  if (error) throw error
+  return (data || []).map(p => ({
+    id: p.id,
+    name: p.full_name || 'Team Member',
+    role: p.role,
+  }))
+}
+
+
+// ─── Test Account Limits ───────────────────────────────────────────────────
+// Test orgs (status='test') get a sandbox-sized cap on records and a hard
+// block on org_secrets writes.
+
+export const TEST_ACCOUNT_LIMITS = {
+  patients: 50,
+  appointments: 100,
+  profiles: 1,
+}
+
+export class TestAccountLimitError extends Error {
+  constructor(kind, max) {
+    super(`Test account limit reached: ${kind} cap is ${max}. Contact the operator for a real clinic account.`)
+    this.name = 'TestAccountLimitError'
+    this.kind = kind
+    this.max = max
+  }
+}
+
+export async function fetchOrgStatus(orgId) {
+  if (!orgId) return null
+  const { data, error } = await supabase
+    .from('orgs')
+    .select('status')
+    .eq('id', orgId)
+    .maybeSingle()
+  if (error) return null
+  return data?.status || null
+}
+
+export async function assertTestAccountLimit(orgId, kind) {
+  const max = TEST_ACCOUNT_LIMITS[kind]
+  if (max === undefined) {
+    throw new Error(`assertTestAccountLimit: unknown kind "${kind}"`)
+  }
+  const status = await fetchOrgStatus(orgId)
+  if (status !== 'test') return // non-test orgs: unlimited
+
+  const { count, error } = await supabase
+    .from(kind)
+    .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId)
+  if (error) throw error
+  if ((count ?? 0) >= max) {
+    throw new TestAccountLimitError(kind, max)
+  }
+}
+
+
+// ─── Profiles INSERT (operator-side) ───────────────────────────────────────
+// Test orgs are capped at 1 profile (the owner created by the test-account
+// endpoint). Real onboarding goes through a SECURITY DEFINER RPC.
+
+export async function insertProfile(profile, orgId) {
+  if (!orgId) throw new Error('insertProfile: orgId is required')
+  await requireUser()
+  const myOrgId = await getCurrentOrgId()
+  if (orgId !== myOrgId) {
+    throw new Error('insertProfile: org_id mismatch with current session')
+  }
+  await assertTestAccountLimit(orgId, 'profiles')
+
+  const sanitized = {
+    id: profile.id,
+    role: sanitizeText(profile.role || 'assistant', 32),
+    full_name: profile.full_name
+      ? sanitizeName(profile.full_name)
+      : (profile.fullName ? sanitizeName(profile.fullName) : null),
+    avatar_url: profile.avatar_url || profile.avatarUrl || null,
+    locale: sanitizeText(profile.locale || 'en', 8),
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .insert({ org_id: orgId, ...sanitized })
+    .select()
+    .single()
+  if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'profile.create',
+    entityType: 'profile',
+    entityId: data?.id || null,
+    payload: { role: sanitized.role },
+  })
+
+  return data
+}
+
+
+// ─── Org Secrets ───────────────────────────────────────────────────────────
+// Operator-only at the RLS layer; this helper additionally refuses to write
+// secrets for test orgs.
+
+export async function setOrgSecret(orgId, kind, value) {
+  if (!orgId) throw new Error('setOrgSecret: orgId is required')
+  await requireUser()
+  const status = await fetchOrgStatus(orgId)
+  if (status === 'test') {
+    throw new Error('Refusing to write org_secrets for a test org. Promote the org to "active" first.')
+  }
+  const safeKind = sanitizeText(kind || '', 64)
+  const safeValue = typeof value === 'string' ? value.slice(0, 4096) : ''
+
+  const { data, error } = await supabase
+    .from('org_secrets')
+    .upsert({ org_id: orgId, kind: safeKind, value: safeValue }, { onConflict: 'org_id,kind' })
+    .select()
+    .single()
+  if (error) throw error
+
+  await logAuditEvent({
+    orgId,
+    action: 'org_secret.set',
+    entityType: 'org_secret',
+    entityId: data?.id || null,
+    payload: { kind: safeKind },
+  })
+
+  return data
 }

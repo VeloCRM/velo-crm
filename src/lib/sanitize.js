@@ -194,7 +194,8 @@ const SESSION_KEY = 'velo_last_active'
 const SESSION_TIMEOUT = 8 * 60 * 60 * 1000 // 8 hours
 
 export function touchSession() {
-  try { localStorage.setItem(SESSION_KEY, String(Date.now())) } catch {}
+  try { localStorage.setItem(SESSION_KEY, String(Date.now())) }
+  catch { /* storage may be unavailable */ }
 }
 
 export function isSessionExpired() {
@@ -213,7 +214,7 @@ export function clearAllVeloData() {
       if (key && key.startsWith('velo_')) keys.push(key)
     }
     keys.forEach(k => localStorage.removeItem(k))
-  } catch {}
+  } catch { /* storage may be unavailable */ }
 }
 
 // ─── Promise Timeout ─────────────────────────────────────────

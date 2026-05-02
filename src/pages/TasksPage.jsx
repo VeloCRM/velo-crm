@@ -74,8 +74,7 @@ function blankTask(status = 'todo') {
     priority: 'medium',
     assignee: '',
     dueDate: '',
-    contactId: null,
-    dealId: null,
+    patientId: null,
     subtasks: [],
     comments: [],
     createdAt: new Date().toISOString(),
@@ -84,7 +83,8 @@ function blankTask(status = 'todo') {
 
 // ─── Main Component ────────────────────────────────────────────────────────
 
-export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, toast, showConfirm }) {
+export default function TasksPage({ t, lang, dir, isRTL, contacts, user, toast, showConfirm }) {
+  void t
   const [tasks, setTasks] = useState(loadTasks)
   const [view, setView] = useState('board')
   const [showModal, setShowModal] = useState(false)
@@ -150,11 +150,6 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
     setDragOverCol(status)
   }
 
-  const onDragEnd = () => {
-    setDragId(null)
-    setDragOverCol(null)
-  }
-
   const onDrop = (e, newStatus) => {
     e.preventDefault()
     if (dragId) {
@@ -191,16 +186,10 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
     return list
   }
 
-  const getContactName = (contactId) => {
-    if (!contactId || !contacts) return ''
-    const c = contacts.find(c => c.id === contactId)
-    return c ? (c.name || c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim()) : ''
-  }
-
-  const getDealName = (dealId) => {
-    if (!dealId || !deals) return ''
-    const d = deals.find(d => d.id === dealId)
-    return d ? (d.title || d.name || '') : ''
+  const getPatientName = (patientId) => {
+    if (!patientId || !contacts) return ''
+    const c = contacts.find(c => c.id === patientId)
+    return c ? (c.full_name || c.name || `${c.first_name || ''} ${c.last_name || ''}`.trim()) : ''
   }
 
   // ── Render ──
@@ -308,7 +297,7 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
                     task={task}
                     lang={lang}
                     isRTL={isRTL}
-                    getContactName={getContactName}
+                    getPatientName={getPatientName}
                     onDragStart={onDragStart}
                     onClick={() => setDetailTask(task)}
                     dragging={dragId === task.id}
@@ -358,7 +347,7 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
                     { key: 'priority', label: T('Priority', 'الأولوية') },
                     { key: 'assignee', label: T('Assignee', 'المسؤول') },
                     { key: 'dueDate', label: T('Due Date', 'تاريخ الاستحقاق') },
-                    { key: 'contactId', label: T('Contact', 'جهة الاتصال') },
+                    { key: 'patientId', label: T('Patient', 'المريض') },
                     { key: '_actions', label: '' },
                   ].map(col => (
                     <th
@@ -387,7 +376,7 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
                   </tr>
                 )}
                 {getFilteredTasks().map(task => {
-                  const cName = getContactName(task.contactId)
+                  const cName = getPatientName(task.patientId)
                   const overdue = isDueOverdue(task.dueDate) && task.status !== 'done'
                   return (
                     <tr
@@ -444,7 +433,6 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
           isRTL={isRTL}
           lang={lang}
           contacts={contacts}
-          deals={deals}
           T={T}
           statusLabel={statusLabel}
           priorityLabel={priorityLabel}
@@ -463,11 +451,9 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
           isRTL={isRTL}
           lang={lang}
           contacts={contacts}
-          deals={deals}
           user={user}
           T={T}
-          getContactName={getContactName}
-          getDealName={getDealName}
+          getPatientName={getPatientName}
           statusLabel={statusLabel}
           priorityLabel={priorityLabel}
         />
@@ -478,8 +464,9 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, deals, user, 
 
 // ─── Task Card (Board) ──────────────────────────────────────────────────────
 
-function TaskCard({ task, lang, isRTL, getContactName, onDragStart, onClick, dragging }) {
-  const cName = getContactName(task.contactId)
+function TaskCard({ task, lang, isRTL, getPatientName, onDragStart, onClick, dragging }) {
+  void isRTL
+  const cName = getPatientName(task.patientId)
   const overdue = isDueOverdue(task.dueDate) && task.status !== 'done'
   const subtasksDone = (task.subtasks || []).filter(s => s.done).length
   const subtasksTotal = (task.subtasks || []).length
@@ -593,7 +580,9 @@ function PriorityBadge({ priority, lang }) {
 
 // ─── Task Form Modal ────────────────────────────────────────────────────────
 
-function TaskFormModal({ task, onSave, onClose, dir, isRTL, lang, contacts, deals, T, statusLabel, priorityLabel }) {
+function TaskFormModal({ task, onSave, onClose, dir, isRTL, lang, contacts, T, statusLabel, priorityLabel }) {
+  void lang
+  void isRTL
   const [form, setForm] = useState({ ...task })
   const [newSubtask, setNewSubtask] = useState('')
   const titleRef = useRef(null)
@@ -686,24 +675,14 @@ function TaskFormModal({ task, onSave, onClose, dir, isRTL, lang, contacts, deal
           </FormField>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <FormField label={T('Contact', 'جهة الاتصال')} dir={dir}>
-            <select value={form.contactId || ''} onChange={e => set('contactId', e.target.value || null)} style={selectStyle(dir)}>
-              <option value="">{T('None', 'لا يوجد')}</option>
-              {(contacts || []).map(c => (
-                <option key={c.id} value={c.id}>{c.name || c.full_name || `${c.first_name || ''} ${c.last_name || ''}`.trim()}</option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label={T('Deal', 'الصفقة')} dir={dir}>
-            <select value={form.dealId || ''} onChange={e => set('dealId', e.target.value || null)} style={selectStyle(dir)}>
-              <option value="">{T('None', 'لا يوجد')}</option>
-              {(deals || []).map(d => (
-                <option key={d.id} value={d.id}>{d.title || d.name || d.id}</option>
-              ))}
-            </select>
-          </FormField>
-        </div>
+        <FormField label={T('Patient', 'المريض')} dir={dir}>
+          <select value={form.patientId || ''} onChange={e => set('patientId', e.target.value || null)} style={selectStyle(dir)}>
+            <option value="">{T('None', 'لا يوجد')}</option>
+            {(contacts || []).map(c => (
+              <option key={c.id} value={c.id}>{c.full_name || c.name || `${c.first_name || ''} ${c.last_name || ''}`.trim()}</option>
+            ))}
+          </select>
+        </FormField>
 
         {/* ── Subtasks Section ─── */}
         <div style={{ marginTop: 8, marginBottom: 16 }}>
@@ -762,7 +741,10 @@ function TaskFormModal({ task, onSave, onClose, dir, isRTL, lang, contacts, deal
 
 // ─── Task Detail Modal ──────────────────────────────────────────────────────
 
-function TaskDetailModal({ task, onClose, onEdit, onDelete, onUpdate, dir, isRTL, lang, contacts, deals, user, T, getContactName, getDealName, statusLabel, priorityLabel }) {
+function TaskDetailModal({ task, onClose, onEdit, onDelete, onUpdate, dir, isRTL, lang, contacts, user, T, getPatientName, statusLabel, priorityLabel }) {
+  void contacts
+  void isRTL
+  void priorityLabel
   const [newComment, setNewComment] = useState('')
   const [inlineStatus, setInlineStatus] = useState(task.status)
   const commentInputRef = useRef(null)
@@ -774,8 +756,7 @@ function TaskDetailModal({ task, onClose, onEdit, onDelete, onUpdate, dir, isRTL
   const subtasksDone = subtasks.filter(s => s.done).length
   const subtasksTotal = subtasks.length
   const progressPct = subtasksTotal > 0 ? Math.round((subtasksDone / subtasksTotal) * 100) : 0
-  const cName = getContactName(task.contactId)
-  const dName = getDealName(task.dealId)
+  const cName = getPatientName(task.patientId)
   const overdue = isDueOverdue(task.dueDate) && task.status !== 'done'
 
   const handleStatusChange = (newStatus) => {
@@ -852,8 +833,7 @@ function TaskDetailModal({ task, onClose, onEdit, onDelete, onUpdate, dir, isRTL
             value={formatDate(task.dueDate, lang)}
             valueColor={overdue ? C.danger : undefined}
           />
-          {cName && <DetailField icon={Icons.user(14)} label={T('Contact', 'جهة الاتصال')} value={cName} />}
-          {dName && <DetailField icon={Icons.dollar(14)} label={T('Deal', 'الصفقة')} value={dName} />}
+          {cName && <DetailField icon={Icons.user(14)} label={T('Patient', 'المريض')} value={cName} />}
         </div>
 
         {/* Subtasks */}

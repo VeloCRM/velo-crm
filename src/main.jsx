@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.jsx'
+import { OperatorProvider } from './contexts/OperatorContext'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null } }
@@ -21,4 +22,4 @@ class ErrorBoundary extends Component {
 
 /* Velo CRM v1.1 */
 const root = createRoot(document.getElementById('root'))
-root.render(<StrictMode><BrowserRouter><ErrorBoundary><App /></ErrorBoundary></BrowserRouter></StrictMode>)
+root.render(<StrictMode><BrowserRouter><ErrorBoundary><OperatorProvider><App /></OperatorProvider></ErrorBoundary></BrowserRouter></StrictMode>)

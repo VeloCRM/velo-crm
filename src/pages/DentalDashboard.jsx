@@ -1,12 +1,16 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import AddAppointmentModal from '../components/AddAppointmentModal'
 import {
   SAMPLE_DENTAL_DOCTORS,
   SAMPLE_DENTAL_PATIENTS,
   SAMPLE_DENTAL_APPOINTMENTS_TODAY,
-  SAMPLE_DENTAL_PAYMENTS,
   SAMPLE_DENTAL_STATS,
 } from '../sampleData'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { fetchDentalDashboardStats } from '../lib/dental_dashboard'
+import { listDoctorsInOrg } from '../lib/profiles'
+import { updateAppointmentStatus } from '../lib/appointments'
+import { todayLocal } from '../lib/date'
 
 const Ico = (s, children) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
 const Icons = {
@@ -23,20 +27,25 @@ const Icons = {
 const CARD = 'bg-surface-raised border border-stroke-subtle rounded-lg shadow-1 p-6'
 
 const TYPE_COLORS = {
-  cleaning:   'text-clinic-sage',
-  checkup:    'text-clinic-azure',
-  filling:    'text-clinic-amber',
-  extraction: 'text-clinic-rose',
-  root_canal: 'text-clinic-violet',
-  whitening:  'text-clinic-violet',
-  other:      'text-content-tertiary',
+  cleaning:    'text-clinic-sage',
+  checkup:     'text-clinic-azure',
+  filling:     'text-clinic-amber',
+  extraction:  'text-clinic-rose',
+  root_canal:  'text-clinic-violet',
+  whitening:   'text-clinic-violet',
+  crown:       'text-clinic-amber',
+  consultation:'text-clinic-azure',
+  emergency:   'text-clinic-rose',
 }
 
+// Status enum: scheduled | confirmed | in_progress | completed | no_show | cancelled
 const STATUS_STYLE = {
-  pending:   'bg-status-warning-bg text-status-warning-fg',
-  confirmed: 'bg-accent-subtle text-accent-fg',
-  completed: 'bg-status-success-bg text-status-success-fg',
-  cancelled: 'bg-status-danger-bg text-status-danger-fg',
+  scheduled:   'bg-status-warning-bg text-status-warning-fg',
+  confirmed:   'bg-accent-subtle text-accent-fg',
+  in_progress: 'bg-accent-muted text-accent-fg',
+  completed:   'bg-status-success-bg text-status-success-fg',
+  no_show:     'bg-status-danger-bg/60 text-status-danger-fg',
+  cancelled:   'bg-status-danger-bg text-status-danger-fg',
 }
 
 const AVATAR_ROTATION = [
@@ -48,12 +57,33 @@ const AVATAR_ROTATION = [
   'bg-clinic-coral/15 text-clinic-coral border-clinic-coral/30',
 ]
 
-export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage }) {
+// Deterministic palette assignment for real-schema doctors (no `color` column).
+const DOCTOR_PALETTE = ['#4DA6FF', '#A78BFA', '#9D6F4F', '#F48FB1', '#81C784', '#FFB74D', '#64B5F6', '#BA68C8']
+function doctorColor(doctor) {
+  if (!doctor) return null
+  if (doctor.color) return doctor.color
+  const id = String(doctor.id || '')
+  if (!id) return DOCTOR_PALETTE[0]
+  let hash = 0
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0
+  return DOCTOR_PALETTE[hash % DOCTOR_PALETTE.length]
+}
+
+// scheduled_at (ISO) → local 'HH:MM'
+function aptTimeStr(iso) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+
+export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage }) {
+  void t
+  void isRTL
   const [dbData, setDbData] = useState({
     appointmentsCount: 0, appointmentsList: [],
     recentPatients: [], patientsThisMonth: 0, totalPatients: 0,
-    pendingPaymentsList: [], pendingSum: 0,
-    activePlans: 0, loading: true
+    loading: true,
   })
   const [doctors, setDoctors] = useState([])
   const [showModal, setShowModal] = useState(false)
@@ -63,75 +93,75 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
     let mounted = true
     const fetchData = async () => {
       try {
-        const { supabase, isSupabaseConfigured } = await import('../lib/supabase.js')
         if (!isSupabaseConfigured()) {
-          if (mounted) {
-            const today = new Date().toISOString().slice(0, 10)
-            const apts = SAMPLE_DENTAL_APPOINTMENTS_TODAY.map(a => ({ ...a, appointment_date: today }))
-            setDbData({
-              appointmentsList: apts,
-              appointmentsCount: apts.length,
-              recentPatients: SAMPLE_DENTAL_PATIENTS.slice(0, 5),
-              patientsThisMonth: SAMPLE_DENTAL_STATS.patientsThisMonth,
-              totalPatients: SAMPLE_DENTAL_STATS.totalPatients,
-              pendingPaymentsList: SAMPLE_DENTAL_PAYMENTS,
-              pendingSum: SAMPLE_DENTAL_PAYMENTS.reduce((s, p) => s + Number(p.amount || 0), 0),
-              activePlans: SAMPLE_DENTAL_STATS.activePlans,
-              loading: false,
-            })
-          }
+          if (!mounted) return
+          // Demo mode — synthesize today's appointments with a fresh `scheduled_at`.
+          const today = new Date(); today.setHours(0, 0, 0, 0)
+          const _patientById = Object.fromEntries(SAMPLE_DENTAL_PATIENTS.map(p => [p.id, p]))
+          const apts = SAMPLE_DENTAL_APPOINTMENTS_TODAY.map(a => {
+            const [h, m] = a.time.split(':').map(Number)
+            const sd = new Date(today); sd.setHours(h, m, 0, 0)
+            const p = _patientById[a.patient_id]
+            return {
+              id: a.id,
+              patient_id: a.patient_id,
+              doctor_id: a.doctor_id,
+              type: a.type,
+              status: a.status,
+              scheduled_at: sd.toISOString(),
+              duration_minutes: a.duration_minutes,
+              notes: a.notes,
+              patients: p ? { id: p.id, full_name: p.full_name, phone: p.phone } : null,
+            }
+          })
+          setDbData({
+            appointmentsList: apts,
+            appointmentsCount: apts.length,
+            recentPatients: SAMPLE_DENTAL_PATIENTS.slice(0, 5),
+            patientsThisMonth: SAMPLE_DENTAL_STATS.patientsThisMonth,
+            totalPatients: SAMPLE_DENTAL_STATS.totalPatients,
+            loading: false,
+          })
           return
         }
-        const { data: userData } = await supabase.auth.getUser()
-        if (!userData?.user) return
-        let orgId = null
-        const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', userData.user.id).single()
-        if (profile?.org_id) orgId = profile.org_id
-        const nd = { appointmentsCount: 0, appointmentsList: [], recentPatients: [], patientsThisMonth: 0, totalPatients: 0, pendingPaymentsList: [], pendingSum: 0, activePlans: 0, loading: false }
-        const todayStr = new Date().toISOString().slice(0, 10)
         const now = new Date()
-        const firstDayStr = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+        const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
+        const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0)
+        const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0)
 
-        const [a, b, c, d, e, f] = await Promise.allSettled([
-          supabase.from('appointments').select('*').eq('appointment_date', todayStr).order('appointment_time', { ascending: true }),
-          orgId
-            ? supabase.from('contacts').select('*').eq('org_id', orgId).order('created_at', { ascending: false }).limit(5)
-            : supabase.from('contacts').select('*').order('created_at', { ascending: false }).limit(5),
-          orgId
-            ? supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('org_id', orgId).gte('created_at', firstDayStr)
-            : Promise.resolve({ count: 0, error: null }),
-          supabase.from('payments').select('amount,status,contact_id,id').in('status', ['pending', 'overdue']),
-          supabase.from('deals').select('*', { count: 'exact', head: true }).not('stage', 'in', '("won","lost")'),
-          orgId
-            ? supabase.from('contacts').select('*', { count: 'exact', head: true }).eq('org_id', orgId)
-            : supabase.from('contacts').select('*', { count: 'exact', head: true })
-        ])
-        if (a.status === 'fulfilled' && !a.value.error && a.value.data) { nd.appointmentsList = a.value.data; nd.appointmentsCount = a.value.data.length }
-        if (b.status === 'fulfilled' && !b.value.error && b.value.data) nd.recentPatients = b.value.data
-        if (c.status === 'fulfilled' && !c.value?.error && c.value?.count != null) nd.patientsThisMonth = c.value.count
-        if (d.status === 'fulfilled' && !d.value.error && d.value.data) { nd.pendingPaymentsList = d.value.data; nd.pendingSum = d.value.data.reduce((s, p) => s + Number(p.amount || 0), 0) }
-        if (e.status === 'fulfilled' && !e.value.error && e.value.count !== null) nd.activePlans = e.value.count
-        if (f.status === 'fulfilled' && !f.value.error && f.value.count != null) nd.totalPatients = f.value.count
-        if (mounted) setDbData(nd)
-      } catch { if (mounted) setDbData(p => ({ ...p, loading: false })) }
+        const stats = await fetchDentalDashboardStats({
+          dayStartIso: dayStart.toISOString(),
+          dayEndIso: dayEnd.toISOString(),
+          firstOfMonthIso: firstOfMonth.toISOString(),
+        })
+        if (!mounted) return
+        setDbData({
+          appointmentsList: stats.appointmentsToday,
+          appointmentsCount: stats.appointmentsToday.length,
+          recentPatients: stats.recentPatients,
+          patientsThisMonth: stats.newPatientsThisMonth,
+          totalPatients: stats.totalPatients,
+          loading: false,
+        })
+      } catch (err) {
+        console.error('[DentalDashboard] stats fetch failed:', err)
+        if (mounted) setDbData(p => ({ ...p, loading: false }))
+      }
     }
     fetchData()
     return () => { mounted = false }
-  }, [refreshTrigger, contacts])
+  }, [refreshTrigger, patients])
 
   useEffect(() => {
     let mounted = true
     const fetchDoctors = async () => {
       try {
-        const { supabase, isSupabaseConfigured } = await import('../lib/supabase.js')
         if (!isSupabaseConfigured()) { if (mounted) setDoctors(SAMPLE_DENTAL_DOCTORS); return }
-        const { data: userData } = await supabase.auth.getUser()
-        if (!userData?.user) return
-        const { data: profile } = await supabase.from('profiles').select('org_id').eq('id', userData.user.id).single()
-        if (!profile?.org_id) return
-        const { data: docs } = await supabase.from('profiles').select('id, full_name, color, specialization, role').eq('org_id', profile.org_id).eq('role', 'doctor')
-        if (mounted && docs) setDoctors(docs)
-      } catch { }
+        const docs = await listDoctorsInOrg()
+        if (mounted) setDoctors(docs)
+      } catch (err) {
+        console.error('[DentalDashboard] doctors fetch failed:', err)
+      }
     }
     fetchDoctors()
     return () => { mounted = false }
@@ -139,20 +169,15 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
 
   const handleAction = async (id, status) => {
     setDbData(prev => ({ ...prev, appointmentsList: prev.appointmentsList.map(a => a.id === id ? { ...a, status } : a) }))
-    try {
-      const { supabase, isSupabaseConfigured } = await import('../lib/supabase.js')
-      if (isSupabaseConfigured()) await supabase.from('appointments').update({ status }).eq('id', id)
-    } catch { }
+    if (!isSupabaseConfigured()) return
+    try { await updateAppointmentStatus(id, status) }
+    catch (err) { console.error('[DentalDashboard] status update failed:', err) }
   }
-
-  const fmt$ = n => Number(n || 0).toLocaleString() + ' IQD'
 
   const STAT_CONFIGS = [
     { label: 'TOTAL PATIENTS',       value: dbData.totalPatients.toLocaleString() },
     { label: "TODAY'S APPOINTMENTS", value: dbData.appointmentsCount },
     { label: 'PATIENTS THIS MONTH',  value: dbData.patientsThisMonth },
-    { label: 'PENDING PAYMENTS',     value: Number(dbData.pendingSum || 0).toLocaleString(), suffix: 'IQD' },
-    { label: 'TREATMENT PLANS',      value: dbData.activePlans },
   ]
 
   return (
@@ -173,9 +198,6 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
             <div className="text-caption uppercase text-content-tertiary mb-3">{s.label}</div>
             <div className="font-display font-bold text-content-primary text-[30px] leading-none tracking-[-0.02em] tabular-nums lining-nums">
               <span>{s.value}</span>
-              {s.suffix && (
-                <span className="font-sans font-medium text-body-sm text-content-secondary ms-2 align-baseline tracking-normal">{s.suffix}</span>
-              )}
             </div>
           </div>
         ))}
@@ -191,14 +213,14 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
           <div className="flex flex-wrap gap-3">
             {doctors.map(doc => {
               const docApts = dbData.appointmentsList.filter(a => a.doctor_id === doc.id)
+              const c = doctorColor(doc)
               return (
                 <div key={doc.id} className="flex items-center gap-3 ps-4 pe-4 py-3 rounded-2xl bg-surface-raised border border-stroke-subtle shadow-1 flex-1 min-w-[180px]">
-                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-shrink-0 text-content-on-accent" style={{ backgroundColor: doc.color }}>
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center text-base font-bold flex-shrink-0 text-content-on-accent" style={{ backgroundColor: c }}>
                     {(doc.full_name || 'D').charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-body-sm font-semibold text-content-primary truncate">{doc.full_name || 'Dr. Unknown'}</div>
-                    {doc.specialization && <div className="text-caption text-content-tertiary mt-0.5 truncate">{doc.specialization}</div>}
                   </div>
                   <div className="text-end flex-shrink-0">
                     <div className="font-display font-bold text-h3 text-content-secondary tabular-nums lining-nums leading-none">{docApts.length}</div>
@@ -214,10 +236,10 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
       {/* ── Quick Actions ───────────────────────────────────────── */}
       <div className="flex flex-wrap gap-3">
         {[
-          { icon: Icons.plus,     label: 'New Patient',      onClick: () => setPage('contacts/new'), variant: 'outline' },
-          { icon: Icons.calendar, label: 'New Appointment',  onClick: () => setShowModal(true),       variant: 'primary' },
-          { icon: Icons.file,     label: 'Treatment Plan',   onClick: () => setPage('contacts'),      variant: 'outline' },
-          { icon: Icons.dollar,   label: 'Record Payment',   onClick: () => setPage('finance'),       variant: 'outline' },
+          { icon: Icons.plus,     label: 'New Patient',      onClick: () => setPage('patients/new'),   variant: 'outline' },
+          { icon: Icons.calendar, label: 'New Appointment',  onClick: () => setShowModal(true),        variant: 'primary' },
+          { icon: Icons.file,     label: 'Treatment Plan',   onClick: () => setPage('patients'),       variant: 'outline' },
+          { icon: Icons.dollar,   label: 'Record Payment',   onClick: () => setPage('finance'),        variant: 'outline' },
         ].map((btn, i) => (
           <button
             key={i}
@@ -258,28 +280,29 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
               )}
               <div className="flex flex-col gap-3">
                 {dbData.appointmentsList.map((apt) => {
-                  const contact = contacts.find(c => c.id === apt.contact_id)
+                  const fallbackPatient = patients?.find(p => p.id === apt.patient_id)
+                  const patientName = apt.patients?.full_name || fallbackPatient?.full_name || 'Unknown'
                   const tColorClass = TYPE_COLORS[apt.type] || 'text-content-tertiary'
-                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.pending
+                  const ssClass = STATUS_STYLE[apt.status] || STATUS_STYLE.scheduled
                   const doc = doctors.find(d => d.id === apt.doctor_id)
-                  const docColor = doc?.color
+                  const docColor = doctorColor(doc)
                   return (
                     <div key={apt.id} className="animate-slide-up flex items-center gap-3 relative">
                       <div className="w-12 text-end font-display font-semibold text-caption text-content-secondary flex-shrink-0 tabular-nums lining-nums">
-                        {apt.appointment_time?.slice(0, 5)}
+                        {aptTimeStr(apt.scheduled_at)}
                       </div>
                       <div className="w-2 h-2 rounded-full flex-shrink-0 z-10 ring-2 ring-surface-canvas" style={{ backgroundColor: docColor || 'rgb(var(--velo-text-tertiary))' }} />
                       <div className="flex-1 min-w-0 flex items-center gap-3 ps-4 pe-3 py-3 bg-surface-raised rounded-xl border border-stroke-subtle border-s-[3px] shadow-1 transition-shadow duration-fast ease-standard hover:shadow-2" style={{ borderInlineStartColor: docColor }}>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-body-sm font-semibold text-content-primary">{contact?.name || apt.patient_name || 'Unknown'}</span>
+                            <span className="text-body-sm font-semibold text-content-primary">{patientName}</span>
                             <span className={`inline-flex items-center ps-2 pe-2 h-[22px] rounded-full text-caption font-semibold ${ssClass}`}>{apt.status}</span>
                           </div>
                           {apt.type && <div className={`text-body-sm ${tColorClass} mt-1 font-medium`}>{apt.type.replace(/_/g, ' ')}</div>}
                           {apt.notes && <div className="text-caption text-content-tertiary mt-0.5">{apt.notes}</div>}
                         </div>
                         <div className="flex gap-1 flex-shrink-0">
-                          {apt.status === 'pending' && (
+                          {apt.status === 'scheduled' && (
                             <>
                               <button onClick={() => handleAction(apt.id, 'confirmed')} className="w-8 h-8 rounded-md border border-stroke-subtle bg-transparent text-content-tertiary hover:border-status-success-border hover:text-status-success-fg hover:bg-status-success-bg cursor-pointer flex items-center justify-center transition-colors duration-fast ease-standard">
                                 {Icons.check(14)}
@@ -289,7 +312,7 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
                               </button>
                             </>
                           )}
-                          {apt.status === 'confirmed' && (
+                          {(apt.status === 'confirmed' || apt.status === 'in_progress') && (
                             <button onClick={() => handleAction(apt.id, 'completed')} className="ps-3 pe-3 h-8 rounded-md border border-stroke-subtle bg-transparent text-content-tertiary hover:border-accent hover:text-accent-fg hover:bg-accent-subtle cursor-pointer text-caption font-semibold transition-colors duration-fast ease-standard">
                               Complete
                             </button>
@@ -308,19 +331,19 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
         <section className={CARD}>
           <div className="flex items-center justify-between mb-4">
             <h2 className="font-display text-h3 !text-content-primary m-0">Recent Patients</h2>
-            <span onClick={() => setPage('contacts')} className="text-body-sm text-accent-fg hover:text-accent-solid-hover font-semibold cursor-pointer transition-colors duration-fast ease-standard">View All →</span>
+            <span onClick={() => setPage('patients')} className="text-body-sm text-accent-fg hover:text-accent-solid-hover font-semibold cursor-pointer transition-colors duration-fast ease-standard">View All →</span>
           </div>
           {dbData.recentPatients.length === 0 ? (
             <div className="py-8 text-center text-content-tertiary text-body-sm">No recent patients</div>
           ) : (
             <div className="flex flex-col gap-1">
               {dbData.recentPatients.map((p, i) => (
-                <button key={p.id} onClick={() => setPage('contacts/' + p.id)} className="animate-slide-up flex items-center gap-3 ps-3 pe-3 py-2.5 rounded-lg cursor-pointer transition-colors duration-fast ease-standard hover:bg-surface-canvas bg-transparent border-none w-full text-start">
+                <button key={p.id} onClick={() => setPage('patients/' + p.id)} className="animate-slide-up flex items-center gap-3 ps-3 pe-3 py-2.5 rounded-lg cursor-pointer transition-colors duration-fast ease-standard hover:bg-surface-canvas bg-transparent border-none w-full text-start">
                   <div className={`w-10 h-10 rounded-full border flex items-center justify-center text-body-sm font-bold flex-shrink-0 ${AVATAR_ROTATION[i % AVATAR_ROTATION.length]}`}>
-                    {(p.name || 'P').charAt(0)}
+                    {(p.full_name || 'P').charAt(0)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="text-body-sm font-semibold text-content-primary truncate">{p.name}</div>
+                    <div className="text-body-sm font-semibold text-content-primary truncate">{p.full_name}</div>
                     <div className="text-caption text-content-tertiary mt-0.5 truncate">{p.phone || p.email || 'No contact'}</div>
                   </div>
                   <div className="text-caption text-content-tertiary flex-shrink-0 tabular-nums lining-nums">
@@ -333,44 +356,12 @@ export default function DentalDashboard({ t, lang, isRTL, dir, contacts, setPage
         </section>
       </div>
 
-      {/* ── Pending Payments ────────────────────────────────────── */}
-      {dbData.pendingPaymentsList.length > 0 && (
-        <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-display text-h3 !text-content-primary m-0">Pending Payments</h2>
-            <span onClick={() => setPage('finance')} className="text-body-sm text-accent-fg hover:text-accent-solid-hover font-semibold cursor-pointer transition-colors duration-fast ease-standard">View All →</span>
-          </div>
-          <div className="flex flex-col gap-2">
-            {dbData.pendingPaymentsList.slice(0, 5).map((p) => {
-              const contact = contacts.find(c => c.id === p.contact_id)
-              const dotClass = p.status === 'overdue' ? 'bg-danger-500' : 'bg-warning-500'
-              return (
-                <div key={p.id} className="animate-slide-up flex items-center justify-between gap-3 ps-4 pe-4 py-3 rounded-lg bg-surface-raised border border-stroke-subtle shadow-1">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className={`w-2 h-2 rounded-full flex-shrink-0 ${dotClass}`} />
-                    <div className="min-w-0">
-                      <div className="text-body-sm font-semibold text-content-primary truncate">{contact?.name || p.patient_name || 'Unknown'}</div>
-                      <div className="text-caption text-content-tertiary mt-0.5 lowercase">{p.status}</div>
-                    </div>
-                  </div>
-                  <div className="font-display font-bold text-body-lg text-content-primary tabular-nums lining-nums flex items-baseline gap-2 flex-shrink-0">
-                    <span>{Number(p.amount).toLocaleString()}</span>
-                    <span className="font-sans font-medium text-body-sm text-content-secondary">IQD</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-      )}
-
       {showModal && (
         <AddAppointmentModal
-          contacts={contacts}
-          doctors={doctors}
+          patients={patients}
+          initialDate={todayLocal()}
           onClose={() => setShowModal(false)}
           onSave={() => { setShowModal(false); setRefreshTrigger(r => r + 1) }}
-          t={t} lang={lang} isRTL={isRTL} dir={dir}
         />
       )}
     </div>
