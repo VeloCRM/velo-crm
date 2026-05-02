@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap');
 @import './styles/theme.css';
 @import "tailwindcss";
 @config "../tailwind.config.js";
@@ -114,6 +114,216 @@
 .tab-button:focus-visible {
   outline: 2px solid rgb(var(--velo-border-brand));
   outline-offset: -2px;
+}
+
+/* ─── Sprint 1: Liquid Glass design system ─────────────────────────────
+   Custom properties + utility classes for the iOS-style frosted-glass
+   surfaces introduced in Phase 1.1. Lives alongside the warm/mint vars
+   above; nothing here overrides existing tokens.
+
+   The .ds-root scope is what /design-system + new primitives opt into.
+   It sets the white-dominant gradient canvas, Inter as the default font,
+   navy-700 as primary text, and exposes the glass custom properties for
+   .glass-card consumers. Keeping it scoped means existing pages keep
+   their warm-paper canvas until Phase 2 migrates them.                  */
+:root {
+  /* Glass primitives */
+  --glass-bg:           rgba(255, 255, 255, 0.70);
+  --glass-bg-soft:      rgba(255, 255, 255, 0.55);
+  --glass-bg-strong:    rgba(255, 255, 255, 0.85);
+  --glass-border:       rgba(255, 255, 255, 0.55);
+  --glass-border-ink:   rgba(15,  23,  42,  0.06);
+  --glass-blur:         20px;
+  --glass-blur-lg:      32px;
+
+  /* Brand navy / cyan (mirror of tailwind tokens for raw CSS consumers) */
+  --ds-navy-600:  #1B4477;
+  --ds-navy-700:  #103562;
+  --ds-navy-800:  #0A2540;
+  --ds-cyan-500:  #06B6D4;
+  --ds-cyan-600:  #0891B2;
+
+  /* Subtle off-white canvas gradient — replaces flat white where used */
+  --ds-canvas-gradient: linear-gradient(180deg,
+    #FFFFFF 0%,
+    #F6F9FE 32%,
+    #EEF3FB 68%,
+    #E7EEF8 100%);
+}
+
+/* Scoped reset: any subtree wrapped in .ds-root opts into the new system. */
+.ds-root {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+  font-variant-numeric: tabular-nums;
+  color: var(--ds-navy-800);
+  background: var(--ds-canvas-gradient);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  scroll-behavior: smooth;
+}
+
+/* Arabic locales: switch primary stack to Tajawal. The Latin fallback keeps
+   numerals tabular-aligned while letters render in Tajawal for Arabic copy. */
+.ds-root[dir="rtl"], .ds-root [lang="ar"], .ds-root :lang(ar) {
+  font-family: 'Tajawal', 'Noto Sans Arabic', 'Inter', sans-serif;
+}
+
+/* Frosted-glass card. Components compose this with Tailwind classes for
+   padding/sizing; the visual treatment lives here so we can tune blur/
+   opacity in one place. Falls back to a solid translucent fill where
+   backdrop-filter isn't supported (older Firefox). */
+.glass-card {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(140%);
+  border: 1px solid var(--glass-border);
+  border-bottom-color: var(--glass-border-ink);
+  border-radius: 16px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.65),
+    0 1px 2px  rgba(15, 23, 42, 0.03),
+    0 8px 24px -8px rgba(15, 23, 42, 0.10),
+    0 2px 6px  -2px rgba(15, 23, 42, 0.05);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-card { background: rgba(255, 255, 255, 0.92); }
+}
+.glass-card--soft   { background: var(--glass-bg-soft); }
+.glass-card--strong { background: var(--glass-bg-strong); }
+
+/* Navy gradient — primary CTA fill. Keep the angle subtle (158deg) so the
+   highlight reads as a single light source from top-left in LTR. RTL flips
+   to 202deg via a directional override below. */
+.navy-gradient {
+  background: linear-gradient(158deg, #1B4477 0%, #0A2540 100%);
+  color: #FFFFFF;
+}
+.navy-gradient:hover {
+  background: linear-gradient(158deg, #235486 0%, #103562 100%);
+}
+[dir="rtl"] .navy-gradient { background: linear-gradient(202deg, #1B4477 0%, #0A2540 100%); }
+
+/* Accent (cyan) gradient for secondary highlights. */
+.accent-gradient {
+  background: linear-gradient(158deg, #22D3EE 0%, #06B6D4 60%, #0891B2 100%);
+  color: #062B36;
+}
+[dir="rtl"] .accent-gradient { background: linear-gradient(202deg, #22D3EE 0%, #06B6D4 60%, #0891B2 100%); }
+
+/* Subtle ambient glow used behind hero glass cards — paint as a sibling
+   div with `.ds-ambient` to get the soft cyan/navy halo without affecting
+   layout. */
+.ds-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 60% at 12% 14%, rgba(6, 182, 212, 0.18) 0%, rgba(6, 182, 212, 0) 60%),
+    radial-gradient(50% 50% at 88% 86%, rgba(27, 68, 119, 0.14) 0%, rgba(27, 68, 119, 0) 65%);
+  filter: blur(30px);
+}
+
+/* Respect reduced motion for any animated primitives */
+@media (prefers-reduced-motion: reduce) {
+  .ds-root *,
+  .ds-root *::before,
+  .ds-root *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─── Sprint 1 Phase 2.1.1 — neutralize legacy global rules inside .ds-root
+   Two unscoped rules in src/index.css and src/styles/theme.css were forcing
+   legacy "Clinical Luxury" styling onto everything in the document:
+
+     1.  index.css `h1, h2, h3, h4, h5, h6 { color: var(--text-primary) }`
+         resolves --text-primary to #E8EAF5 (legacy dark-theme cream),
+         which renders as washed-out cream on the white Liquid Glass canvas.
+     2.  theme.css `input, textarea, select { background: ... !important }`
+         forces every input to a near-black navy background, overriding the
+         Liquid Glass primitives' `bg-white/85` wrapper.
+
+   Both rules sit outside any @layer, so per the CSS cascade-layers spec
+   they outrank Tailwind utility classes regardless of specificity. The
+   surgical fix is to override them ONLY inside .ds-root scope so existing
+   Sprint 0 pages keep their dark legacy appearance until Phase 2 migrates
+   them. .ds-root selector adds enough specificity to win even against
+   `!important` on a bare element selector.                             */
+
+/* Headings: inherit color (resolves to .ds-root's var(--ds-navy-800) =
+   solid navy) and inherit font-family (resolves to Inter from .ds-root).
+   Drops the legacy Syne + cream-on-dark styling.                       */
+.ds-root :is(h1, h2, h3, h4, h5, h6) {
+  color: inherit;
+  font-family: inherit;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+/* Form fields: turn off the legacy dark fill so the primitive's wrapper
+   `bg-white/85` shows through. The Tailwind `text-navy-800` /
+   `placeholder:text-navy-400` classes the primitive sets are themselves
+   not enough — they're in @layer utilities and lose to the unlayered
+   `!important` rule. Using `inherit` lets the primitive's color cascade
+   from the wrapper without us hard-coding a hex here.
+
+   `box-shadow: none` strips the legacy inset dark drop shadow set by
+   inline `inputStyle()` in src/components/shared.jsx — without this,
+   migrated heavy tabs would still show a dark inner shadow on every
+   field even after the bg/color override.                              */
+.ds-root :is(input, textarea, select) {
+  background: transparent !important;
+  color: inherit !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Placeholder: legacy theme.css forces var(--text-muted) (#3A3D55).
+   Use a soft navy that reads well on the white wrapper.                */
+.ds-root :is(input, textarea)::placeholder {
+  color: rgb(136, 158, 195) !important;  /* navy-300/400 midpoint */
+  opacity: 1;
+}
+
+/* Focus: the legacy mint focus ring (rgba(0,255,178,…)) clashes with the
+   new cyan focus treatment. Disable the legacy ring so the primitive's
+   `focus-within:shadow-focus-cyan` on the wrapper is the only signal.  */
+.ds-root :is(input, textarea, select):focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Autofill: WebKit forces a yellow fill + inherited text color when the
+   browser autofills credentials. Pin both to match the glass treatment
+   so saved-password fills don't flash a dark/yellow box.               */
+.ds-root :is(input):-webkit-autofill,
+.ds-root :is(input):-webkit-autofill:hover,
+.ds-root :is(input):-webkit-autofill:focus,
+.ds-root :is(input):-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px rgb(255 255 255 / 0.95) inset !important;
+  -webkit-text-fill-color: rgb(10, 37, 64) !important;
+  caret-color: rgb(10, 37, 64) !important;
+  transition: background-color 600000s ease-in-out 0s,
+              color            600000s ease-in-out 0s;
+}
+
+/* Legacy `.modal-content` (defined in src/styles/theme.css) is forced to a
+   dark fill via `!important`, which leaks into the migrated heavy-tab
+   modals (PaymentsTab, DentalChartTab, TreatmentPlanTab) that wrap their
+   contents in .ds-root. Use :has() to detect those modals and swap to the
+   Liquid Glass surface so light inputs sit on a light card.            */
+.modal-content:has(> .ds-root),
+.modal-content:has(> form > .ds-root),
+.modal-content:has(.ds-root) {
+  background: rgba(255, 255, 255, 0.96) !important;
+  border: 1px solid rgba(15, 23, 42, 0.08) !important;
+  box-shadow: 0 24px 56px -16px rgba(10, 37, 64, 0.22),
+              0 8px 16px -8px rgba(15, 23, 42, 0.08) !important;
 }
 
 *, *::before, *::after { box-sizing: border-box; }

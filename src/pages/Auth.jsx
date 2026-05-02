@@ -1,6 +1,107 @@
 import { useState, useEffect } from 'react'
 import { signIn, resetPassword } from '../lib/auth'
 import { checkLoginAttempt, getLoginLockoutRemaining } from '../lib/sanitize'
+import { GlassCard, Button, Input, Modal } from '../components/ui'
+
+/* ── Inline icons ─────────────────────────────────────────────────────── */
+const MailIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+    <polyline points="22,6 12,13 2,6" />
+  </svg>
+)
+const LockIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+)
+const SunIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+  </svg>
+)
+const MoonIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+  </svg>
+)
+const GlobeIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+)
+
+const STRINGS = {
+  en: {
+    welcome: 'Welcome to Velo',
+    tagline: 'Dental practice management',
+    welcomeSub: 'Enter your details to continue',
+    forgotSub: 'Enter your email and we\'ll send a reset link',
+    login: 'Sign In',
+    forgotPassword: 'Forgot password?',
+    resetPassword: 'Reset Password',
+    email: 'Email Address',
+    password: 'Password',
+    backToLogin: 'Back to sign in',
+    resetSent: 'Password reset email sent.',
+    emailRequired: 'Email is required',
+    passwordRequired: 'Password is required (min 6 characters)',
+    switchLang: 'العربية',
+    lockedOut: 'Too many login attempts. Please wait',
+    seconds: 'seconds',
+    timeRemaining: 'Time remaining:',
+    loading: 'Loading…',
+    orDivider: 'or',
+    newToVelo: 'New to Velo?',
+    createTestAccount: 'Create test account',
+    testAccountSubtitle: 'Pre-seeded with sample patients, appointments and treatment plans. Resets after 14 days.',
+    creatingTestAccount: 'Setting up your test clinic…',
+    realAccountQuestion: 'Want a real clinic account?',
+    contactOperator: 'Contact the operator',
+    operatorModalTitle: 'Get in touch',
+    operatorModalBody: 'Real clinic accounts are set up by the operator. Reach out via the contact below.',
+    operatorContactMissing: 'Operator contact has not been configured. Please check back later.',
+    close: 'Close',
+    themeLight: 'Switch to light mode',
+    themeDark:  'Switch to dark mode',
+  },
+  ar: {
+    welcome: 'مرحباً بك في فيلو',
+    tagline: 'إدارة عيادة الأسنان',
+    welcomeSub: 'أدخل بياناتك للمتابعة',
+    forgotSub: 'أدخل بريدك الإلكتروني وسنرسل رابط إعادة التعيين',
+    login: 'تسجيل الدخول',
+    forgotPassword: 'نسيت كلمة المرور؟',
+    resetPassword: 'استعادة كلمة المرور',
+    email: 'البريد الإلكتروني',
+    password: 'كلمة المرور',
+    backToLogin: 'العودة لتسجيل الدخول',
+    resetSent: 'تم إرسال رابط إعادة التعيين.',
+    emailRequired: 'البريد الإلكتروني مطلوب',
+    passwordRequired: 'كلمة المرور مطلوبة (6 أحرف)',
+    switchLang: 'English',
+    lockedOut: 'محاولات كثيرة. يرجى الانتظار',
+    seconds: 'ثانية',
+    timeRemaining: 'الوقت المتبقي:',
+    loading: 'جارٍ التحميل...',
+    orDivider: 'أو',
+    newToVelo: 'جديد في فيلو؟',
+    createTestAccount: 'إنشاء حساب تجريبي',
+    testAccountSubtitle: 'يتضمن مرضى ومواعيد وخطط علاج تجريبية. يُعاد الضبط بعد 14 يوماً.',
+    creatingTestAccount: 'جاري تجهيز عيادتك التجريبية...',
+    realAccountQuestion: 'تريد حساب عيادة حقيقي؟',
+    contactOperator: 'تواصل مع المشغل',
+    operatorModalTitle: 'تواصل معنا',
+    operatorModalBody: 'يقوم المشغل بإنشاء حسابات العيادات الحقيقية. تواصل عبر القناة أدناه.',
+    operatorContactMissing: 'لم يتم إعداد جهة اتصال المشغل بعد. يرجى المحاولة لاحقاً.',
+    close: 'إغلاق',
+    themeLight: 'الوضع الفاتح',
+    themeDark:  'الوضع الداكن',
+  },
+}
 
 export default function AuthPage({ onAuth, lang, setLang }) {
   const [mode, setMode] = useState('login') // 'login' | 'forgot'
@@ -12,6 +113,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
   const [message, setMessage] = useState('')
   const [lockoutSeconds, setLockoutSeconds] = useState(0)
   const [showOperatorModal, setShowOperatorModal] = useState(false)
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'light')
 
   const operatorContact = import.meta.env.VITE_OPERATOR_CONTACT || ''
 
@@ -28,64 +130,14 @@ export default function AuthPage({ onAuth, lang, setLang }) {
 
   const isRTL = lang === 'ar'
   const dir = isRTL ? 'rtl' : 'ltr'
+  const txt = STRINGS[lang] || STRINGS.en
 
-  const t = {
-    en: {
-      welcome: 'Welcome to Velo',
-      tagline: 'Dental practice management',
-      login: 'Sign In',
-      forgotPassword: 'Forgot password?',
-      resetPassword: 'Reset Password',
-      email: 'Email Address',
-      password: 'Password',
-      backToLogin: 'Back to sign in',
-      resetSent: 'Password reset email sent.',
-      emailRequired: 'Email is required',
-      passwordRequired: 'Password is required (min 6 characters)',
-      switchLang: 'العربية',
-      lockedOut: 'Too many login attempts. Please wait',
-      seconds: 'seconds',
-      orDivider: 'or',
-      newToVelo: 'New to Velo?',
-      createTestAccount: 'Create test account',
-      testAccountSubtitle: 'Pre-seeded with sample patients, appointments and treatment plans. Resets after 14 days.',
-      creatingTestAccount: 'Setting up your test clinic...',
-      realAccountQuestion: 'Want a real clinic account?',
-      contactOperator: 'Contact the operator',
-      operatorModalTitle: 'Get in touch',
-      operatorModalBody: 'Real clinic accounts are set up by the operator. Reach out via the contact below.',
-      operatorContactMissing: 'Operator contact has not been configured. Please check back later.',
-      close: 'Close',
-    },
-    ar: {
-      welcome: 'مرحباً بك في فيلو',
-      tagline: 'إدارة عيادة الأسنان',
-      login: 'تسجيل الدخول',
-      forgotPassword: 'نسيت كلمة المرور؟',
-      resetPassword: 'استعادة كلمة المرور',
-      email: 'البريد الإلكتروني',
-      password: 'كلمة المرور',
-      backToLogin: 'العودة لتسجيل الدخول',
-      resetSent: 'تم إرسال رابط إعادة التعيين.',
-      emailRequired: 'البريد الإلكتروني مطلوب',
-      passwordRequired: 'كلمة المرور مطلوبة (6 أحرف)',
-      switchLang: 'English',
-      lockedOut: 'محاولات كثيرة. يرجى الانتظار',
-      seconds: 'ثانية',
-      orDivider: 'أو',
-      newToVelo: 'جديد في فيلو؟',
-      createTestAccount: 'إنشاء حساب تجريبي',
-      testAccountSubtitle: 'يتضمن مرضى ومواعيد وخطط علاج تجريبية. يُعاد الضبط بعد 14 يوماً.',
-      creatingTestAccount: 'جاري تجهيز عيادتك التجريبية...',
-      realAccountQuestion: 'تريد حساب عيادة حقيقي؟',
-      contactOperator: 'تواصل مع المشغل',
-      operatorModalTitle: 'تواصل معنا',
-      operatorModalBody: 'يقوم المشغل بإنشاء حسابات العيادات الحقيقية. تواصل عبر القناة أدناه.',
-      operatorContactMissing: 'لم يتم إعداد جهة اتصال المشغل بعد. يرجى المحاولة لاحقاً.',
-      close: 'إغلاق',
-    },
+  const toggleTheme = () => {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    if (next === 'dark') document.documentElement.setAttribute('data-theme', 'dark')
+    else document.documentElement.removeAttribute('data-theme')
   }
-  const txt = t[lang] || t.en
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -145,232 +197,223 @@ export default function AuthPage({ onAuth, lang, setLang }) {
     // Note: we keep `creatingTest` true on success — onAuth navigates away
   }
 
-  const inputClass = "velo-auth-input w-full h-11 ps-3 pe-3 rounded-md border border-stroke bg-surface-canvas text-content-primary placeholder:text-content-tertiary font-sans text-body focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/30 focus:ring-offset-0 transition-[border-color,box-shadow] duration-fast ease-standard"
-  const labelClass = "block mb-1.5 text-body-sm font-medium text-content-secondary text-start"
-  const linkBtnClass = "bg-transparent border-none p-0 cursor-pointer font-sans font-semibold text-accent-fg hover:text-accent-solid-hover transition-colors duration-fast ease-standard"
+  const headerTitle = mode === 'forgot' ? txt.resetPassword : txt.welcome
+  const headerSub   = mode === 'forgot' ? txt.forgotSub    : txt.welcomeSub
+  const isThemeDark = theme === 'dark'
 
   return (
-    <>
-      <style>{`
-        .velo-auth-input {
-          background: rgb(var(--velo-surface-canvas)) !important;
-          color: rgb(var(--velo-text-primary)) !important;
-          border-color: rgb(var(--velo-border-default)) !important;
-        }
-        .velo-auth-input::placeholder {
-          color: rgb(var(--velo-text-tertiary)) !important;
-          opacity: 1;
-        }
-        .velo-auth-input:focus {
-          border-color: rgb(var(--velo-border-brand)) !important;
-          box-shadow: 0 0 0 3px rgb(var(--velo-accent-solid) / 0.30) !important;
-          outline: none !important;
-        }
-        .velo-auth-input:-webkit-autofill,
-        .velo-auth-input:-webkit-autofill:hover,
-        .velo-auth-input:-webkit-autofill:focus,
-        .velo-auth-input:-webkit-autofill:active {
-          -webkit-box-shadow: 0 0 0 1000px rgb(var(--velo-surface-canvas)) inset !important;
-          -webkit-text-fill-color: rgb(var(--velo-text-primary)) !important;
-          caret-color: rgb(var(--velo-text-primary));
-          transition: background-color 600000s ease-in-out 0s, color 600000s ease-in-out 0s;
-        }
-      `}</style>
+    <div dir={dir} className="ds-root relative min-h-screen w-full overflow-y-auto">
+      {/* Ambient halo behind everything */}
+      <div className="ds-ambient" />
 
-      <div dir={dir} className="relative min-h-screen bg-surface-canvas font-sans">
-        <header className="absolute top-0 inset-x-0 flex justify-end px-5 md:px-8 py-4 z-10">
-          <button
-            type="button"
-            onClick={() => setLang(l => l === 'en' ? 'ar' : 'en')}
-            className="-me-3 px-3 py-2 text-body-sm font-medium text-content-tertiary hover:text-content-primary transition-colors duration-fast ease-standard bg-transparent border-none cursor-pointer font-sans"
+      {/* Top-right utility bar (lang + theme toggles) */}
+      <header className="absolute top-0 inset-x-0 flex justify-end items-center gap-1 px-5 md:px-8 py-4 z-10">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setLang(l => l === 'en' ? 'ar' : 'en')}
+          iconStart={GlobeIcon}
+          aria-label={txt.switchLang}
+        >
+          {txt.switchLang}
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={toggleTheme}
+          iconStart={isThemeDark ? SunIcon : MoonIcon}
+          aria-label={isThemeDark ? txt.themeLight : txt.themeDark}
+        />
+      </header>
+
+      <div className="min-h-screen flex flex-col items-center justify-center px-5 py-20">
+        {/* Brand mark */}
+        <div className="text-center mb-8">
+          <div
+            aria-hidden="true"
+            className="mx-auto mb-3 grid place-items-center w-14 h-14 rounded-2xl shadow-glass-lg navy-gradient text-white text-2xl font-bold"
           >
-            {txt.switchLang}
-          </button>
-        </header>
-
-        <div className="min-h-screen flex flex-col items-center justify-center px-5 py-20">
-          <div className="text-center mb-8">
-            <div className="mx-auto mb-2 font-display text-[56px] font-bold leading-none !text-content-primary" aria-hidden="true">V</div>
-            <h1 className="font-display text-h3 md:text-h2 !text-content-primary m-0 mb-1">Velo</h1>
-            <p className="text-body-sm text-content-tertiary m-0">{txt.tagline}</p>
+            V
           </div>
+          <h1 className="text-3xl font-bold text-navy-800 leading-tight tracking-tight m-0 mb-1">
+            Velo
+          </h1>
+          <p className="text-sm text-navy-500 m-0">{txt.tagline}</p>
+        </div>
 
-          <div className="w-full max-w-md bg-surface-raised rounded-xl p-6 md:p-10 shadow-2 border border-stroke-subtle">
-            <h2 className="font-display text-h3 md:text-h2 !text-content-primary m-0 mb-1.5">
-              {mode === 'forgot' ? txt.resetPassword : txt.welcome}
-            </h2>
-            <p className="text-body-sm text-content-tertiary m-0 mb-6">
-              {mode === 'forgot'
-                ? (lang === 'ar' ? 'أدخل بريدك الإلكتروني' : 'Enter your email for a reset link')
-                : (lang === 'ar' ? 'أدخل بياناتك للمتابعة' : 'Enter your details to continue')}
-            </p>
+        {/* Main card */}
+        <GlassCard padding="lg" className="w-full max-w-md md:p-10">
+          <h2 className="text-2xl font-semibold text-navy-800 leading-tight tracking-tight m-0 mb-1.5">
+            {headerTitle}
+          </h2>
+          <p className="text-sm text-navy-500 m-0 mb-6 leading-relaxed">{headerSub}</p>
 
-            {error && (
-              <div
-                className="mb-3 flex items-center gap-2 ps-3 pe-3 py-2.5 rounded-md bg-status-danger-bg border border-status-danger-border/30 text-status-danger-fg text-body-sm"
-                role="alert"
-              >
-                <span>{error}</span>
-              </div>
-            )}
+          {/* Error banner — soft red glass */}
+          {error && (
+            <div
+              role="alert"
+              className="mb-4 rounded-glass border border-rose-200 bg-rose-50/80 backdrop-blur-glass-sm px-3.5 py-2.5 text-sm text-rose-700 leading-snug"
+            >
+              {error}
+            </div>
+          )}
 
-            {lockoutSeconds > 0 && (
-              <div className="mb-3 flex items-center justify-center gap-1.5 ps-3 pe-3 py-2.5 rounded-md bg-status-danger-bg border border-status-danger-border/30 text-status-danger-fg text-caption text-center">
-                <span>{lang === 'ar' ? `الوقت المتبقي: ${lockoutSeconds} ثانية` : `Time remaining: ${lockoutSeconds}s`}</span>
-              </div>
-            )}
+          {/* Lockout countdown — separate band so it remains visible while error shrinks */}
+          {lockoutSeconds > 0 && (
+            <div
+              role="status"
+              className="mb-4 rounded-glass border border-rose-200 bg-rose-50/60 px-3.5 py-2 text-center text-xs font-medium text-rose-700"
+            >
+              {txt.timeRemaining} {lockoutSeconds}{lang === 'ar' ? 'ث' : 's'}
+            </div>
+          )}
 
-            {message && (
-              <div className="mb-3 ps-3 pe-3 py-2.5 rounded-md bg-status-success-bg border border-status-success-border/30 text-status-success-fg text-body-sm">
-                {message}
-              </div>
-            )}
+          {/* Success banner */}
+          {message && (
+            <div
+              role="status"
+              className="mb-4 rounded-glass border border-emerald-200 bg-emerald-50/80 px-3.5 py-2.5 text-sm text-emerald-700"
+            >
+              {message}
+            </div>
+          )}
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
-              <div>
-                <label className={labelClass}>{txt.email}</label>
-                <input
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  type="email"
-                  placeholder="you@clinic.com"
-                  className={inputClass}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <Input
+              label={txt.email}
+              type="email"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="you@clinic.com"
+              iconStart={MailIcon}
+              autoComplete="email"
+              disabled={creatingTest}
+              dir="ltr"
+            />
+
+            {mode !== 'forgot' && (
+              <div className="flex flex-col gap-1.5">
+                <Input
+                  label={txt.password}
+                  type="password"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  iconStart={LockIcon}
+                  autoComplete="current-password"
                   disabled={creatingTest}
+                  dir="ltr"
                 />
-              </div>
-
-              {mode !== 'forgot' && (
-                <div>
-                  <label className={labelClass}>{txt.password}</label>
-                  <input
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    type="password"
-                    placeholder="••••••••"
-                    className={inputClass}
-                    disabled={creatingTest}
-                  />
-                </div>
-              )}
-
-              {mode === 'login' && (
                 <div className="text-end">
                   <button
                     type="button"
                     onClick={() => { setMode('forgot'); setError(''); setMessage(''); setLockoutSeconds(0) }}
-                    className={`${linkBtnClass} text-caption`}
                     disabled={creatingTest}
+                    className="text-xs font-semibold text-accent-cyan-700 hover:text-accent-cyan-800 transition-colors disabled:opacity-50"
                   >
                     {txt.forgotPassword}
                   </button>
                 </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading || creatingTest || lockoutSeconds > 0}
-                className="w-full h-11 mt-2 rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent font-sans text-body font-medium transition-colors duration-fast ease-standard focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/30 focus-visible:ring-offset-0 disabled:bg-surface-sunken disabled:text-content-tertiary disabled:cursor-not-allowed disabled:hover:bg-surface-sunken"
-              >
-                {loading
-                  ? (lang === 'ar' ? 'جارٍ التحميل...' : 'Loading...')
-                  : mode === 'forgot' ? txt.resetPassword
-                  : txt.login}
-              </button>
-            </form>
-
-            {mode === 'forgot' && (
-              <div className="text-center mt-5 text-body-sm text-content-tertiary">
-                <button
-                  type="button"
-                  onClick={() => { setMode('login'); setError(''); setMessage(''); setLockoutSeconds(0) }}
-                  className={linkBtnClass}
-                >
-                  {txt.backToLogin}
-                </button>
               </div>
             )}
 
-            {mode === 'login' && (
-              <>
-                <div className="my-6 flex items-center gap-3" aria-hidden="true">
-                  <div className="h-px flex-1 bg-stroke-subtle" />
-                  <span className="text-caption text-content-tertiary uppercase tracking-wider">{txt.orDivider}</span>
-                  <div className="h-px flex-1 bg-stroke-subtle" />
-                </div>
-
-                <div className="mb-1 text-body-sm font-medium text-content-primary text-start">
-                  {txt.newToVelo}
-                </div>
-                <p className="mb-3 text-caption text-content-tertiary text-start leading-normal">
-                  {txt.testAccountSubtitle}
-                </p>
-                <button
-                  type="button"
-                  onClick={handleCreateTestAccount}
-                  disabled={creatingTest || loading}
-                  className="w-full h-11 rounded-md border border-stroke bg-surface-canvas hover:bg-surface-sunken text-content-primary font-sans text-body font-medium transition-colors duration-fast ease-standard focus:outline-none focus-visible:ring-[3px] focus-visible:ring-accent/30 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {creatingTest ? txt.creatingTestAccount : txt.createTestAccount}
-                </button>
-
-                <div className="mt-6 pt-5 border-t border-stroke-subtle text-center">
-                  <p className="text-caption text-content-tertiary mb-2">{txt.realAccountQuestion}</p>
-                  <button
-                    type="button"
-                    onClick={() => setShowOperatorModal(true)}
-                    className={`${linkBtnClass} text-body-sm`}
-                  >
-                    {txt.contactOperator}
-                  </button>
-                </div>
-              </>
-            )}
-
-            <div className="mt-7 text-center text-caption font-normal text-content-tertiary">&copy; 2026 Velo CRM</div>
-          </div>
-        </div>
-
-        {showOperatorModal && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm px-4"
-            onClick={() => setShowOperatorModal(false)}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div
-              className="w-full max-w-md bg-surface-raised rounded-xl p-6 md:p-7 shadow-3 border border-stroke-subtle"
-              onClick={e => e.stopPropagation()}
-              dir={dir}
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              className="w-full mt-1"
+              loading={loading}
+              disabled={creatingTest || lockoutSeconds > 0}
             >
-              <h3 className="font-display text-h4 !text-content-primary m-0 mb-2">{txt.operatorModalTitle}</h3>
-              <p className="text-body-sm text-content-secondary m-0 mb-4 leading-normal">{txt.operatorModalBody}</p>
+              {loading
+                ? txt.loading
+                : mode === 'forgot' ? txt.resetPassword : txt.login}
+            </Button>
+          </form>
 
-              {operatorContact ? (
-                <a
-                  href={operatorContact}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block w-full text-center h-11 leading-[44px] rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent font-sans text-body font-medium transition-colors duration-fast ease-standard no-underline"
-                >
-                  {operatorContact.replace(/^https?:\/\//, '').replace(/^mailto:/, '').replace(/^tel:/, '')}
-                </a>
-              ) : (
-                <div className="ps-3 pe-3 py-2.5 rounded-md bg-status-warning-bg border border-status-warning-border/30 text-status-warning-fg text-body-sm">
-                  {txt.operatorContactMissing}
-                </div>
-              )}
-
+          {mode === 'forgot' && (
+            <div className="text-center mt-5">
               <button
                 type="button"
-                onClick={() => setShowOperatorModal(false)}
-                className="mt-4 w-full h-10 rounded-md border border-stroke bg-surface-canvas hover:bg-surface-sunken text-content-secondary font-sans text-body-sm font-medium transition-colors duration-fast ease-standard"
+                onClick={() => { setMode('login'); setError(''); setMessage(''); setLockoutSeconds(0) }}
+                className="text-sm font-semibold text-accent-cyan-700 hover:text-accent-cyan-800 transition-colors"
               >
-                {txt.close}
+                {txt.backToLogin}
               </button>
             </div>
+          )}
+
+          {mode === 'login' && (
+            <>
+              {/* OR divider */}
+              <div className="my-6 flex items-center gap-3" aria-hidden="true">
+                <div className="h-px flex-1 bg-navy-100/80" />
+                <span className="text-[10px] tracking-[0.18em] font-semibold uppercase text-navy-400">
+                  {txt.orDivider}
+                </span>
+                <div className="h-px flex-1 bg-navy-100/80" />
+              </div>
+
+              <p className="text-sm font-semibold text-navy-800 text-start mb-1">
+                {txt.newToVelo}
+              </p>
+              <p className="text-xs text-navy-500 text-start mb-3 leading-relaxed">
+                {txt.testAccountSubtitle}
+              </p>
+              <Button
+                variant="secondary"
+                size="lg"
+                className="w-full"
+                onClick={handleCreateTestAccount}
+                loading={creatingTest}
+                disabled={loading}
+              >
+                {creatingTest ? txt.creatingTestAccount : txt.createTestAccount}
+              </Button>
+
+              <div className="mt-6 pt-5 border-t border-navy-100/60 text-center">
+                <p className="text-xs text-navy-500 mb-2">{txt.realAccountQuestion}</p>
+                <button
+                  type="button"
+                  onClick={() => setShowOperatorModal(true)}
+                  className="text-sm font-semibold text-accent-cyan-700 hover:text-accent-cyan-800 transition-colors"
+                >
+                  {txt.contactOperator}
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="mt-7 text-center text-[11px] font-normal text-navy-400">
+            &copy; 2026 Velo CRM
+          </div>
+        </GlassCard>
+      </div>
+
+      <Modal
+        open={showOperatorModal}
+        onClose={() => setShowOperatorModal(false)}
+        title={txt.operatorModalTitle}
+        closeLabel={txt.close}
+        size="md"
+      >
+        <p className="text-sm text-navy-700 leading-relaxed mb-4">{txt.operatorModalBody}</p>
+        {operatorContact ? (
+          <a
+            href={operatorContact}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block w-full text-center h-11 leading-[44px] rounded-glass navy-gradient text-white font-medium shadow-navy-glow no-underline transition-all hover:-translate-y-px"
+            dir="ltr"
+          >
+            {operatorContact.replace(/^https?:\/\//, '').replace(/^mailto:/, '').replace(/^tel:/, '')}
+          </a>
+        ) : (
+          <div className="rounded-glass border border-amber-200 bg-amber-50/80 px-3.5 py-2.5 text-sm text-amber-700">
+            {txt.operatorContactMissing}
           </div>
         )}
-      </div>
-    </>
+      </Modal>
+    </div>
   )
 }

@@ -22,6 +22,7 @@ const DocsPage = lazy(() => import('./pages/DocsPage'))
 const OperatorConsole = lazy(() => import('./pages/operator/OperatorConsole'))
 const DentalDashboard = lazy(() => import('./pages/DentalDashboard'))
 const ClinicCredentialsPage = lazy(() => import('./pages/operator/ClinicCredentials'))
+const DesignSystemPage = lazy(() => import('./pages/DesignSystem'))
 const JoinPage = lazy(() => import('./pages/Join'))
 // Overlays are lazy-loaded — they're rendered conditionally (modals,
 // floating panels, dental tabs) and don't need to be in the initial bundle.
@@ -56,6 +57,8 @@ import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sa
 import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
 import { formatMoney, toMinor } from './lib/money'
+import { avatarGradient, avatarInitials } from './lib/avatarGradient'
+import { GlassCard, Button, Badge } from './components/ui'
 import { can, normalizeRole } from './lib/permissions'
 import { useIsOperator } from './lib/operator'
 import { onAuditFailure } from './lib/audit'
@@ -240,7 +243,7 @@ export default function App() {
 
   const demoMode = isDemoMode()
   const useDB = isSupabaseConfigured() && !demoMode
-  const { isOperator } = useIsOperator()
+  const { isOperator, loading: operatorLoading } = useIsOperator()
   const t = T[lang]
   const isRTL = lang === 'ar'
   const dir = isRTL ? 'rtl' : 'ltr'
@@ -438,9 +441,20 @@ export default function App() {
   // racy double-fetch against the pre-invite profile.
   useEffect(() => {
     if (!user) return
-    if (!impersonation) loadAllData()
-    else loadDataForOrg(impersonation.orgId)
-  }, [user])
+    // Defer data load until operator status resolves so we don't fire a
+    // clinic-data fetch (which calls getCurrentOrgId() → throws "No org
+    // membership") for an operator who legitimately has no profile.
+    if (operatorLoading) return
+    if (impersonation) {
+      loadDataForOrg(impersonation.orgId)
+    } else if (isOperator) {
+      // Operator-no-impersonation: nothing to load. Clear the loading
+      // skeleton so the OperatorConsole render path takes over cleanly.
+      setDataLoading(false)
+    } else {
+      loadAllData()
+    }
+  }, [user, isOperator, operatorLoading])
 
   // Demo mode: re-run loadAllData once the dynamic sample-data import lands,
   // so the in-memory state is hydrated.
@@ -498,6 +512,24 @@ export default function App() {
     }
   }, [page])
 
+  // Operator-no-impersonation landing on a clinic-only page (most commonly
+  // /dashboard, the default after sign-in) gets bounced to /agency where the
+  // OperatorConsole lives. Operator-only routes (`agency`, `billing`,
+  // `agency-profile`, `operator/*`, `design-system`, `settings`) are
+  // untouched. Without this, the operator would see a "No org membership"
+  // error banner above an empty clinic dashboard.
+  useEffect(() => {
+    if (operatorLoading) return
+    if (!isOperator || impersonation) return
+    const operatorPages = new Set([
+      'agency', 'billing', 'agency-profile', 'operator',
+      'design-system', 'settings', 'finance',
+    ])
+    if (!operatorPages.has(page)) {
+      navigate('/agency', { replace: true })
+    }
+  }, [isOperator, operatorLoading, impersonation, page, navigate])
+
   // Show auth page if not logged in
   if (authLoading) {
     return (
@@ -527,8 +559,9 @@ export default function App() {
   }
 
   // Operator identity comes from OperatorContext (loaded once per session
-  // from /api/auth/is-operator). The context-driven `isOperator` const is
-  // already in scope from `const { isOperator } = useIsOperator()` above.
+  // by directly self-selecting the operators table — RLS-bounded). The
+  // context-driven `isOperator` const is already in scope from
+  // `const { isOperator } = useIsOperator()` above.
 
   // Effective role for permission checks. Operators and agency-mode
   // impersonation always get full admin access; clinic users use their own role.
@@ -709,6 +742,7 @@ export default function App() {
           label: isRTL ? 'المشغل' : 'Operator',
           items: [
             { id: 'operator/credentials', icon: Icons.settings, label: isRTL ? 'بيانات اعتماد العيادات' : 'Clinic Credentials' },
+            { id: 'design-system',        icon: Icons.dashboard, label: isRTL ? 'نظام التصميم' : 'Design System' },
           ],
         },
       ]
@@ -810,7 +844,7 @@ export default function App() {
 
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'rgb(var(--velo-surface-canvas))' }}>
-        <header className="mobile-header" style={{ height:52, minHeight:52, background:'rgba(12,14,26,0.8)', backdropFilter:'blur(20px)', WebkitBackdropFilter:'blur(20px)', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
+        <header className="mobile-header" style={{ height:52, minHeight:52, background: C.sidebar, borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
           {/* Mobile: Logo + company name in header */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
@@ -965,6 +999,7 @@ export default function App() {
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
               {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isOperator={isOperator} /></Suspense>}
               {page === 'operator' && pageSubId === 'credentials' && isOperator && <Suspense fallback={<SkeletonGeneric />}><ClinicCredentialsPage lang={lang} /></Suspense>}
+              {page === 'design-system' && isOperator && <Suspense fallback={<SkeletonGeneric />}><DesignSystemPage lang={lang} /></Suspense>}
             </>
           )}
         </div>
@@ -1457,145 +1492,260 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
     { id: 'treatments',   label: isRTL ? 'خطة العلاج'    : 'Treatment Plan' },
   ]
 
+  // Heavy tabs (Payments, Medical, Dental Chart, Treatments) keep their existing
+  // implementations for now — Phase 2.2 only redesigns Overview + Appointments
+  // and the chrome (header / tab bar). The dental chart visual is tackled in
+  // Phase 3 (anatomical SVGs).
+  const heavyTab = profileTab === 'payments' || profileTab === 'medical' || profileTab === 'dental_chart' || profileTab === 'treatments'
+
   return (
-    <div>
-      {/* Back button */}
-      <button onClick={onBack} style={{ ...makeBtn('ghost'), marginBottom:16, gap:6, fontSize:13 }}>
-        {isRTL ? Icons.arrowRight(16) : Icons.arrowLeft(16)} {isRTL ? 'العودة إلى المرضى' : 'Back to Patients'}
-      </button>
+    <div
+      dir={dir}
+      className="ds-root min-h-full -m-4 md:-m-8 p-4 md:p-8 box-border"
+      style={{ background: 'var(--ds-canvas-gradient)' }}
+    >
+      <div className="relative max-w-[1280px] mx-auto flex flex-col gap-5">
+        <div className="ds-ambient" />
 
-      {/* Profile header */}
-      <div style={{ ...card, padding:24, marginBottom:20 }}>
-        <div style={{ display:'flex', alignItems:'flex-start', gap:20, direction:dir }}>
-          <div style={{ width:64, height:64, borderRadius:16, background:C.primaryBg, color:C.primary, display:'flex', alignItems:'center', justifyContent:'center', fontSize:26, fontWeight:700, flexShrink:0 }}>
-            {(fullName || 'P').charAt(0)}
-          </div>
-          <div style={{ flex:1 }}>
-            <h2 style={{ fontSize:22, fontWeight:700, color:C.text, margin:0 }}>{fullName || '—'}</h2>
-            <div style={{ display:'flex', gap:20, marginTop:10, flexWrap:'wrap', fontSize:13, color:C.textSec }}>
-              {patient.phone && <span style={{display:'flex',alignItems:'center',gap:5}}>{Icons.phone(14)} {patient.phone}</span>}
-              {patient.email && <span style={{display:'flex',alignItems:'center',gap:5}}>{Icons.mail(14)} {patient.email}</span>}
-              {patient.dob && <span style={{display:'flex',alignItems:'center',gap:5}}>{Icons.calendar(14)} {patient.dob}</span>}
-            </div>
-            {allergies.length > 0 && (
-              <div style={{ marginTop:10, fontSize:12, color:C.danger, fontWeight:600 }}>
-                {isRTL ? 'حساسيات: ' : 'Allergies: '}{allergies.join(', ')}
+        {/* Back button */}
+        <button
+          type="button"
+          onClick={onBack}
+          className="self-start inline-flex items-center gap-1.5 text-sm font-medium text-navy-600 hover:text-navy-800 transition-colors"
+        >
+          {isRTL ? Icons.arrowRight(16) : Icons.arrowLeft(16)}
+          {isRTL ? 'العودة إلى المرضى' : 'Back to Patients'}
+        </button>
+
+        {/* ── Profile header ─────────────────────────────────────────── */}
+        <GlassCard padding="lg" className="relative overflow-hidden">
+          {/* Subtle navy → white gradient backdrop */}
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 opacity-60"
+            style={{ background: 'linear-gradient(135deg, rgba(221,231,244,0.6) 0%, rgba(255,255,255,0) 60%)' }}
+          />
+          <div className="relative flex items-start gap-5 flex-wrap md:flex-nowrap">
+            <span
+              aria-hidden="true"
+              className={`grid place-items-center w-24 h-24 rounded-2xl text-white text-3xl font-bold shadow-glass-lg shrink-0 bg-gradient-to-br ${avatarGradient(fullName)}`}
+            >
+              {avatarInitials(fullName)}
+            </span>
+            <div className="flex-1 min-w-0">
+              <h2 className="text-3xl font-semibold text-navy-900 leading-tight tracking-tight m-0">
+                {fullName || '—'}
+              </h2>
+              <div className="flex flex-wrap gap-x-5 gap-y-1.5 mt-3 text-sm text-navy-700">
+                {patient.phone && (
+                  <span className="inline-flex items-center gap-1.5">
+                    {Icons.phone(14)} <span className="tabular-nums" dir="ltr">{patient.phone}</span>
+                  </span>
+                )}
+                {patient.email && (
+                  <span className="inline-flex items-center gap-1.5">
+                    {Icons.mail(14)} <span dir="ltr">{patient.email}</span>
+                  </span>
+                )}
+                {patient.dob && (
+                  <span className="inline-flex items-center gap-1.5">
+                    {Icons.calendar(14)} <span className="tabular-nums">{patient.dob}</span>
+                  </span>
+                )}
               </div>
-            )}
-          </div>
-          <div style={{ display:'flex', gap:8, flexShrink:0 }}>
-            <button type="button" onClick={onEdit} style={makeBtn('secondary', { gap:6 })}>{Icons.edit(14)} {isRTL?'تعديل':'Edit Patient'}</button>
-            <button type="button" onClick={onDelete} style={makeBtn('danger', { gap:6 })}>{Icons.trash(14)} {isRTL?'حذف':'Delete'}</button>
-          </div>
-        </div>
-      </div>
-
-      {/* Quick contact bar — WhatsApp / Call only (email/SMS are handled in Inbox now) */}
-      {patient.phone && (
-        <div style={{ ...card, padding:'12px 20px', marginBottom:20, display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
-          <span style={{ fontSize:12, fontWeight:600, color:C.textMuted, marginRight:4 }}>{isRTL?'تواصل عبر:':'Reach out via:'}</span>
-          <button type="button" onClick={()=>window.open(`https://wa.me/${(patient.phone||'').replace(/[^0-9+]/g,'')}`,'_blank')}
-            style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:'none',background:'#25D36618',color:'#25D366',fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36}}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
-            WhatsApp
-          </button>
-          <a href={`tel:${patient.phone}`} style={{display:'flex',alignItems:'center',gap:6,padding:'6px 14px',borderRadius:8,border:`1px solid ${C.border}`,background:C.white,color:C.text,fontSize:12,fontWeight:600,cursor:'pointer',fontFamily:'inherit',minHeight:36,textDecoration:'none'}}>
-            {Icons.phone(14)} {isRTL?'اتصال':'Call'}
-          </a>
-        </div>
-      )}
-
-      {/* Tabs */}
-      <div style={{ display:'flex', gap:0, marginBottom:20, borderBottom:`2px solid ${C.border}`, overflowX:'auto' }}>
-        {tabs.map(tab => (
-          <button type="button" key={tab.id} onClick={(e) => { e.stopPropagation(); setProfileTab(tab.id) }}
-            style={{ padding:'10px 18px', border:'none', background:'transparent', cursor:'pointer',
-              fontSize:13, fontWeight: profileTab===tab.id ? 700 : 500, whiteSpace:'nowrap',
-              color: profileTab===tab.id ? C.primary : C.textSec,
-              borderBottom: profileTab===tab.id ? `2px solid ${C.primary}` : '2px solid transparent',
-              marginBottom:-2, fontFamily:'inherit', transition:'all .15s' }}>
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab content */}
-      <div className="fade-in" key={profileTab}>
-        {profileTab === 'overview' && (
-          <div style={{ ...card, padding:24 }}>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-              {[
-                [isRTL?'الاسم':'Full Name', fullName || '—'],
-                [isRTL?'الهاتف':'Phone',     patient.phone || '—'],
-                [isRTL?'البريد':'Email',      patient.email || '—'],
-                [isRTL?'الميلاد':'Date of Birth', patient.dob || '—'],
-                [isRTL?'الجنس':'Gender',      patient.gender ? (GENDER_OPTIONS.find(g=>g.id===patient.gender)?.[isRTL?'ar':'en'] || patient.gender) : '—'],
-                [isRTL?'الحساسيات':'Allergies', allergies.length ? allergies.join(', ') : '—'],
-              ].map(([label, value], i) => (
-                <div key={i}>
-                  <div style={{ fontSize:12, color:C.textMuted, fontWeight:600, marginBottom:4 }}>{label}</div>
-                  <div style={{ fontSize:14, color:C.text }}>{value}</div>
+              {allergies.length > 0 && (
+                <div className="mt-3 flex items-center gap-2 flex-wrap">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">
+                    {isRTL ? 'حساسيات' : 'Allergies'}
+                  </span>
+                  {allergies.map((a, i) => (
+                    <Badge key={i} tone="warning" size="sm" dot>{a}</Badge>
+                  ))}
                 </div>
-              ))}
+              )}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={onEdit}
+                iconStart={Icons.edit}
+              >
+                {isRTL ? 'تعديل' : 'Edit Patient'}
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={onDelete}
+                iconStart={Icons.trash}
+              >
+                {isRTL ? 'حذف' : 'Delete'}
+              </Button>
             </div>
           </div>
+        </GlassCard>
+
+        {/* ── Quick contact bar ──────────────────────────────────────── */}
+        {patient.phone && (
+          <GlassCard padding="md" className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold text-navy-500 me-1">
+              {isRTL ? 'تواصل عبر' : 'Reach out via'}
+            </span>
+            <button
+              type="button"
+              onClick={() => window.open(`https://wa.me/${(patient.phone || '').replace(/[^0-9+]/g, '')}`, '_blank')}
+              className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 text-sm font-semibold transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+              </svg>
+              WhatsApp
+            </button>
+            <a
+              href={`tel:${patient.phone}`}
+              className="inline-flex items-center gap-1.5 px-3.5 h-9 rounded-md bg-white/80 border border-navy-100 text-navy-700 hover:border-navy-200 text-sm font-semibold no-underline transition-colors"
+              dir="ltr"
+            >
+              {Icons.phone(14)} {isRTL ? 'اتصال' : 'Call'}
+            </a>
+          </GlassCard>
         )}
 
-        {profileTab === 'appointments' && (
-          apptsLoading ? <DentalSpinner isRTL={isRTL} /> :
-          appointments.length === 0 ? (
-            <div style={{ ...card, padding:32, textAlign:'center', color:C.textMuted, fontSize:13 }}>
-              {isRTL ? 'لا توجد مواعيد' : 'No appointments yet'}
+        {/* ── Tab bar ────────────────────────────────────────────────── */}
+        <div className="border-b border-navy-100/80 overflow-x-auto -mx-1 px-1">
+          <div className="flex items-end gap-1 min-w-max">
+            {tabs.map(tab => {
+              const active = profileTab === tab.id
+              return (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); setProfileTab(tab.id) }}
+                  className={[
+                    'relative px-4 py-2.5 text-sm whitespace-nowrap transition-colors',
+                    'focus-visible:outline-none focus-visible:text-navy-900 focus-visible:bg-navy-50/40 rounded-t-md',
+                    active
+                      ? 'text-navy-900 font-semibold'
+                      : 'text-navy-500 hover:text-navy-700 font-medium',
+                  ].join(' ')}
+                  aria-current={active ? 'page' : undefined}
+                >
+                  {tab.label}
+                  {active && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-3 -bottom-px h-0.5 rounded-full"
+                      style={{ background: 'linear-gradient(90deg, #103562, #06B6D4)' }}
+                    />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* ── Tab content ────────────────────────────────────────────── */}
+        <div className="animate-fade-in" key={profileTab}>
+          {profileTab === 'overview' && (
+            <GlassCard padding="lg">
+              <h3 className="text-base font-semibold text-navy-900 m-0 mb-5">
+                {isRTL ? 'معلومات المريض' : 'Patient Information'}
+              </h3>
+              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
+                {[
+                  [isRTL ? 'الاسم'    : 'Full Name',     fullName || '—'],
+                  [isRTL ? 'الهاتف'   : 'Phone',         patient.phone || '—'],
+                  [isRTL ? 'البريد'   : 'Email',         patient.email || '—'],
+                  [isRTL ? 'الميلاد'  : 'Date of Birth', patient.dob   || '—'],
+                  [isRTL ? 'الجنس'    : 'Gender',        patient.gender ? (GENDER_OPTIONS.find(g => g.id === patient.gender)?.[isRTL ? 'ar' : 'en'] || patient.gender) : '—'],
+                  [isRTL ? 'الحساسيات' : 'Allergies',    allergies.length ? allergies.join(', ') : '—'],
+                ].map(([label, value], i) => (
+                  <div key={i}>
+                    <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-navy-500 mb-1">{label}</dt>
+                    <dd className="text-sm text-navy-800 m-0">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </GlassCard>
+          )}
+
+          {profileTab === 'appointments' && (
+            apptsLoading ? <DentalSpinner isRTL={isRTL} /> :
+            appointments.length === 0 ? (
+              <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+                {isRTL ? 'لا توجد مواعيد' : 'No appointments yet'}
+              </GlassCard>
+            ) : (
+              <ol className="flex flex-col gap-3">
+                {appointments.map(a => {
+                  const d = new Date(a.scheduled_at)
+                  const valid = !isNaN(d.getTime())
+                  const dateStr = valid
+                    ? d.toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+                    : ''
+                  const timeStr = valid
+                    ? `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+                    : ''
+                  const tone = (
+                    a.status === 'completed' ? 'success' :
+                    a.status === 'cancelled' || a.status === 'no_show' ? 'danger' :
+                    a.status === 'confirmed' || a.status === 'in_progress' ? 'cyan' :
+                    'warning'
+                  )
+                  return (
+                    <li key={a.id}>
+                      <GlassCard padding="md" className="flex items-center gap-4 flex-wrap">
+                        <div className="flex flex-col items-center justify-center w-20 shrink-0">
+                          <span className="text-2xl font-bold text-navy-900 tabular-nums leading-none">{timeStr}</span>
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-navy-500 mt-1.5">{dateStr}</span>
+                        </div>
+                        <span aria-hidden="true" className="self-stretch w-px bg-navy-100/80" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-navy-800 capitalize m-0">
+                            {(a.type || '—').replace(/_/g, ' ')}
+                          </p>
+                          <p className="text-xs text-navy-500 m-0 mt-1">
+                            {a.duration_minutes || 30} {isRTL ? 'دقيقة' : 'min'}
+                          </p>
+                        </div>
+                        <Badge tone={tone} dot>{(a.status || '').replace(/_/g, ' ')}</Badge>
+                      </GlassCard>
+                    </li>
+                  )
+                })}
+              </ol>
+            )
+          )}
+
+          {/* Heavy tabs render in their existing chrome inside a glass shell.
+              The wrapper provides the new canvas + spacing; the tabs' inner
+              dark-card styling (PaymentsTab, DentalTabs.*) is preserved
+              until a later pass. */}
+          {heavyTab && (
+            <div className="relative">
+              {profileTab === 'payments' && (
+                paymentsLoading
+                  ? <DentalSpinner isRTL={isRTL} />
+                  : <PaymentsTab payments={payments} addPayment={addPayment} deletePayment={deletePayment} dir={dir} isRTL={isRTL} />
+              )}
+              {profileTab === 'medical' && (
+                <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+                  <DentalMedicalHistory patient={patient} lang={lang} dir={dir} toast={toast} />
+                </Suspense>
+              )}
+              {profileTab === 'dental_chart' && (
+                <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+                  <DentalChartWrapper patient={patient} lang={lang} dir={dir} toast={toast} />
+                </Suspense>
+              )}
+              {profileTab === 'treatments' && (
+                <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+                  <DentalTreatments patient={patient} lang={lang} dir={dir} toast={toast} />
+                </Suspense>
+              )}
             </div>
-          ) : (
-            <div style={{ ...card, padding:0, overflow:'hidden' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
-                <thead>
-                  <tr style={{ background:C.bg, borderBottom:`1px solid ${C.border}` }}>
-                    {[isRTL?'التاريخ':'Date', isRTL?'النوع':'Type', isRTL?'المدة':'Duration', isRTL?'الحالة':'Status'].map((h,i) => (
-                      <th key={i} style={{ padding:'10px 16px', textAlign:isRTL?'right':'left', fontWeight:600, color:C.textSec, fontSize:12 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {appointments.map(a => {
-                    const d = new Date(a.scheduled_at)
-                    const dStr = isNaN(d.getTime()) ? '' : d.toLocaleString(isRTL ? 'ar-IQ' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })
-                    return (
-                      <tr key={a.id} style={{ borderBottom:`1px solid ${C.border}` }}>
-                        <td style={{ padding:'12px 16px', color:C.text, fontVariantNumeric:'tabular-nums' }}>{dStr}</td>
-                        <td style={{ padding:'12px 16px', color:C.textSec, textTransform:'capitalize' }}>{(a.type || '').replace(/_/g, ' ')}</td>
-                        <td style={{ padding:'12px 16px', color:C.textMuted, fontVariantNumeric:'tabular-nums' }}>{a.duration_minutes || 30} min</td>
-                        <td style={{ padding:'12px 16px', color:C.textSec, textTransform:'capitalize' }}>{(a.status || '').replace(/_/g, ' ')}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )
-        )}
-
-        {profileTab === 'payments' && (
-          paymentsLoading ? <DentalSpinner isRTL={isRTL} /> :
-          <PaymentsTab payments={payments} addPayment={addPayment} deletePayment={deletePayment} dir={dir} isRTL={isRTL} />
-        )}
-
-        {profileTab === 'medical' && (
-          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
-            <DentalMedicalHistory patient={patient} lang={lang} dir={dir} toast={toast} />
-          </Suspense>
-        )}
-        {profileTab === 'dental_chart' && (
-          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
-            <DentalChartWrapper patient={patient} lang={lang} dir={dir} toast={toast} />
-          </Suspense>
-        )}
-        {profileTab === 'treatments' && (
-          <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
-            <DentalTreatments patient={patient} lang={lang} dir={dir} toast={toast} />
-          </Suspense>
-        )}
+          )}
+        </div>
       </div>
     </div>
   )
@@ -1640,110 +1790,122 @@ function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL }) {
   }
 
   return (
-    <div style={{ ...card, padding:24 }}>
-      {/* Totals per currency */}
-      {Object.keys(totals).length > 0 && (
-        <div style={{ display:'grid', gridTemplateColumns:`repeat(${Math.min(Object.keys(totals).length, 3)}, 1fr)`, gap:12, marginBottom:20 }}>
-          {Object.entries(totals).map(([cur, sum]) => (
-            <div key={cur} style={{ padding:14, borderRadius:10, background:C.successBg, textAlign:'center' }}>
-              <div style={{ fontSize:10, fontWeight:600, color:C.success, marginBottom:4 }}>
-                {isRTL ? 'إجمالي' : 'Total'} ({cur})
+    <div className="ds-root">
+      <GlassCard padding="lg">
+        {/* Totals per currency */}
+        {Object.keys(totals).length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+            {Object.entries(totals).map(([cur, sum]) => (
+              <div key={cur} className="rounded-glass border border-emerald-100 bg-emerald-50/70 px-4 py-3 text-center">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700 mb-1">
+                  {isRTL ? 'إجمالي' : 'Total'} ({cur})
+                </div>
+                <div className="text-lg font-bold text-emerald-700 tabular-nums">
+                  {formatMoney(sum, cur)}
+                </div>
               </div>
-              <div style={{ fontSize:18, fontWeight:700, color:C.success, fontVariantNumeric:'tabular-nums' }}>
-                {formatMoney(sum, cur)}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16 }}>
-        <h3 style={{ fontSize:15, fontWeight:600, color:C.text, margin:0 }}>
-          {isRTL ? 'المدفوعات' : 'Payments'} ({payments.length})
-        </h3>
-        <button type="button" onClick={() => setShowForm(true)} className="velo-btn-primary" style={makeBtn('primary', { gap:6, fontSize:12 })}>
-          {Icons.plus(14)} {isRTL ? 'إضافة دفعة' : 'Record Payment'}
-        </button>
-      </div>
-
-      {payments.length === 0 ? (
-        <p style={{ fontSize:13, color:C.textMuted, textAlign:'center', padding:24 }}>
-          {isRTL ? 'لا توجد مدفوعات' : 'No payments recorded'}
-        </p>
-      ) : payments.map(p => {
-        const meth = PAYMENT_METHODS.find(m => m.id === p.method) || PAYMENT_METHODS[0]
-        const amountMinor = p.amountMinor ?? p.amount_minor ?? 0
-        const recordedAt = p.recordedAt || p.recorded_at || p.created_at
-        const dateStr = recordedAt ? new Date(recordedAt).toLocaleDateString(isRTL ? 'ar-IQ' : 'en-US') : ''
-        return (
-          <div key={p.id} style={{ display:'flex', alignItems:'center', gap:12, padding:'12px 0', borderBottom:`1px solid ${C.border}` }}>
-            <div style={{ width:32, height:32, borderRadius:8, background:C.bg, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:16 }}>{meth.icon}</div>
-            <div style={{ flex:1, minWidth:0 }}>
-              <div style={{ fontSize:15, fontWeight:700, color:C.text, fontVariantNumeric:'tabular-nums' }}>
-                {formatMoney(amountMinor, p.currency || 'IQD')}
-              </div>
-              <div style={{ fontSize:11, color:C.textMuted, marginTop:3 }}>
-                {isRTL ? meth.ar : meth.en}
-                {dateStr && <> &middot; {dateStr}</>}
-                {p.notes && <> &middot; {p.notes}</>}
-              </div>
-            </div>
-            <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-              <button type="button" onClick={() => setConfirmDeletePayment(p.id)}
-                style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, display:'flex', padding:4 }}>
-                {Icons.trash(14)}
-              </button>
-            </div>
+            ))}
           </div>
-        )
-      })}
+        )}
+
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-navy-900 m-0">
+            {isRTL ? 'المدفوعات' : 'Payments'} ({payments.length})
+          </h3>
+          <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowForm(true)}>
+            {isRTL ? 'إضافة دفعة' : 'Record Payment'}
+          </Button>
+        </div>
+
+        {payments.length === 0 ? (
+          <p className="text-sm text-navy-500 text-center py-6 m-0">
+            {isRTL ? 'لا توجد مدفوعات' : 'No payments recorded'}
+          </p>
+        ) : (
+          <ul className="flex flex-col">
+            {payments.map(p => {
+              const meth = PAYMENT_METHODS.find(m => m.id === p.method) || PAYMENT_METHODS[0]
+              const amountMinor = p.amountMinor ?? p.amount_minor ?? 0
+              const recordedAt = p.recordedAt || p.recorded_at || p.created_at
+              const dateStr = recordedAt ? new Date(recordedAt).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US') : ''
+              return (
+                <li key={p.id} className="flex items-center gap-3 py-3 border-b border-navy-100/60 last:border-b-0">
+                  <span aria-hidden="true" className="grid place-items-center w-9 h-9 rounded-md bg-navy-50 text-base shrink-0">
+                    {meth.icon}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-base font-semibold text-navy-900 tabular-nums">
+                      {formatMoney(amountMinor, p.currency || 'IQD')}
+                    </div>
+                    <div className="text-xs text-navy-500 mt-1">
+                      {isRTL ? meth.ar : meth.en}
+                      {dateStr && <> &middot; {dateStr}</>}
+                      {p.notes && <> &middot; {p.notes}</>}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDeletePayment(p.id)}
+                    aria-label={isRTL ? 'حذف' : 'Delete'}
+                    className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                  >
+                    {Icons.trash(14)}
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </GlassCard>
 
       {showForm && (
         <Modal onClose={() => setShowForm(false)} dir={dir} width={480}>
-          <form onSubmit={e => { e.preventDefault(); handleAdd() }}>
-            <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 16px' }}>
-              {isRTL ? 'تسجيل دفعة' : 'Record Payment'}
-            </h3>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 12px' }}>
-              <FormField label={isRTL ? 'المبلغ' : 'Amount'} dir={dir}>
-                <input value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} type="number" step="0.01" min="0" style={inputStyle(dir)} />
+          <div className="ds-root">
+            <form onSubmit={e => { e.preventDefault(); handleAdd() }}>
+              <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
+                {isRTL ? 'تسجيل دفعة' : 'Record Payment'}
+              </h3>
+              <div className="grid grid-cols-2 gap-x-3">
+                <FormField label={isRTL ? 'المبلغ' : 'Amount'} dir={dir}>
+                  <input value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} type="number" step="0.01" min="0" style={inputStyle(dir)} />
+                </FormField>
+                <FormField label={isRTL ? 'العملة' : 'Currency'} dir={dir}>
+                  <select value={form.currency} onChange={e => setForm(p => ({ ...p, currency: e.target.value }))} style={selectStyle(dir)}>
+                    <option value="IQD">IQD</option>
+                    <option value="USD">USD</option>
+                  </select>
+                </FormField>
+                <FormField label={isRTL ? 'طريقة الدفع' : 'Payment Method'} dir={dir}>
+                  <select value={form.method} onChange={e => setForm(p => ({ ...p, method: e.target.value }))} style={selectStyle(dir)}>
+                    {PAYMENT_METHODS.map(m => <option key={m.id} value={m.id}>{m.icon} {isRTL ? m.ar : m.en}</option>)}
+                  </select>
+                </FormField>
+                <div />
+              </div>
+              <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
+                <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder={isRTL ? 'مثال: إيصال #1234' : 'e.g. receipt #1234'} style={inputStyle(dir)} />
               </FormField>
-              <FormField label={isRTL ? 'العملة' : 'Currency'} dir={dir}>
-                <select value={form.currency} onChange={e => setForm(p => ({ ...p, currency: e.target.value }))} style={selectStyle(dir)}>
-                  <option value="IQD">IQD</option>
-                  <option value="USD">USD</option>
-                </select>
-              </FormField>
-              <FormField label={isRTL ? 'طريقة الدفع' : 'Payment Method'} dir={dir}>
-                <select value={form.method} onChange={e => setForm(p => ({ ...p, method: e.target.value }))} style={selectStyle(dir)}>
-                  {PAYMENT_METHODS.map(m => <option key={m.id} value={m.id}>{m.icon} {isRTL ? m.ar : m.en}</option>)}
-                </select>
-              </FormField>
-              <div />
-            </div>
-            <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
-              <input value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} placeholder={isRTL ? 'مثال: إيصال #1234' : 'e.g. receipt #1234'} style={inputStyle(dir)} />
-            </FormField>
-            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:12 }}>
-              <button type="button" onClick={() => setShowForm(false)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-              <button type="submit" className="velo-btn-primary" style={makeBtn('primary')}>{isRTL ? 'حفظ' : 'Save'}</button>
-            </div>
-          </form>
+              <div className="flex gap-2 justify-end mt-3">
+                <Button variant="secondary" onClick={() => setShowForm(false)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+                <Button variant="primary" type="submit">{isRTL ? 'حفظ' : 'Save'}</Button>
+              </div>
+            </form>
+          </div>
         </Modal>
       )}
 
       {confirmDeletePayment && (
         <Modal onClose={() => setConfirmDeletePayment(null)} dir={dir} width={400}>
-          <div style={{ textAlign:'center', padding:8 }}>
-            <h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:'0 0 8px' }}>
+          <div className="ds-root text-center px-2">
+            <h3 className="text-lg font-semibold text-navy-900 m-0 mb-2">
               {isRTL ? 'حذف الدفعة؟' : 'Delete this payment?'}
             </h3>
-            <p style={{ fontSize:13, color:C.textSec, margin:'0 0 16px' }}>
+            <p className="text-sm text-navy-600 m-0 mb-4">
               {isRTL ? 'لا يمكن التراجع عن هذا' : 'This action cannot be undone'}
             </p>
-            <div style={{ display:'flex', gap:8, justifyContent:'center' }}>
-              <button onClick={() => setConfirmDeletePayment(null)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-              <button onClick={() => { deletePayment(confirmDeletePayment); setConfirmDeletePayment(null) }} style={makeBtn('danger')}>{isRTL ? 'حذف' : 'Delete'}</button>
+            <div className="flex gap-2 justify-center">
+              <Button variant="secondary" onClick={() => setConfirmDeletePayment(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="destructive" onClick={() => { deletePayment(confirmDeletePayment); setConfirmDeletePayment(null) }}>{isRTL ? 'حذف' : 'Delete'}</Button>
             </div>
           </div>
         </Modal>

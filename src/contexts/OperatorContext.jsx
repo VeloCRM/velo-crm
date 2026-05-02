@@ -1,15 +1,23 @@
 /**
  * Velo CRM — Operator identity context.
  *
- * Provides a single boolean (`isOperator`) loaded once per session from the
- * server-side endpoint /api/auth/is-operator. The endpoint resolves identity
- * from the Supabase JWT and looks up the operators table with the service
- * role key, so the answer is authoritative.
+ * Provides a single boolean (`isOperator`) loaded once per session by
+ * directly querying the `operators` table for the caller's own row.
+ *
+ * Why direct-query rather than a Vercel Function:
+ *   - Works identically in `npm run dev`, `vercel dev`, and production.
+ *     (Vite's dev server doesn't serve /api/* without `vercel dev`, so the
+ *     old fetch('/api/auth/is-operator') call broke local development.)
+ *   - The operators table contains only (user_id, notes, created_at) — no
+ *     secrets — and the `operators_self_select` RLS policy in schema.sql
+ *     restricts each row to its owner. Postgres is the security boundary,
+ *     not the API layer.
+ *   - One indexed lookup on a primary key. Fast enough that no extra
+ *     caching beyond what context already provides is needed.
  *
  * Why context rather than a hook that re-queries: every isOperator branch
- * in App.jsx used to re-run the lookup. Centralising in
- * context means one network round-trip per session, regardless of how many
- * components ask.
+ * in App.jsx would otherwise re-run the lookup. Centralising in context
+ * means one query per session, regardless of how many components ask.
  */
 
 import { createContext, useContext, useEffect, useState } from 'react'
@@ -22,20 +30,32 @@ const OperatorContext = createContext({
   refresh: async () => {},
 })
 
+/**
+ * Read the caller's own row in `operators`. Returns true iff a row exists.
+ *
+ * Fail-closed: any error path (no Supabase config, no session, RLS denial,
+ * network failure) resolves to false. Operators see a degraded clinic UI
+ * if this misfires — never the reverse.
+ */
 async function fetchIsOperatorFromServer() {
   if (!isSupabaseConfigured()) return false
   const { data: { session } } = await supabase.auth.getSession()
-  if (!session?.access_token) return false
+  const userId = session?.user?.id
+  if (!userId) return false
 
   try {
-    const res = await fetch('/api/auth/is-operator', {
-      method: 'GET',
-      headers: { authorization: `Bearer ${session.access_token}` },
-    })
-    if (!res.ok) return false
-    const body = await res.json().catch(() => ({}))
-    return !!body?.isOperator
-  } catch {
+    const { data, error } = await supabase
+      .from('operators')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (error) {
+      console.error('[OperatorContext] operators lookup failed:', error)
+      return false
+    }
+    return !!data
+  } catch (err) {
+    console.error('[OperatorContext] operators lookup threw:', err)
     return false
   }
 }

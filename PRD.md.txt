@@ -1,0 +1,319 @@
+# Velo — Product Requirements Document
+
+**Version:** 0.3.0-foundation  
+**Last updated:** May 2, 2026  
+**Owner:** Ali Aljobory (SupCod3)  
+**Status:** Foundation shipped. First customer onboarding pending.
+
+---
+
+## What Velo is
+
+Velo is a **dental practice management SaaS** built for **independent dental clinics in Iraq**, with WhatsApp-first patient communication and Arabic-first design.
+
+It is sold and managed by SupCod3 as an operator-led service: clinics do not self-onboard. The operator (currently Ali) provisions each clinic, configures their integrations (WhatsApp credentials, AI quotas), and supports them directly. This is a deliberate choice, not a temporary limitation.
+
+---
+
+## Why Velo exists
+
+**The problem:**
+
+Independent dental clinics in Iraq run on paper, Excel, and informal WhatsApp threads. The available alternatives are:
+
+- **Western dental software** (Curve, Dentrix, Open Dental) — built for US/EU billing systems, English-only, $200-500/month, no WhatsApp, no Arabic, no IQD currency support, and require credit cards or US bank accounts to even sign up.
+- **Generic CRMs** (Zoho, HubSpot) — not dental-specific, no tooth charts, no treatment plans, no procedure-level billing.
+- **Regional MENA tools** — most target Egypt/UAE markets with insurance-claim flows that don't apply to Iraq's mostly-cash dental market.
+- **Nothing** — which is what 90%+ of Iraqi dental clinics actually use.
+
+The result: a typical Iraqi dental clinic loses patients (no recall system), under-collects revenue (no treatment plan tracking), and burns receptionist time (manual scheduling, paper records).
+
+**Why now:**
+
+- WhatsApp has near-universal penetration in Iraq (~95% smartphone owners). It's the primary patient communication channel — far more than email or SMS.
+- Iraqi private healthcare is growing as the middle class expands and oil-economy stability returns.
+- Cloud SaaS infrastructure (Supabase, Vercel) makes it economically viable to serve small clinics at $30-100/month price points that were impossible a decade ago.
+- AI-powered features (treatment plan summaries, patient WhatsApp triage) make a small clinic feel like a large one — without hiring more staff.
+
+---
+
+## Who it's for
+
+### Primary user persona — Dr. Saif (the owner-dentist)
+
+- 30-50 years old
+- Runs a small clinic (1-3 chairs, 2-5 staff total)
+- Owns the practice AND is the lead dentist
+- Communicates in Arabic with patients, English/Arabic mix with staff
+- Lives on WhatsApp; checks email rarely
+- Has a smartphone (Android, mid-range) and a laptop (often shared with reception)
+- Manages everything: bookings, billing, supplier payments, marketing
+- Pain: forgets follow-ups, loses patients to competitors, doesn't know which treatments are profitable
+- **Goal: more revenue per existing patient, fewer no-shows, less time on admin**
+
+### Secondary user persona — Sara (the receptionist)
+
+- 22-35 years old
+- Front desk: phone, walk-ins, scheduling, payment collection
+- Heavy WhatsApp user — books appointments through it, sends reminders, answers questions
+- May handle 30-50 patient interactions per day
+- Pain: juggling appointments on paper, forgetting payments, getting overwhelmed when both phones ring
+- **Goal: see today's schedule at a glance, send a reminder in 2 clicks, take payment without errors**
+
+### Tertiary persona — The hygienist or dental assistant
+
+- Read-mostly user
+- Looks up patient history, sees what the dentist marked on the chart, prepares the room
+- **Goal: know what's coming next**
+
+### Not the target
+
+- Hospital dental departments (different procurement cycle, different software needs)
+- Multi-location dental groups (10+ clinics) — different problem entirely
+- Dental schools / academic clinics
+- Insurance-heavy markets (Saudi Arabia, UAE expat clinics) where claim management dominates the workflow
+- US/EU clinics — they have established players and very different regulatory/billing realities
+
+---
+
+## The four pillars
+
+Every feature in Velo must serve at least one of these four pillars. If a feature doesn't fit any of them, it doesn't ship.
+
+### Pillar 1: Clinical workflow that matches how Iraqi dentists actually work
+
+- **Patient records** with medical history, allergies, demographics
+- **Anatomical dental chart** (FDI numbering, real tooth shapes, surface-level findings)
+- **Treatment plans** with line-item procedures, costs, status tracking
+- **Appointment scheduling** with multi-doctor support, conflict detection, status workflow
+- Bilingual UI (English + Arabic, RTL-aware)
+
+### Pillar 2: WhatsApp-first patient communication
+
+- **Outbound messaging** — appointment confirmations, reminders, payment receipts
+- **Inbound** — patients reply, clinic sees it, can respond
+- **Automated reminders** — 24h and 2h before appointment
+- **AI triage** — patients ask questions in Arabic, AI responds with clinic-defined answers
+
+### Pillar 3: Money that makes sense for Iraqi cash dentistry
+
+- **Multi-currency** — IQD as primary, USD for higher-end procedures
+- **No insurance complexity** — every payment is recorded, every payment is paid
+- **Treatment plan → payment linkage** — see how much each plan has been paid against
+- **Revenue reports** — daily, monthly, by doctor, by procedure
+- **Expense tracking** — basic enough not to need separate accounting software for a small clinic
+
+### Pillar 4: The operator handles the hard parts
+
+- **Onboarding** — operator provisions accounts; clinics don't sign up themselves
+- **Credential management** — operator configures WhatsApp Business API, AI keys, currency settings
+- **Support** — operator has impersonation access to debug and assist
+- **Quotas and limits** — operator manages rate limits per clinic transparently
+- **Billing** — handled outside the app (invoicing, contracts) for now
+
+---
+
+## What's in scope (v1.0 — first 6 months)
+
+### Must-ship for first paying customer
+
+- ✅ Patient records (CRUD, search, medical history, allergies)
+- ✅ Appointments calendar (day/week view, multi-doctor, conflict detection)
+- ✅ Dental chart with findings (FDI numbering, click-to-record)
+- ✅ Treatment plans (multi-item, status tracking, plan-to-payment linkage)
+- ✅ Payments / Finance (record, list, filter, export)
+- ✅ Inventory (basic stock tracking, low-stock alerts)
+- ✅ Basic reports (revenue, appointments, top procedures)
+- ✅ Tasks (assign to team members)
+- ✅ Settings (clinic info, doctors list, team roles)
+- ✅ Bilingual EN/AR with RTL support
+- 🚧 **Anatomical dental chart visual** (Sprint 1 — currently functional but ugly)
+- 🚧 **Operator console with impersonation** (built, browser-test in Sprint 1)
+- 🚧 **WhatsApp send + reminders** (API built, end-to-end test in Sprint 2)
+
+### Out of scope until validated
+
+- Insurance/claims management
+- Patient-facing portal or app
+- Lab work / external referral tracking
+- Multi-location clinic groups
+- Dental imaging integration (panoramic, CBCT, DICOM)
+- Inventory purchase orders
+- Advanced reporting (cohort analysis, retention curves, demographic breakdowns)
+- Payroll / staff hours
+- Marketing automation beyond appointment reminders
+- Public website / clinic landing pages
+
+### Explicitly never in scope
+
+- Generic CRM features (deals, leads, sales pipelines, ticket queues)
+- Cross-industry abstraction (we are NOT building a "general practice management" tool)
+- Self-serve clinic signup flow (the operator-managed model is intentional)
+
+---
+
+## What success looks like
+
+### 30 days after first customer onboarded (Dr. Saif)
+
+- Daily active use by Dr. Saif and his receptionist (>3 sessions/day per user)
+- All new patients enter through Velo (not on paper)
+- All new appointments scheduled in Velo (not WhatsApp threads)
+- Dental chart is being filled in for every visit
+- At least one treatment plan created and tracked through to payment
+- Zero P0 bugs blocking workflow
+- Dr. Saif gives explicit feedback on what's missing/broken (used to plan Sprint 2)
+
+### 90 days
+
+- Dr. Saif's clinic data has 100+ patients in the system
+- Recall system identifies 10+ patients overdue for cleaning
+- Revenue reports match Dr. Saif's mental model of the month's income
+- Dr. Saif is comfortable enough to refer Velo to one peer
+- One more clinic onboarded as a result of the referral
+- Pricing decided based on observed willingness-to-pay
+
+### 6 months
+
+- 5-10 clinics paying
+- Average clinic uses Velo for >70% of patient interactions
+- WhatsApp reminders reduce no-show rate by measurable amount (clinic self-reported is fine for now)
+- Operator can onboard a new clinic in <2 hours of total work (provisioning + walkthrough)
+- Recurring monthly revenue covers Supabase + Vercel + Anthropic costs with margin
+
+### 12 months
+
+- 25-50 clinics paying
+- Velo is the default recommended tool among private dental clinics in Erbil/Baghdad
+- Profitable enough to support Ali full-time OR support hiring one technical person
+- Decision point: stay Iraq-only, or expand to KRG-adjacent markets (Jordan, Lebanon)
+
+---
+
+## Non-functional requirements
+
+### Performance
+
+- Page load <3 seconds on a mid-range Android tablet over Iraqi 3G
+- Bundle size <500KB main chunk gzipped (currently 442KB ✓)
+- Database queries <500ms p95 on Supabase free tier
+- Image-heavy pages (dental chart, eventually x-rays) lazy-load
+
+### Security
+
+- Multi-tenant via RLS — every query scoped by `org_id`
+- Defense-in-depth: helpers verify org_id again client-side
+- All money writes audit-logged with operator-impersonation trail
+- No client-side API keys (Anthropic, WhatsApp routed through server proxies)
+- All file storage signed-URL gated (when implemented)
+- Service role key only used in `api/*` Vercel functions, never in browser
+- Test accounts limited (50 patients, 100 appointments, 14-day expiry)
+
+### Compliance
+
+- No HIPAA — Iraqi market is not subject to US healthcare regulation
+- Iraqi medical-records norms are informal; clinic owns its data; we provide export
+- GDPR not applicable for Iraqi clinics, but design with data-export-ready in mind
+- Right to deletion: clinic can request full data export + account deletion at any time
+
+### Reliability
+
+- Supabase Pro tier when revenue justifies (monthly backups, point-in-time recovery)
+- Vercel deploys on push to main; preview deploys on every PR
+- Audit log captures every mutation; if audit log fails, app surfaces a toast (so operator knows trail is incomplete)
+- No client-side data persistence beyond auth session and a few UI preferences
+
+### Observability
+
+- Vercel logs for serverless function errors
+- Supabase logs for database errors
+- Application audit_log table for all mutations
+- No third-party error tracking yet (Sentry, LogRocket) — add when scale justifies
+
+---
+
+## Constraints and decisions
+
+### Why operator-managed (not self-serve)
+
+The Iraqi dental market is too small and too relationship-driven to justify a self-serve funnel. Clinic owners trust people, not signup forms. The operator (Ali) is the human relationship that converts trust into a paying account. This also means:
+- Lower customer acquisition cost per clinic (relational sales)
+- Higher customer lifetime value (operator support reduces churn)
+- Slower scale (operator is a bottleneck — but that's fine for the first 50 clinics)
+
+### Why dental-only
+
+Generic dental + GP + chiropractic + cosmetic = a worse product for everyone. Pivot away from generic CRM was a hard decision but the right one. The product can talk to dentists with confidence: "yes, FDI numbering, yes treatment plans, yes dental chart with surfaces." Generic competitors can't.
+
+### Why Iraq first
+
+You're physically in Erbil. Your network is here. The market is uncontested. Local language, currency, and culture are deeply understood. Expanding before nailing one market is the indie-SaaS death sentence.
+
+### Why no insurance flows
+
+Iraq is overwhelmingly cash dentistry. Building insurance-claim flows for a market that doesn't have meaningful private dental insurance is wasted complexity. If/when KRG private insurance for dentistry expands, we revisit.
+
+### Why no patient app
+
+Iraqi patients communicate through WhatsApp. Asking them to download a separate app to see their next appointment is friction they won't accept. WhatsApp is the patient app.
+
+---
+
+## Pricing (TBD — decision deferred to Sprint 2)
+
+Open question. Some reference points:
+
+- **Local context**: Iraqi clinics typically generate $5K-30K/month revenue depending on size. Software at $30-50/month is well within tolerance for the lower end; $100-200/month for the upper end if it visibly drives revenue.
+- **Comparable markets**: Egyptian dental software (Drsync, Vetra) prices around $30-80/month. Egyptian clinics are similar economically to mid-tier Iraqi clinics.
+- **Operator cost**: Each clinic costs you maybe $5-10/month in Supabase + Vercel + AI quota at current usage. Need at least 5x that to be sustainable.
+
+**Working hypothesis**: $50/month per clinic, billed quarterly in IQD or USD. Revisit after Dr. Saif uses Velo for 60 days and gives explicit feedback on whether $50/month feels reasonable to him.
+
+**Anti-pattern to avoid**: Free indefinitely. A clinic that pays nothing values nothing. Plan to convert Dr. Saif from free trial to paid at the 90-day mark.
+
+---
+
+## Risks and mitigations
+
+### Risk 1 — Dr. Saif uses it for 30 days, hates the dental chart visual, churns
+
+**Mitigation:** Sprint 1 priority #3 is the dental chart visual rebuild. Ship it before Dr. Saif starts.
+
+### Risk 2 — WhatsApp Business API approval is harder than expected
+
+**Mitigation:** Start the WhatsApp Business approval process in parallel with Sprint 1 work. If it takes 4 weeks, that's 4 weeks of shipping other features in the meantime.
+
+### Risk 3 — Operator flow has bugs that only show up under impersonation load
+
+**Mitigation:** Sprint 1 priority #1 + #2 are operator-flow testing. Find bugs before customers do.
+
+### Risk 4 — Ali burns out trying to do everything (dev + sales + support)
+
+**Mitigation:** Pricing converts to revenue. Revenue funds either part-time help or full-time independence. Don't onboard customers faster than the operator can support them. Hard cap at 5 clinics for the first 90 days.
+
+### Risk 5 — Iraqi political/economic instability disrupts the market
+
+**Mitigation:** Outside your control. SaaS revenue is geographically distributable; once one clinic is profitable, the model itself is portable to Lebanon, Jordan, KRG-adjacent markets if needed.
+
+### Risk 6 — A bigger player (Iraqi tech firm, MENA SaaS) launches dental software
+
+**Mitigation:** First-mover relational selling beats anonymous self-serve in this market. Your moat is the operator relationship, not the software. Software is a commodity; trust isn't.
+
+---
+
+## Open product questions
+
+These are decisions that don't need to be answered today but will need answers within 90 days:
+
+1. **Multi-location clinics** — what happens if Dr. Saif opens a second branch? Currently no multi-org concept on a single profile. (Defer until needed.)
+2. **Patient deduplication** — if the same patient visits two clinics that both use Velo, are they one patient or two? Privacy says two; UX says one. Likely two for now.
+3. **Lab integration** — when Dr. Saif sends a crown to a lab, does Velo track that? Probably yes, eventually.
+4. **Inventory purchasing** — do clinics want Velo to track supplier orders, or is that better left to WhatsApp + paper?
+5. **Pricing model evolution** — flat per-clinic, or tiered by patient volume / staff count?
+6. **Localization beyond Iraq** — at what point do we add Iraqi Dinar fil precision (for 250 IQD denominations)?
+
+---
+
+## Document changelog
+
+- **v0.3.0 (May 2, 2026)** — Foundation shipped. First customer (Dr. Saif) onboarding upcoming. PRD initial draft.
