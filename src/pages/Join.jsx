@@ -8,13 +8,55 @@ import {
   clearPendingInvite,
 } from '../lib/invitations'
 import { sanitizePathParam, checkLoginAttempt, getLoginLockoutRemaining } from '../lib/sanitize'
+import {
+  GlassCard, Button, Input, Badge, EmptyState, SkeletonGlass,
+} from '../components/ui'
+
+/* ── Inline icons ─────────────────────────────────────────────────────── */
+const MailIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+    <polyline points="22,6 12,13 2,6" />
+  </svg>
+)
+const LockIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+    <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+  </svg>
+)
+const UserIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+)
+const GlobeIcon = (s = 16) => (
+  <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" />
+    <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+  </svg>
+)
+const InvalidIllustration = (
+  <span className="relative grid place-items-center w-full h-full">
+    <span className="absolute inset-0 rounded-full bg-gradient-to-br from-rose-100 via-white to-amber-100 blur-md opacity-80" />
+    <span className="relative w-20 h-20 rounded-full bg-gradient-to-br from-rose-400 to-rose-600 grid place-items-center shadow-glass-lg">
+      <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9" />
+        <line x1="15" y1="9" x2="9" y2="15" />
+        <line x1="9" y1="9" x2="15" y2="15" />
+      </svg>
+    </span>
+  </span>
+)
 
 const STRINGS = {
   en: {
     welcomeTitle: 'You\'ve been invited',
-    welcomeBody: (org, role) => `${org} added you as ${role}.`,
-    welcomeBodyNoOrg: (role) => `You've been invited to join as ${role}.`,
-    signInPrompt: 'Sign in or create your account to accept.',
+    welcomeOrg: (org) => `Join ${org}`,
+    welcomeNoOrg: 'Join the team',
+    asRole: 'as',
+    signInPrompt: (email) => `Sign in or create an account with ${email} to accept.`,
     emailLabel: 'Email Address',
     passwordLabel: 'Password',
     fullNameLabel: 'Full name',
@@ -28,8 +70,8 @@ const STRINGS = {
     noAccount: 'New here?',
     signIn: 'Sign in',
     signUp: 'Create account',
-    invalidTitle: 'This invitation isn\'t valid',
-    invalidBody: 'The link is missing, expired, or has already been used. Ask the clinic owner for a new one.',
+    invalidTitle: 'Invitation invalid',
+    invalidBody: 'This invitation link is invalid or has expired. Contact the clinic owner for a new link.',
     backToLogin: 'Back to sign in',
     retry: 'Retry',
     appName: 'Velo',
@@ -38,12 +80,14 @@ const STRINGS = {
     lockedOut: 'Too many login attempts. Please wait',
     seconds: 'seconds',
     passwordTooShort: 'Password must be at least 6 characters',
+    loadingInvite: 'Loading invitation…',
   },
   ar: {
     welcomeTitle: 'تمت دعوتك',
-    welcomeBody: (org, role) => `${org} أضافك بدور ${role}.`,
-    welcomeBodyNoOrg: (role) => `تمت دعوتك للانضمام بدور ${role}.`,
-    signInPrompt: 'سجل الدخول أو أنشئ حساباً لقبول الدعوة.',
+    welcomeOrg: (org) => `الانضمام إلى ${org}`,
+    welcomeNoOrg: 'الانضمام إلى الفريق',
+    asRole: 'بدور',
+    signInPrompt: (email) => `سجل الدخول أو أنشئ حساباً باستخدام ${email} لقبول الدعوة.`,
     emailLabel: 'البريد الإلكتروني',
     passwordLabel: 'كلمة المرور',
     fullNameLabel: 'الاسم الكامل',
@@ -57,8 +101,8 @@ const STRINGS = {
     noAccount: 'جديد هنا؟',
     signIn: 'تسجيل الدخول',
     signUp: 'إنشاء حساب',
-    invalidTitle: 'هذه الدعوة غير صالحة',
-    invalidBody: 'الرابط مفقود أو منتهي أو تم استخدامه بالفعل. اطلب رابطاً جديداً من مالك العيادة.',
+    invalidTitle: 'الدعوة غير صالحة',
+    invalidBody: 'هذا الرابط غير صالح أو منتهي الصلاحية. تواصل مع مالك العيادة للحصول على رابط جديد.',
     backToLogin: 'العودة لتسجيل الدخول',
     retry: 'إعادة المحاولة',
     appName: 'فيلو',
@@ -67,14 +111,23 @@ const STRINGS = {
     lockedOut: 'محاولات كثيرة. يرجى الانتظار',
     seconds: 'ثانية',
     passwordTooShort: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل',
+    loadingInvite: 'جاري تحميل الدعوة...',
   },
 }
 
 const ROLE_LABEL = {
-  owner: { en: 'owner', ar: 'مالك' },
-  doctor: { en: 'doctor', ar: 'طبيب' },
-  receptionist: { en: 'receptionist', ar: 'موظف استقبال' },
-  assistant: { en: 'assistant', ar: 'مساعد' },
+  owner:        { en: 'Owner',        ar: 'مالك' },
+  doctor:       { en: 'Doctor',       ar: 'طبيب' },
+  receptionist: { en: 'Receptionist', ar: 'موظف استقبال' },
+  assistant:    { en: 'Assistant',    ar: 'مساعد' },
+}
+
+// Map role → Badge tone (matches the design system).
+const ROLE_TONE = {
+  owner:        'navy',
+  doctor:       'cyan',
+  receptionist: 'success',
+  assistant:    'neutral',
 }
 
 function daysUntil(iso) {
@@ -110,7 +163,6 @@ export default function JoinPage({ user, onAuth, lang, setLang, navigate }) {
     const rawToken = params.get('token') || ''
     const safe = sanitizePathParam(rawToken)
     if (!safe) {
-      // Try replay from localStorage in case the user closed/reopened the tab.
       const stored = getPendingInvite()
       if (stored) {
         setToken(stored)
@@ -221,187 +273,234 @@ export default function JoinPage({ user, onAuth, lang, setLang, navigate }) {
     }
   }
 
-  const inputClass = "w-full h-11 ps-3 pe-3 rounded-md border border-stroke bg-surface-canvas text-content-primary placeholder:text-content-tertiary font-sans text-body focus:outline-none focus:border-accent focus:ring-[3px] focus:ring-accent/30 transition-[border-color,box-shadow] duration-fast ease-standard"
-  const labelClass = "block mb-1.5 text-body-sm font-medium text-content-secondary text-start"
-  const linkBtnClass = "bg-transparent border-none p-0 cursor-pointer font-sans font-semibold text-accent-fg hover:text-accent-solid-hover transition-colors duration-fast ease-standard"
-
-  // ── Render: invalid / expired ─────────────────────────────────────────────
+  /* ── State: invalid / expired ─────────────────────────────────────────── */
   const renderInvalid = () => (
-    <div className="w-full max-w-md bg-surface-raised rounded-xl p-6 md:p-10 shadow-2 border border-stroke-subtle">
-      <div className="text-center">
-        <div className="w-12 h-12 rounded-full mx-auto mb-4 flex items-center justify-center" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FF6B6B" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10" />
-            <line x1="15" y1="9" x2="9" y2="15" />
-            <line x1="9" y1="9" x2="15" y2="15" />
-          </svg>
-        </div>
-        <h2 className="font-display text-h3 !text-content-primary m-0 mb-2">{txt.invalidTitle}</h2>
-        <p className="text-body-sm text-content-secondary leading-relaxed m-0 mb-5">{txt.invalidBody}</p>
-        <button
-          type="button"
-          onClick={() => {
-            clearPendingInvite()
-            if (navigate) navigate('/', { replace: true })
-            else if (typeof window !== 'undefined') window.location.assign('/')
-          }}
-          className="w-full h-11 rounded-md border border-stroke bg-surface-canvas hover:bg-surface-sunken text-content-primary font-sans text-body font-medium"
-        >
-          {txt.backToLogin}
-        </button>
-      </div>
-    </div>
-  )
-
-  // ── Render: signed-in, accepting (or accept failed) ───────────────────────
-  const renderAccepting = () => (
-    <div className="w-full max-w-md bg-surface-raised rounded-xl p-6 md:p-10 shadow-2 border border-stroke-subtle text-center">
-      <h2 className="font-display text-h3 !text-content-primary m-0 mb-2">{txt.welcomeTitle}</h2>
-      <p className="text-body-sm text-content-secondary m-0 mb-5">
-        {preview?.orgName ? txt.welcomeBody(preview.orgName, ROLE_LABEL[preview.role]?.[lang] || preview.role) : ''}
-      </p>
-      {accepting ? (
-        <p className="text-body-sm text-content-tertiary">{txt.accepting}</p>
-      ) : acceptError ? (
-        <>
-          <div className="mb-4 ps-3 pe-3 py-2.5 rounded-md bg-status-danger-bg border border-status-danger-border/30 text-status-danger-fg text-body-sm">
-            {acceptError}
-          </div>
-          <button
-            type="button"
-            onClick={() => { setAcceptError(''); setAccepting(true); /* re-trigger via state */ setPreview({ ...preview }) }}
-            className="w-full h-11 rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent font-sans text-body font-medium"
+    <GlassCard padding="lg" className="w-full max-w-md md:p-10">
+      <EmptyState
+        illustration={InvalidIllustration}
+        title={txt.invalidTitle}
+        description={txt.invalidBody}
+        action={
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() => {
+              clearPendingInvite()
+              if (navigate) navigate('/', { replace: true })
+              else if (typeof window !== 'undefined') window.location.assign('/')
+            }}
           >
-            {txt.retry}
-          </button>
-        </>
-      ) : (
-        <p className="text-body-sm text-content-tertiary">{txt.accepting}</p>
-      )}
-    </div>
+            {txt.backToLogin}
+          </Button>
+        }
+      />
+    </GlassCard>
   )
 
-  // ── Render: signed-out, valid invite — embed auth form ────────────────────
+  /* ── State: signed-in, accepting (or accept failed) ───────────────────── */
+  const renderAccepting = () => {
+    const roleLabel = ROLE_LABEL[preview?.role]?.[lang] || preview?.role
+    const tone = ROLE_TONE[preview?.role] || 'navy'
+    return (
+      <GlassCard padding="lg" className="w-full max-w-md md:p-10 text-center">
+        <h2 className="text-2xl font-semibold text-navy-800 m-0 mb-2 leading-tight">
+          {preview?.orgName ? txt.welcomeOrg(preview.orgName) : txt.welcomeNoOrg}
+        </h2>
+        <div className="flex justify-center mb-5">
+          <Badge tone={tone} dot>{roleLabel}</Badge>
+        </div>
+        {accepting ? (
+          <p className="text-sm text-navy-500">{txt.accepting}</p>
+        ) : acceptError ? (
+          <>
+            <div
+              role="alert"
+              className="mb-4 rounded-glass border border-rose-200 bg-rose-50/80 px-3.5 py-2.5 text-sm text-rose-700"
+            >
+              {acceptError}
+            </div>
+            <Button
+              variant="primary"
+              size="lg"
+              className="w-full"
+              onClick={() => { setAcceptError(''); setAccepting(true); setPreview({ ...preview }) }}
+            >
+              {txt.retry}
+            </Button>
+          </>
+        ) : (
+          <p className="text-sm text-navy-500">{txt.accepting}</p>
+        )}
+      </GlassCard>
+    )
+  }
+
+  /* ── State: signed-out, valid invite — embedded auth form ─────────────── */
   const renderAuthForm = () => {
     if (!preview) return null
-    const days = daysUntil(preview.expiresAt)
-    const roleLabel = ROLE_LABEL[preview.role]?.[lang] || preview.role
+    const days       = daysUntil(preview.expiresAt)
+    const roleLabel  = ROLE_LABEL[preview.role]?.[lang] || preview.role
+    const tone       = ROLE_TONE[preview.role] || 'navy'
+    const orgHeading = preview.orgName ? txt.welcomeOrg(preview.orgName) : txt.welcomeNoOrg
+
     return (
-      <div className="w-full max-w-md bg-surface-raised rounded-xl p-6 md:p-10 shadow-2 border border-stroke-subtle">
-        <div className="mb-4 ps-3 pe-3 py-2.5 rounded-md bg-status-info-bg border border-status-info-border/30 text-status-info-fg text-body-sm leading-normal">
-          <div className="font-semibold">
-            {preview.orgName ? txt.welcomeBody(preview.orgName, roleLabel) : txt.welcomeBodyNoOrg(roleLabel)}
+      <GlassCard padding="lg" className="w-full max-w-md md:p-10">
+        {/* Invite header */}
+        <div className="mb-6 flex flex-col gap-2.5">
+          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-accent-cyan-700">
+            <span>{txt.welcomeTitle}</span>
+            <span aria-hidden="true" className="h-px flex-1 bg-accent-cyan-200" />
           </div>
-          <div className="mt-0.5 text-caption text-content-tertiary">
-            {days > 0 ? txt.expiresIn(days) : txt.expired}
+          <h2 className="text-2xl font-semibold text-navy-800 m-0 leading-tight tracking-tight">
+            {orgHeading}
+          </h2>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-navy-500">{txt.asRole}</span>
+            <Badge tone={tone} dot>{roleLabel}</Badge>
+            <span className="text-xs text-navy-400 ms-1">
+              · {days > 0 ? txt.expiresIn(days) : txt.expired}
+            </span>
           </div>
         </div>
 
-        <h2 className="font-display text-h3 !text-content-primary m-0 mb-1.5">
-          {mode === 'signin' ? txt.signIn : txt.signUp}
-        </h2>
-        <p className="text-body-sm text-content-tertiary m-0 mb-6">{txt.signInPrompt}</p>
+        <p className="text-sm text-navy-600 leading-relaxed mb-5" dir={dir}>
+          {txt.signInPrompt(preview.email)}
+        </p>
 
         {error && (
-          <div className="mb-3 ps-3 pe-3 py-2.5 rounded-md bg-status-danger-bg border border-status-danger-border/30 text-status-danger-fg text-body-sm" role="alert">
+          <div
+            role="alert"
+            className="mb-4 rounded-glass border border-rose-200 bg-rose-50/80 px-3.5 py-2.5 text-sm text-rose-700"
+          >
             {error}
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3.5">
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {mode === 'signup' && (
-            <div>
-              <label className={labelClass}>{txt.fullNameLabel}</label>
-              <input
-                value={fullName}
-                onChange={e => setFullName(e.target.value)}
-                className={inputClass}
-                disabled={submitting}
-              />
-            </div>
-          )}
-          <div>
-            <label className={labelClass}>{txt.emailLabel}</label>
-            <input
-              value={preview.email}
-              readOnly
-              className={inputClass}
-              dir="ltr"
-              style={{ opacity: 0.7, cursor: 'not-allowed' }}
-            />
-            <p className="mt-1 text-caption text-content-tertiary">{txt.emailLocked}</p>
-          </div>
-          <div>
-            <label className={labelClass}>{txt.passwordLabel}</label>
-            <input
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              type="password"
-              placeholder="••••••••"
-              className={inputClass}
+            <Input
+              label={txt.fullNameLabel}
+              value={fullName}
+              onChange={e => setFullName(e.target.value)}
+              iconStart={UserIcon}
+              autoComplete="name"
               disabled={submitting}
             />
-          </div>
+          )}
 
-          <button
+          <Input
+            label={txt.emailLabel}
+            value={preview.email}
+            readOnly
+            iconStart={MailIcon}
+            helper={txt.emailLocked}
+            dir="ltr"
+          />
+
+          <Input
+            label={txt.passwordLabel}
+            type="password"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+            placeholder="••••••••"
+            iconStart={LockIcon}
+            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+            disabled={submitting}
+            dir="ltr"
+          />
+
+          <Button
             type="submit"
-            disabled={submitting || lockoutSeconds > 0}
-            className="w-full h-11 mt-2 rounded-md bg-accent hover:bg-accent-solid-hover text-content-on-accent font-sans text-body font-medium disabled:bg-surface-sunken disabled:text-content-tertiary disabled:cursor-not-allowed"
+            variant="primary"
+            size="lg"
+            className="w-full mt-1"
+            loading={submitting}
+            disabled={lockoutSeconds > 0}
           >
             {submitting
               ? (mode === 'signup' ? txt.creating : (lang === 'ar' ? 'جارٍ التحميل...' : 'Loading…'))
               : txt.accept}
-          </button>
+          </Button>
         </form>
 
-        <div className="text-center mt-5 text-body-sm text-content-tertiary">
+        <div className="text-center mt-5 text-sm text-navy-500">
           {mode === 'signin' ? (
             <span>
               {txt.noAccount}{' '}
-              <button type="button" onClick={() => { setMode('signup'); setError('') }} className={linkBtnClass}>
+              <button
+                type="button"
+                onClick={() => { setMode('signup'); setError('') }}
+                className="font-semibold text-accent-cyan-700 hover:text-accent-cyan-800 transition-colors"
+              >
                 {txt.signUp}
               </button>
             </span>
           ) : (
             <span>
               {txt.haveAccount}{' '}
-              <button type="button" onClick={() => { setMode('signin'); setError('') }} className={linkBtnClass}>
+              <button
+                type="button"
+                onClick={() => { setMode('signin'); setError('') }}
+                className="font-semibold text-accent-cyan-700 hover:text-accent-cyan-800 transition-colors"
+              >
                 {txt.signIn}
               </button>
             </span>
           )}
         </div>
-      </div>
+      </GlassCard>
     )
   }
 
+  /* ── State: loading preview ───────────────────────────────────────────── */
+  const renderLoading = () => (
+    <GlassCard padding="lg" className="w-full max-w-md md:p-10">
+      <div className="flex flex-col gap-4">
+        <SkeletonGlass shape="title" className="w-1/2" />
+        <SkeletonGlass shape="text"  className="w-2/3" />
+        <SkeletonGlass shape="block" className="w-full" />
+        <SkeletonGlass shape="text"  className="w-3/4" />
+        <p className="text-sm text-navy-500 text-center mt-2">{txt.loadingInvite}</p>
+      </div>
+    </GlassCard>
+  )
+
   return (
-    <div dir={dir} className="relative min-h-screen bg-surface-canvas font-sans">
-      <header className="absolute top-0 inset-x-0 flex justify-end px-5 md:px-8 py-4 z-10">
+    <div dir={dir} className="ds-root relative min-h-screen w-full overflow-y-auto">
+      <div className="ds-ambient" />
+
+      {/* Lang toggle (no theme toggle here — Join is a one-shot landing) */}
+      <header className="absolute top-0 inset-x-0 flex justify-end items-center gap-1 px-5 md:px-8 py-4 z-10">
         {setLang && (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setLang(l => l === 'en' ? 'ar' : 'en')}
-            className="-me-3 px-3 py-2 text-body-sm font-medium text-content-tertiary hover:text-content-primary bg-transparent border-none cursor-pointer font-sans"
+            iconStart={GlobeIcon}
+            aria-label={txt.switchLang}
           >
             {txt.switchLang}
-          </button>
+          </Button>
         )}
       </header>
 
       <div className="min-h-screen flex flex-col items-center justify-center px-5 py-20">
+        {/* Brand mark — same anatomy as Auth so the visual handoff is seamless */}
         <div className="text-center mb-8">
-          <div className="mx-auto mb-2 font-display text-[56px] font-bold leading-none !text-content-primary" aria-hidden="true">V</div>
-          <h1 className="font-display text-h3 md:text-h2 !text-content-primary m-0 mb-1">{txt.appName}</h1>
-          <p className="text-body-sm text-content-tertiary m-0">{txt.tagline}</p>
+          <div
+            aria-hidden="true"
+            className="mx-auto mb-3 grid place-items-center w-14 h-14 rounded-2xl shadow-glass-lg navy-gradient text-white text-2xl font-bold"
+          >
+            V
+          </div>
+          <h1 className="text-3xl font-bold text-navy-800 leading-tight tracking-tight m-0 mb-1">
+            {txt.appName}
+          </h1>
+          <p className="text-sm text-navy-500 m-0">{txt.tagline}</p>
         </div>
 
         {previewLoading
-          ? (
-            <div className="w-full max-w-md bg-surface-raised rounded-xl p-6 md:p-10 shadow-2 border border-stroke-subtle text-center">
-              <p className="text-body-sm text-content-tertiary m-0">{lang === 'ar' ? 'جاري التحميل...' : 'Loading invitation…'}</p>
-            </div>
-          )
+          ? renderLoading()
           : previewError || !preview
             ? renderInvalid()
             : user

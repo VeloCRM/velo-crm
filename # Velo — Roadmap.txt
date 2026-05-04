@@ -1,0 +1,240 @@
+# Velo — Roadmap
+
+**Version:** 0.3.0-foundation  
+**Horizon:** Next 12 months  
+**Last updated:** May 2, 2026
+
+---
+
+## How to read this
+
+Each sprint has a single goal. If a feature doesn't move the goal, it doesn't ship in that sprint. Effort estimates assume Ali working solo, evenings + weekends after RTB day job (~15-20 focused hours/week).
+
+The default sprint length is 2 weeks. Some sprints will run long; others will close early. Keep the goals fixed, let the dates flex.
+
+---
+
+## Sprint 0 — Foundation ✅ SHIPPED May 2, 2026
+
+**Goal:** Stop building on a broken foundation.
+
+**What landed:**
+- Schema rebuild (23 tables, FDI numbering, full RLS, audit log, role grants)
+- Page-layer rename pass (contacts → patients, dental-only)
+- Dental tabs working (medical history, dental chart, treatment plans)
+- Server-side AI proxy + WhatsApp send + invitations system
+- Clinic owner experience verified end-to-end
+- Test environment (Dr. Ali Hussain @ My Test Clinic) for ongoing development
+
+**Tagged:** `v0.3.0-foundation` on `master`
+
+---
+
+## Sprint 1 — Demo-ready (2 weeks)
+
+**Goal:** Make Velo demoable to Dr. Saif without operator embarrassment.
+
+This sprint is everything between "shipped foundation" and "first customer signs up." Three things matter:
+
+### Week 1 — Operator flow + auth recovery
+
+- **S1.1** Move operator detection out of `/api/auth/is-operator`, into a direct Supabase query — eliminates the local dev gap and simplifies architecture (M)
+- **S1.2** End-to-end test: sign in as operator → land on OperatorConsole → impersonate test clinic → see clinic UI → exit cleanly. Fix any bugs surfaced. (M)
+- **S1.4** Build `/reset-password` page so locked-out users can recover (S)
+
+### Week 2 — The dental chart visual
+
+- **S1.3** Rebuild dental chart with anatomical tooth SVGs, surface-level click zones, color-coded findings. This is the single biggest visual upgrade for "looks like a real dental product." (L)
+
+**Sprint 1 close criteria:**
+- You can demo to Dr. Saif and the dental chart looks legitimate
+- You can onboard Dr. Saif via OperatorConsole, not via SQL
+- Dr. Saif can recover his password if he forgets it
+
+**Tag at close:** `v0.4.0-demo-ready`
+
+---
+
+## Sprint 2 — First customer (3-4 weeks, the longest sprint)
+
+**Goal:** Dr. Saif uses Velo daily for 30 consecutive days. Free trial.
+
+This sprint contains less "code shipping" and more "watch Dr. Saif use the product." Most issues you discover here are not bugs — they're design assumptions you got wrong. Plan for it.
+
+### Week 1 — Onboarding
+
+- Onboard Dr. Saif's clinic via OperatorConsole
+- Sit with him in his clinic for half a day — show him every feature, watch him use it
+- Migrate his existing patient list (if any) — likely from paper or Excel; expect 50-300 records
+- Set up his WhatsApp Business API integration
+- Configure his clinic settings (currency: IQD, working hours, doctors list)
+
+### Weeks 2-4 — Watch + iterate
+
+- Daily check-in with Dr. Saif (WhatsApp message, 30s response)
+- Weekly visit or video call (30-60 minutes)
+- Maintain a running list of every friction point Dr. Saif mentions
+- **Fix only blockers** during this sprint. Defer everything else to Sprint 3.
+
+### Sprint 1 backlog items that get pulled in IF blockers
+
+- **S1.5** Tasks DB persistence (if Dr. Saif uses tasks heavily)
+- **S1.6** Goals DB persistence (if he uses goals)
+- **S1.8** InboxPage refactor (if WhatsApp inbox flow has bugs)
+- **S1.16** Calendar default doctor filter (if his receptionist hates the default)
+
+### Sprint 2 close criteria:
+- Dr. Saif has used Velo for 30 days
+- Dr. Saif has volunteered explicit feedback on what's missing
+- You've identified the next 3-5 features that matter to him
+- You have data on actual usage patterns (queries/day, most-used pages, etc.)
+- Dr. Saif says "yes" to converting from free to paid (whatever price you settle on)
+
+**Tag at close:** `v0.5.0-first-customer`
+
+---
+
+## Sprint 3 — Customer-driven (3 weeks)
+
+**Goal:** Build what Dr. Saif's feedback says is missing. Get one second customer.
+
+The features in this sprint cannot be predicted today. They will come from Dr. Saif's actual usage. Likely candidates based on existing patterns:
+
+- Appointment reminders via WhatsApp (24h before, 2h before)
+- Recall system (patients overdue for cleaning)
+- Treatment plan PDF export (Dr. Saif gives patients a printed estimate)
+- Receipt/invoice PDF (Iraqi clinics typically give a paper receipt)
+- X-ray / image attachments on patient profile
+- AI Assistant productionized (real Anthropic key, used for patient communication summaries)
+- Clinic-side analytics (charts Dr. Saif actually looks at)
+
+**Acquisition during this sprint:** Dr. Saif is asked to refer ONE peer. That clinic gets a 60-day free trial. Onboard them in week 3 of this sprint.
+
+**Sprint 3 close criteria:**
+- 2 clinics paying or in active trial
+- The product has at least one new feature that came directly from customer feedback
+- You have decided pricing (revisit Sprint 2 hypothesis with real data)
+
+**Tag at close:** `v0.6.0`
+
+---
+
+## Sprint 4 — Repeatable onboarding (3 weeks)
+
+**Goal:** Onboard a third clinic without burning yourself out.
+
+By now, the friction in onboarding is what limits scale. Polish the operator workflow:
+
+- Operator can self-serve clinic creation in <30 minutes (currently maybe 2 hours including hand-holding)
+- Pre-built clinic templates (configurations for common Iraqi dental clinic shapes — solo practice, 2-doctor, 3-chair)
+- Automated test account → real account conversion flow
+- Documentation: "How a new clinic gets started in Velo" written in Arabic, sharable PDF
+- Billing: figure out how clinics actually pay you (bank transfer? cash? FIB? Payoneer for USD subs?)
+
+**Sprint 4 close criteria:**
+- 3 clinics paying
+- Onboarding a clinic is a repeatable, documented process
+- Monthly recurring revenue exceeds infrastructure costs (Supabase + Vercel + Anthropic) with margin
+
+---
+
+## Sprints 5-6 — Repeat the loop (next 2-3 months)
+
+Goals shift to:
+
+- Reach 5-10 paying clinics
+- Identify the patterns: what feature requests keep coming up?
+- Build the 3-5 features that >50% of customers ask for
+- Start to think about the next axis of growth (more clinics in Erbil? Baghdad? Jordan?)
+- Decision point at end of Sprint 6: stay solo, or hire/contract help?
+
+---
+
+## Months 7-12 — Direction depends on signals
+
+The honest answer is: **your roadmap past Sprint 6 depends on what you learn in Sprints 1-6.** Don't plan it now. The data you don't have yet (which features matter, which clinics buy, what they pay, churn rates, support load) determines everything past month 6.
+
+That said, plausible directions:
+
+### Direction A — Deepen in Iraq
+
+20-50 clinics in Iraq. Hire one technical person to share dev load. Scale through referrals + light marketing. Ali stays operator + sales.
+
+### Direction B — Expand the SKU
+
+Same Iraqi customers, but build adjacent tools:
+- Patient marketing (campaigns, recall automation)
+- Lab management (linked to treatment plans)
+- Inventory + purchasing (with supplier integration)
+
+This is the "more revenue per existing customer" path.
+
+### Direction C — Geographic expansion
+
+Take what worked in Iraq to KRG-adjacent markets: Jordan, Lebanon, parts of the Gulf where private dentistry runs on cash. Hardest path because each new market requires currency, language, market-fit work.
+
+### Direction D — Stop scaling, run as a profitable side business
+
+If 10-15 clinics generates a livable side income with low support load, that might be the right answer. Not every SaaS needs to be a unicorn. Iraqi dental clinic management is a real, defensible niche.
+
+**Decide at Sprint 6, not before.**
+
+---
+
+# Velo — One-Page Summary
+
+*The pitch you can show Dr. Saif, an investor, or a peer.*
+
+---
+
+## Velo
+
+**Dental practice management software, built for Iraq.**
+
+---
+
+### The problem
+
+Dental clinics in Iraq run on paper, Excel, and informal WhatsApp. They lose patients to forgotten follow-ups. They under-collect revenue from incomplete treatment plans. They burn receptionist time on manual scheduling. The Western alternatives (Curve, Dentrix) cost $200-500/month, don't speak Arabic, don't work with WhatsApp, and don't support IQD.
+
+### What Velo does
+
+Velo replaces the paper, the Excel, and the chaotic WhatsApp threads with a single dental-clinic system:
+
+- **Patients** with full medical history, allergies, and visit history
+- **Anatomically-accurate dental charts** with FDI numbering, tooth surfaces, and color-coded findings
+- **Treatment plans** that track procedures from "proposed" through "completed and paid"
+- **Multi-doctor scheduling** with conflict detection
+- **WhatsApp-first communication** — appointment reminders, payment receipts, patient questions, all through the channel patients actually use
+- **IQD + USD billing** — built for Iraqi cash dentistry
+- **Bilingual EN/AR** — Arabic-first design, RTL-aware throughout
+- **Inventory, finance, reports** — the operations a small clinic actually runs
+
+### Who it's for
+
+Independent Iraqi dental clinics. Solo practices, 2-doctor teams, 3-chair operations. Owner-dentists who do everything: clinical work + billing + marketing + supply ordering. Their receptionists. Their hygienists. Not hospital dental departments. Not multi-location chains. Not insurance-heavy markets.
+
+### Why now
+
+WhatsApp Business API + cloud SaaS + LLM-powered patient communication makes a $30-50/month dental product economically viable for the first time. The Iraqi private healthcare market is growing as the middle class expands. Western players ignore the market. Local competitors don't exist.
+
+### How it's sold
+
+Operator-managed, not self-serve. SupCod3 (the company behind Velo) provisions every clinic, configures their integrations, supports them directly. Clinics don't sign up — they get a phone call, a meeting, a setup, and a relationship. This is intentional: in Iraq, trust beats funnels.
+
+### Status
+
+Foundation shipped May 2026. First customer (Dr. Saif AlShaker, Erbil) onboarding in Sprint 2. Free trial converting to paid at 90 days. Target: 5 paying clinics within 6 months, 25-50 within 12 months.
+
+### Built by
+
+Ali Aljobory — Digital Marketing Manager at Region Trade Bank, founder of SupCod3, builder of Velo. Based in Erbil.
+
+**Contact:** +964 772 122 2172  
+**Web:** [TBD — operator-managed signup means no public marketing site yet]
+
+---
+
+## Document changelog
+
+- **v0.3.0 (May 2, 2026)** — Initial roadmap + one-pager. Foundation shipped. First customer pending.

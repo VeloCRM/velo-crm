@@ -14,6 +14,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
+import { GlassCard, Button, Badge } from './ui'
 import {
   fetchPatientMedicalHistory,
   updatePatientMedicalHistory,
@@ -150,132 +151,151 @@ export function MedicalHistoryTab({ patient, lang, dir, toast }) {
   }
 
   if (loading) {
-    return <div style={{ ...card, padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
-      {isRTL ? 'جاري التحميل...' : 'Loading...'}
-    </div>
+    return (
+      <div className="ds-root">
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+          {isRTL ? 'جاري التحميل...' : 'Loading...'}
+        </GlassCard>
+      </div>
+    )
   }
 
   return (
-    <form onSubmit={e => e.preventDefault()} style={{ ...card, padding: 24 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>
-          {isRTL ? 'التاريخ الطبي' : 'Medical History'}
-        </h3>
-        {canEdit && (
-          <button type="button" onClick={handleSave} disabled={saving}
-            style={makeBtn('primary', saving ? { opacity: 0.6, cursor: 'wait' } : { gap: 6, fontSize: 12 })}>
-            {saving ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'حفظ' : 'Save')}
-          </button>
-        )}
-      </div>
-
-      {/* Allergies — separate chip-input section */}
-      <div style={{ marginBottom: 18 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 8 }}>
-          {isRTL ? 'الحساسيات' : 'Allergies'}
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
-          {allergies.length === 0 && (
-            <span style={{ fontSize: 12, color: C.textMuted }}>
-              {isRTL ? 'لا توجد حساسيات مسجلة' : 'No allergies recorded'}
-            </span>
+    <div className="ds-root">
+      <GlassCard padding="lg" as="form" onSubmit={e => e.preventDefault()}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-semibold text-navy-900 m-0">
+            {isRTL ? 'التاريخ الطبي' : 'Medical History'}
+          </h3>
+          {canEdit && (
+            <Button variant="primary" size="sm" onClick={handleSave} loading={saving} disabled={saving}>
+              {saving ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'حفظ' : 'Save')}
+            </Button>
           )}
-          {allergies.map(a => (
-            <span key={a} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px',
-              borderRadius: 999, background: 'rgba(239,68,68,0.1)', color: C.danger,
-              fontSize: 12, fontWeight: 600, border: `1px solid ${C.danger}33`,
-            }}>
-              {a}
-              {canEdit && (
-                <button type="button" onClick={() => removeAllergy(a)} aria-label="Remove"
-                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.danger, padding: 0, display: 'inline-flex' }}>
-                  {Icons.x(12)}
-                </button>
-              )}
-            </span>
-          ))}
         </div>
-        {canEdit && (
-          <div style={{ display: 'flex', gap: 8 }}>
-            <input value={allergyDraft} onChange={e => setAllergyDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAllergy() }}}
-              placeholder={isRTL ? 'مثال: بنسلين' : 'e.g. Penicillin'}
-              maxLength={80}
-              style={{ ...inputStyle(dir), flex: 1 }} />
-            <button type="button" onClick={addAllergy} style={makeBtn('secondary', { gap: 4, fontSize: 12 })}>
-              {Icons.plus(13)} {isRTL ? 'إضافة' : 'Add'}
-            </button>
+
+        {/* Allergies */}
+        <div className="mb-5">
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-navy-500 mb-2">
+            {isRTL ? 'الحساسيات' : 'Allergies'}
           </div>
+          <div className="flex flex-wrap gap-1.5 mb-2 min-h-[1.5rem]">
+            {allergies.length === 0 && (
+              <span className="text-xs text-navy-400">
+                {isRTL ? 'لا توجد حساسيات مسجلة' : 'No allergies recorded'}
+              </span>
+            )}
+            {allergies.map(a => (
+              <span
+                key={a}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 text-rose-700 text-xs font-semibold border border-rose-200"
+              >
+                {a}
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => removeAllergy(a)}
+                    aria-label={isRTL ? 'إزالة' : 'Remove'}
+                    className="text-rose-700 hover:text-rose-900 transition-colors inline-flex"
+                  >
+                    {Icons.x(12)}
+                  </button>
+                )}
+              </span>
+            ))}
+          </div>
+          {canEdit && (
+            <div className="flex gap-2">
+              <input
+                value={allergyDraft}
+                onChange={e => setAllergyDraft(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addAllergy() } }}
+                placeholder={isRTL ? 'مثال: بنسلين' : 'e.g. Penicillin'}
+                maxLength={80}
+                style={{ ...inputStyle(dir), flex: 1 }}
+              />
+              <Button variant="secondary" size="sm" iconStart={Icons.plus} onClick={addAllergy}>
+                {isRTL ? 'إضافة' : 'Add'}
+              </Button>
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-5">
+          <FormField label={isRTL ? 'الأدوية الحالية' : 'Current Medications'} dir={dir}>
+            <input value={history.medications} onChange={e => set('medications', e.target.value)} disabled={!canEdit}
+              placeholder={isRTL ? 'مثال: أسبرين، ميتفورمين' : 'e.g. Aspirin, Metformin'} maxLength={500}
+              style={inputStyle(dir)} />
+          </FormField>
+          <FormField label={isRTL ? 'فصيلة الدم' : 'Blood Type'} dir={dir}>
+            <select value={history.blood_type} onChange={e => set('blood_type', e.target.value)} disabled={!canEdit}
+              style={selectStyle(dir)}>
+              <option value="">—</option>
+              {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(bt => <option key={bt} value={bt}>{bt}</option>)}
+            </select>
+          </FormField>
+          <FormField label={isRTL ? 'العمليات السابقة' : 'Past Surgeries'} dir={dir}>
+            <input value={history.surgeries} onChange={e => set('surgeries', e.target.value)} disabled={!canEdit}
+              placeholder={isRTL ? 'مثال: استئصال الزائدة 2019' : 'e.g. Appendectomy 2019'} maxLength={500}
+              style={inputStyle(dir)} />
+          </FormField>
+          <FormField label={isRTL ? 'مدخن' : 'Smoker'} dir={dir}>
+            <select value={history.smoker} onChange={e => set('smoker', e.target.value)} disabled={!canEdit}
+              style={selectStyle(dir)}>
+              {SMOKER_OPTIONS.map(o => <option key={o.id} value={o.id}>{isRTL ? o.ar : o.en}</option>)}
+            </select>
+          </FormField>
+        </div>
+
+        <label className="flex items-center gap-2 mt-1 mb-5 text-sm text-navy-800">
+          <input type="checkbox" checked={history.pregnancy} onChange={e => set('pregnancy', e.target.checked)} disabled={!canEdit}
+            className="w-4 h-4 accent-accent-cyan-600" />
+          {isRTL ? 'حامل' : 'Pregnant / may be pregnant'}
+        </label>
+
+        <div>
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-navy-500 mb-2">
+            {isRTL ? 'الحالات الصحية' : 'Medical Conditions'}
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            {MEDICAL_CONDITIONS.map(c => {
+              const active = history.conditions.includes(c.id)
+              return (
+                <button
+                  type="button"
+                  key={c.id}
+                  onClick={() => canEdit && toggleCondition(c.id)}
+                  disabled={!canEdit}
+                  className={[
+                    'inline-flex items-center gap-1.5 px-3 h-9 rounded-glass text-xs font-semibold transition-colors',
+                    active
+                      ? 'bg-accent-cyan-50 text-accent-cyan-700 border-2 border-accent-cyan-500'
+                      : 'bg-white text-navy-600 border border-navy-100 hover:border-navy-200 hover:text-navy-800',
+                    canEdit ? 'cursor-pointer' : 'cursor-default opacity-70',
+                  ].join(' ')}
+                >
+                  {active ? '✓ ' : ''}{isRTL ? c.ar : c.en}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
+          <textarea value={history.notes} onChange={e => set('notes', e.target.value)} disabled={!canEdit}
+            rows={3} maxLength={1000}
+            style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
+        </FormField>
+
+        {!canEdit && (
+          <p className="mt-3 text-[11px] italic text-navy-400 m-0">
+            {isRTL
+              ? 'وصول للقراءة فقط — لتعديل التاريخ الطبي يحتاج المستخدم دور طبيب أو مالك.'
+              : 'Read-only access — editing the medical history requires doctor or owner role.'}
+          </p>
         )}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-        <FormField label={isRTL ? 'الأدوية الحالية' : 'Current Medications'} dir={dir}>
-          <input value={history.medications} onChange={e => set('medications', e.target.value)} disabled={!canEdit}
-            placeholder={isRTL ? 'مثال: أسبرين، ميتفورمين' : 'e.g. Aspirin, Metformin'} maxLength={500}
-            style={inputStyle(dir)} />
-        </FormField>
-        <FormField label={isRTL ? 'فصيلة الدم' : 'Blood Type'} dir={dir}>
-          <select value={history.blood_type} onChange={e => set('blood_type', e.target.value)} disabled={!canEdit}
-            style={selectStyle(dir)}>
-            <option value="">—</option>
-            {['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(bt => <option key={bt} value={bt}>{bt}</option>)}
-          </select>
-        </FormField>
-        <FormField label={isRTL ? 'العمليات السابقة' : 'Past Surgeries'} dir={dir}>
-          <input value={history.surgeries} onChange={e => set('surgeries', e.target.value)} disabled={!canEdit}
-            placeholder={isRTL ? 'مثال: استئصال الزائدة 2019' : 'e.g. Appendectomy 2019'} maxLength={500}
-            style={inputStyle(dir)} />
-        </FormField>
-        <FormField label={isRTL ? 'مدخن' : 'Smoker'} dir={dir}>
-          <select value={history.smoker} onChange={e => set('smoker', e.target.value)} disabled={!canEdit}
-            style={selectStyle(dir)}>
-            {SMOKER_OPTIONS.map(o => <option key={o.id} value={o.id}>{isRTL ? o.ar : o.en}</option>)}
-          </select>
-        </FormField>
-      </div>
-
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 4, marginBottom: 16, fontSize: 13, color: C.text }}>
-        <input type="checkbox" checked={history.pregnancy} onChange={e => set('pregnancy', e.target.checked)} disabled={!canEdit} />
-        {isRTL ? 'حامل' : 'Pregnant / may be pregnant'}
-      </label>
-
-      <div style={{ marginTop: 4 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 8 }}>
-          {isRTL ? 'الحالات الصحية' : 'Medical Conditions'}
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {MEDICAL_CONDITIONS.map(c => {
-            const active = history.conditions.includes(c.id)
-            return (
-              <button type="button" key={c.id} onClick={() => canEdit && toggleCondition(c.id)} disabled={!canEdit}
-                style={{
-                  padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600,
-                  cursor: canEdit ? 'pointer' : 'default', fontFamily: 'inherit', minHeight: 36,
-                  border: active ? `2px solid ${C.primary}` : `1px solid ${C.border}`,
-                  background: active ? C.primaryBg : C.white, color: active ? C.primary : C.textSec,
-                  opacity: canEdit ? 1 : 0.7,
-                }}>
-                {active ? '✓ ' : ''}{isRTL ? c.ar : c.en}
-              </button>
-            )
-          })}
-        </div>
-      </div>
-
-      <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
-        <textarea value={history.notes} onChange={e => set('notes', e.target.value)} disabled={!canEdit}
-          rows={3} maxLength={1000}
-          style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
-      </FormField>
-
-      {!canEdit && (
-        <div style={{ marginTop: 12, fontSize: 11, color: C.textMuted, fontStyle: 'italic' }}>
-          {isRTL ? 'وصول للقراءة فقط — لتعديل التاريخ الطبي يحتاج المستخدم دور طبيب أو مالك.' : 'Read-only access — editing the medical history requires doctor or owner role.'}
-        </div>
-      )}
-    </form>
+      </GlassCard>
+    </div>
   )
 }
 
@@ -400,132 +420,155 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
     const finding = findingByTooth[num] || 'healthy'
     const style = FINDING_STYLES[finding]
     return (
-      <button type="button" onClick={() => openTooth(num)} disabled={!canEdit}
+      <button
+        type="button"
+        onClick={() => openTooth(num)}
+        disabled={!canEdit}
         title={`#${num} — ${findingLabel(finding, isRTL)}`}
         style={{
           width: '100%', aspectRatio: '1 / 1', minHeight: 36,
-          border: `2px solid ${style.color}`, borderRadius: 8, cursor: canEdit ? 'pointer' : 'default',
-          background: style.bg, color: C.text, fontWeight: 700, fontSize: 11,
+          border: `2px solid ${style.color}`, borderRadius: 8,
+          cursor: canEdit ? 'pointer' : 'default',
+          background: style.bg, color: '#0A2540', fontWeight: 700, fontSize: 11,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           fontFamily: 'inherit', transition: 'transform .12s', padding: 0,
-        }}>
+        }}
+      >
         <span style={{ fontSize: 11, lineHeight: 1 }}>{num}</span>
       </button>
     )
   }
 
   return (
-    <div>
+    <div className="ds-root flex flex-col gap-3">
       {/* Legend */}
-      <div style={{ ...card, padding: '12px 16px', marginBottom: 12, display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+      <GlassCard padding="md" className="flex flex-wrap gap-x-4 gap-y-2">
         {Object.entries(FINDING_STYLES).map(([key, val]) => (
-          <div key={key} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11 }}>
-            <div style={{ width: 14, height: 14, borderRadius: 4, background: val.bg, border: `2px solid ${val.color}` }} />
-            <span style={{ color: C.textSec, fontWeight: 500 }}>{isRTL ? val.ar : val.label}</span>
+          <div key={key} className="flex items-center gap-1.5 text-xs">
+            <span
+              aria-hidden="true"
+              className="block w-3.5 h-3.5 rounded-sm"
+              style={{ background: val.bg, border: `2px solid ${val.color}` }}
+            />
+            <span className="text-navy-600 font-medium">{isRTL ? val.ar : val.label}</span>
           </div>
         ))}
-      </div>
+      </GlassCard>
 
-      {/* Chart grid */}
-      <div style={{ ...card, padding: 20 }}>
+      {/* Chart grid (visual rebuilt in Phase 3 with anatomical SVGs) */}
+      <GlassCard padding="lg">
         {loading ? (
-          <div style={{ textAlign: 'center', color: C.textMuted, fontSize: 13, padding: 20 }}>
+          <div className="text-center text-sm text-navy-500 py-5">
             {isRTL ? 'جاري التحميل...' : 'Loading...'}
           </div>
         ) : (
           <>
-            <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 8, textAlign: 'center' }}>
+            <div className="text-[11px] font-semibold text-navy-500 mb-2 text-center uppercase tracking-wider">
               {isRTL ? 'الفك العلوي (18-11 / 21-28)' : 'Upper jaw (18-11 / 21-28)'}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(16, 1fr)', gap: 6, marginBottom: 18 }}>
+            <div className="grid grid-cols-16 gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
               {UPPER_TEETH.map(n => <Tooth key={n} num={n} />)}
             </div>
-            <div style={{ height: 1, background: C.border, margin: '4px 0 18px' }} />
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(16, 1fr)', gap: 6 }}>
+            <div className="h-px bg-navy-100/80 my-1.5 mb-4" />
+            <div className="grid grid-cols-16 gap-1.5" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
               {LOWER_TEETH.map(n => <Tooth key={n} num={n} />)}
             </div>
-            <div style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, marginTop: 8, textAlign: 'center' }}>
+            <div className="text-[11px] font-semibold text-navy-500 mt-2 text-center uppercase tracking-wider">
               {isRTL ? 'الفك السفلي (48-41 / 31-38)' : 'Lower jaw (48-41 / 31-38)'}
             </div>
           </>
         )}
         {!canEdit && !loading && (
-          <div style={{ marginTop: 12, fontSize: 11, color: C.textMuted, fontStyle: 'italic', textAlign: 'center' }}>
+          <p className="mt-3 text-[11px] italic text-navy-400 text-center m-0">
             {isRTL ? 'وصول للقراءة فقط' : 'Read-only — recording findings requires doctor or owner role.'}
-          </div>
+          </p>
         )}
-      </div>
+      </GlassCard>
 
       {/* Recent findings list */}
-      <div style={{ ...card, padding: 20, marginTop: 12 }}>
-        <h4 style={{ fontSize: 13, fontWeight: 600, color: C.text, margin: '0 0 12px' }}>
+      <GlassCard padding="lg">
+        <h4 className="text-sm font-semibold text-navy-900 m-0 mb-3">
           {isRTL ? 'آخر المعاينات' : 'Recent findings'}
         </h4>
         {entries.length === 0 ? (
-          <p style={{ fontSize: 12, color: C.textMuted, textAlign: 'center', padding: 16, margin: 0 }}>
+          <p className="text-xs text-navy-500 text-center py-4 m-0">
             {isRTL ? 'لا توجد معاينات' : 'No findings recorded yet'}
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <ul className="flex flex-col gap-1.5">
             {entries.slice(0, 12).map(e => {
               const style = FINDING_STYLES[e.finding] || FINDING_STYLES.healthy
-              const when = e.recorded_at ? new Date(e.recorded_at).toLocaleString(isRTL ? 'ar-IQ' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''
+              const when = e.recorded_at ? new Date(e.recorded_at).toLocaleString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''
               const recName = e.recorder?.full_name || (isRTL ? 'غير معروف' : 'Unknown')
               return (
-                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 6, background: C.bg }}>
-                  <div style={{ minWidth: 36, fontSize: 12, fontWeight: 700, color: style.color, fontVariantNumeric: 'tabular-nums' }}>#{e.tooth_number}</div>
-                  <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 5, background: style.bg, color: style.color, border: `1px solid ${style.color}33` }}>
+                <li key={e.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-navy-50/40">
+                  <span
+                    className="min-w-[36px] text-xs font-bold tabular-nums"
+                    style={{ color: style.color }}
+                  >
+                    #{e.tooth_number}
+                  </span>
+                  <span
+                    className="text-[11px] font-bold px-2 py-0.5 rounded"
+                    style={{ background: style.bg, color: style.color, border: `1px solid ${style.color}33` }}
+                  >
                     {findingLabel(e.finding, isRTL)}
                   </span>
-                  {e.surface && <span style={{ fontSize: 11, color: C.textSec, textTransform: 'capitalize' }}>{e.surface}</span>}
-                  {e.notes && <span style={{ fontSize: 11, color: C.textMuted, flex: 1 }}>{e.notes}</span>}
-                  <span style={{ fontSize: 11, color: C.textMuted, marginLeft: 'auto', fontVariantNumeric: 'tabular-nums' }}>{when}</span>
-                  <span style={{ fontSize: 11, color: C.textMuted }}>· {recName}</span>
+                  {e.surface && <span className="text-[11px] text-navy-600 capitalize">{e.surface}</span>}
+                  {e.notes && <span className="text-[11px] text-navy-500 flex-1 truncate">{e.notes}</span>}
+                  <span className="text-[11px] text-navy-400 ms-auto tabular-nums">{when}</span>
+                  <span className="text-[11px] text-navy-400">· {recName}</span>
                   {canEdit && (
-                    <button type="button" onClick={() => handleDeleteEntry(e.id)} aria-label="Delete"
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, padding: 4, display: 'inline-flex' }}>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteEntry(e.id)}
+                      aria-label={isRTL ? 'حذف' : 'Delete'}
+                      className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                    >
                       {Icons.trash(13)}
                     </button>
                   )}
-                </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
         )}
-      </div>
+      </GlassCard>
 
       {/* Add-finding modal */}
       {showForm && activeTooth && (
         <Modal onClose={() => { if (!submitting) { setShowForm(false); setActiveTooth(null) } }} dir={dir} width={460}>
-          <form onSubmit={e => { e.preventDefault(); handleSubmit() }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>
-              {isRTL ? `سن رقم ${activeTooth}` : `Tooth #${activeTooth}`}
-            </h3>
-            <FormField label={isRTL ? 'المعاينة' : 'Finding'} dir={dir}>
-              <select value={form.finding} onChange={e => setForm(p => ({ ...p, finding: e.target.value }))} style={selectStyle(dir)}>
-                {Object.keys(FINDING_STYLES).map(f => (
-                  <option key={f} value={f}>{findingLabel(f, isRTL)}</option>
-                ))}
-              </select>
-            </FormField>
-            <FormField label={isRTL ? 'السطح' : 'Surface'} dir={dir}>
-              <select value={form.surface} onChange={e => setForm(p => ({ ...p, surface: e.target.value }))} style={selectStyle(dir)}>
-                {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{isRTL ? s.ar : s.en}</option>)}
-              </select>
-            </FormField>
-            <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
-              <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} maxLength={500}
-                style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
-            </FormField>
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-              <button type="button" disabled={submitting} onClick={() => { setShowForm(false); setActiveTooth(null) }} style={makeBtn('secondary')}>
-                {isRTL ? 'إلغاء' : 'Cancel'}
-              </button>
-              <button type="submit" disabled={submitting} style={makeBtn('primary', submitting ? { opacity: 0.6, cursor: 'wait' } : {})}>
-                {submitting ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'تسجيل' : 'Record')}
-              </button>
-            </div>
-          </form>
+          <div className="ds-root">
+            <form onSubmit={e => { e.preventDefault(); handleSubmit() }}>
+              <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
+                {isRTL ? `سن رقم ${activeTooth}` : `Tooth #${activeTooth}`}
+              </h3>
+              <FormField label={isRTL ? 'المعاينة' : 'Finding'} dir={dir}>
+                <select value={form.finding} onChange={e => setForm(p => ({ ...p, finding: e.target.value }))} style={selectStyle(dir)}>
+                  {Object.keys(FINDING_STYLES).map(f => (
+                    <option key={f} value={f}>{findingLabel(f, isRTL)}</option>
+                  ))}
+                </select>
+              </FormField>
+              <FormField label={isRTL ? 'السطح' : 'Surface'} dir={dir}>
+                <select value={form.surface} onChange={e => setForm(p => ({ ...p, surface: e.target.value }))} style={selectStyle(dir)}>
+                  {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{isRTL ? s.ar : s.en}</option>)}
+                </select>
+              </FormField>
+              <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
+                <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} maxLength={500}
+                  style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
+              </FormField>
+              <div className="flex gap-2 justify-end mt-2">
+                <Button variant="secondary" disabled={submitting} onClick={() => { setShowForm(false); setActiveTooth(null) }}>
+                  {isRTL ? 'إلغاء' : 'Cancel'}
+                </Button>
+                <Button variant="primary" type="submit" loading={submitting} disabled={submitting}>
+                  {submitting ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'تسجيل' : 'Record')}
+                </Button>
+              </div>
+            </form>
+          </div>
         </Modal>
       )}
     </div>
@@ -629,84 +672,101 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
   }
 
   return (
-    <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>
+    <div className="ds-root flex flex-col gap-3">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-base font-semibold text-navy-900 m-0">
           {isRTL ? 'خطط العلاج' : 'Treatment Plans'}
         </h3>
         {canEdit && (
-          <button type="button" onClick={() => setShowForm(true)} style={makeBtn('primary', { gap: 6, fontSize: 12 })}>
-            {Icons.plus(14)} {isRTL ? 'خطة جديدة' : 'New Plan'}
-          </button>
+          <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowForm(true)}>
+            {isRTL ? 'خطة جديدة' : 'New Plan'}
+          </Button>
         )}
       </div>
 
       {loading ? (
-        <div style={{ ...card, padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
           {isRTL ? 'جاري التحميل...' : 'Loading...'}
-        </div>
+        </GlassCard>
       ) : plans.length === 0 ? (
-        <div style={{ ...card, padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13 }}>
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
           {isRTL ? 'لا توجد خطط علاج' : 'No treatment plans yet'}
-        </div>
+        </GlassCard>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="flex flex-col gap-3">
           {plans.map(plan => {
             const sc = PLAN_STATUS_COLOR[plan.status] || PLAN_STATUS_COLOR.proposed
             const items = plan.treatment_plan_items || []
-            const created = plan.created_at ? new Date(plan.created_at).toLocaleDateString(isRTL ? 'ar-IQ' : 'en-US') : ''
+            const created = plan.created_at ? new Date(plan.created_at).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US') : ''
             return (
-              <div key={plan.id} style={{ ...card, padding: 0, overflow: 'hidden' }}>
+              <GlassCard key={plan.id} padding="none" className="overflow-hidden">
                 {/* Plan header */}
-                <div style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, borderBottom: `1px solid ${C.border}`, flexWrap: 'wrap' }}>
-                  <div style={{ flex: 1, minWidth: 200 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
+                <div className="px-5 py-3.5 flex items-center gap-3 border-b border-navy-100/80 flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <div className="text-sm font-semibold text-navy-900">
                       {plan.doctor?.full_name || (isRTL ? 'بدون طبيب' : 'No doctor')}
                     </div>
-                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 3, fontVariantNumeric: 'tabular-nums' }}>
+                    <div className="text-[11px] text-navy-500 mt-1 tabular-nums">
                       {created} · {items.length} {isRTL ? 'بنود' : (items.length === 1 ? 'item' : 'items')}
                     </div>
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums' }}>
+                  <div className="text-base font-bold text-navy-900 tabular-nums">
                     {formatMoney(plan.total_amount_minor, plan.currency)}
                   </div>
                   {canEdit ? (
-                    <select value={plan.status} onChange={e => handlePlanStatus(plan.id, e.target.value)}
+                    <select
+                      value={plan.status}
+                      onChange={e => handlePlanStatus(plan.id, e.target.value)}
                       style={{
                         ...selectStyle(dir), width: 'auto', padding: '4px 12px', height: 30,
-                        background: sc.bg, color: sc.color, border: `1px solid ${sc.color}55`, fontSize: 12, fontWeight: 700,
-                      }}>
+                        background: sc.bg, color: sc.color, border: `1px solid ${sc.color}55`,
+                        fontSize: 12, fontWeight: 700,
+                      }}
+                    >
                       {PLAN_STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{isRTL ? s.ar : s.en}</option>)}
                     </select>
                   ) : (
-                    <span style={{ padding: '4px 10px', borderRadius: 6, background: sc.bg, color: sc.color, fontSize: 12, fontWeight: 700 }}>
+                    <span
+                      className="px-2.5 py-1 rounded-md text-xs font-bold"
+                      style={{ background: sc.bg, color: sc.color }}
+                    >
                       {isRTL ? PLAN_STATUS_OPTIONS.find(s => s.id === plan.status)?.ar : PLAN_STATUS_OPTIONS.find(s => s.id === plan.status)?.en}
                     </span>
                   )}
                   {canEdit && (
-                    <button type="button" onClick={() => setConfirmDeleteId(plan.id)} aria-label="Delete plan"
-                      style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, padding: 6, display: 'inline-flex' }}>
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteId(plan.id)}
+                      aria-label={isRTL ? 'حذف الخطة' : 'Delete plan'}
+                      className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                    >
                       {Icons.trash(14)}
                     </button>
                   )}
                 </div>
                 {/* Items */}
                 {items.length === 0 ? (
-                  <p style={{ padding: '14px 18px', color: C.textMuted, fontSize: 12, margin: 0 }}>
+                  <p className="px-5 py-3.5 text-xs text-navy-500 m-0">
                     {isRTL ? 'لا توجد بنود' : 'No line items'}
                   </p>
                 ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                  <table className="w-full border-collapse text-xs">
                     <thead>
-                      <tr style={{ background: C.bg }}>
+                      <tr className="bg-navy-50/60">
                         {[
-                          isRTL ? 'السن' : 'Tooth',
-                          isRTL ? 'السطح' : 'Surface',
+                          isRTL ? 'السن'    : 'Tooth',
+                          isRTL ? 'السطح'   : 'Surface',
                           isRTL ? 'الإجراء' : 'Procedure',
-                          isRTL ? 'المبلغ' : 'Amount',
-                          isRTL ? 'الحالة' : 'Status',
+                          isRTL ? 'المبلغ'  : 'Amount',
+                          isRTL ? 'الحالة'  : 'Status',
                         ].map((h, i) => (
-                          <th key={i} style={{ padding: '8px 14px', textAlign: isRTL ? 'right' : 'left', fontWeight: 600, color: C.textSec, fontSize: 11, whiteSpace: 'nowrap' }}>{h}</th>
+                          <th
+                            key={i}
+                            className="px-3.5 py-2 font-semibold text-navy-500 text-[11px] uppercase tracking-wider whitespace-nowrap"
+                            style={{ textAlign: isRTL ? 'right' : 'left' }}
+                          >
+                            {h}
+                          </th>
                         ))}
                       </tr>
                     </thead>
@@ -714,24 +774,31 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
                       {items.map(item => {
                         const ic = ITEM_STATUS_COLOR[item.status] || ITEM_STATUS_COLOR.pending
                         return (
-                          <tr key={item.id} style={{ borderTop: `1px solid ${C.border}` }}>
-                            <td style={{ padding: '8px 14px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: C.text }}>{item.tooth_number ? `#${item.tooth_number}` : '—'}</td>
-                            <td style={{ padding: '8px 14px', color: C.textSec, textTransform: 'capitalize' }}>{item.surface || '—'}</td>
-                            <td style={{ padding: '8px 14px', color: C.text }}>{item.procedure_label}</td>
-                            <td style={{ padding: '8px 14px', fontWeight: 600, fontVariantNumeric: 'tabular-nums', color: C.text }}>
+                          <tr key={item.id} className="border-t border-navy-100/60">
+                            <td className="px-3.5 py-2 font-semibold text-navy-800 tabular-nums">{item.tooth_number ? `#${item.tooth_number}` : '—'}</td>
+                            <td className="px-3.5 py-2 text-navy-600 capitalize">{item.surface || '—'}</td>
+                            <td className="px-3.5 py-2 text-navy-800">{item.procedure_label}</td>
+                            <td className="px-3.5 py-2 font-semibold text-navy-800 tabular-nums">
                               {formatMoney(item.amount_minor, item.currency || plan.currency)}
                             </td>
-                            <td style={{ padding: '6px 14px' }}>
+                            <td className="px-3.5 py-1.5">
                               {canEdit ? (
-                                <select value={item.status} onChange={e => handleItemStatus(plan.id, item.id, e.target.value)}
+                                <select
+                                  value={item.status}
+                                  onChange={e => handleItemStatus(plan.id, item.id, e.target.value)}
                                   style={{
                                     ...selectStyle(dir), width: 'auto', padding: '2px 8px', height: 26,
-                                    background: ic.bg, color: ic.color, border: `1px solid ${ic.color}55`, fontSize: 11, fontWeight: 700,
-                                  }}>
+                                    background: ic.bg, color: ic.color, border: `1px solid ${ic.color}55`,
+                                    fontSize: 11, fontWeight: 700,
+                                  }}
+                                >
                                   {ITEM_STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{isRTL ? s.ar : s.en}</option>)}
                                 </select>
                               ) : (
-                                <span style={{ padding: '2px 8px', borderRadius: 5, background: ic.bg, color: ic.color, fontSize: 11, fontWeight: 700 }}>
+                                <span
+                                  className="px-2 py-0.5 rounded text-[11px] font-bold"
+                                  style={{ background: ic.bg, color: ic.color }}
+                                >
                                   {isRTL ? ITEM_STATUS_OPTIONS.find(s => s.id === item.status)?.ar : ITEM_STATUS_OPTIONS.find(s => s.id === item.status)?.en}
                                 </span>
                               )}
@@ -743,11 +810,11 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
                   </table>
                 )}
                 {plan.notes && (
-                  <div style={{ padding: '10px 18px', borderTop: `1px solid ${C.border}`, fontSize: 12, color: C.textSec, fontStyle: 'italic' }}>
+                  <div className="px-5 py-2.5 border-t border-navy-100/60 text-xs text-navy-600 italic">
                     {plan.notes}
                   </div>
                 )}
-              </div>
+              </GlassCard>
             )
           })}
         </div>
@@ -766,15 +833,15 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
 
       {confirmDeleteId && (
         <Modal onClose={() => setConfirmDeleteId(null)} dir={dir} width={400}>
-          <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 12px' }}>
+          <h3 className="text-lg font-semibold text-navy-900 m-0 mb-3">
             {isRTL ? 'حذف الخطة' : 'Delete Plan'}
           </h3>
-          <p style={{ fontSize: 13, color: C.textSec, margin: '0 0 20px' }}>
+          <p className="text-sm text-navy-600 m-0 mb-5">
             {isRTL ? 'سيتم حذف الخطة وجميع بنودها. لا يمكن التراجع.' : 'This will permanently delete the plan and all its items. This cannot be undone.'}
           </p>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => setConfirmDeleteId(null)} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-            <button type="button" onClick={() => handleDelete(confirmDeleteId)} style={makeBtn('danger')}>{isRTL ? 'حذف' : 'Delete'}</button>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="destructive" onClick={() => handleDelete(confirmDeleteId)}>{isRTL ? 'حذف' : 'Delete'}</Button>
           </div>
         </Modal>
       )}
@@ -859,88 +926,113 @@ function NewTreatmentPlanModal({ patientId, dir, isRTL, onCancel, onSaved, onErr
 
   return (
     <Modal onClose={() => { if (!submitting) onCancel() }} dir={dir} width={720}>
-      <form onSubmit={e => { e.preventDefault(); handleSubmit() }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>
-          {isRTL ? 'خطة علاج جديدة' : 'New Treatment Plan'}
-        </h3>
+      <div className="ds-root">
+        <form onSubmit={e => { e.preventDefault(); handleSubmit() }}>
+          <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
+            {isRTL ? 'خطة علاج جديدة' : 'New Treatment Plan'}
+          </h3>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0 16px' }}>
-          <FormField label={isRTL ? 'الطبيب' : 'Doctor'} dir={dir}>
-            <select value={doctorId} onChange={e => setDoctorId(e.target.value)} style={selectStyle(dir)}>
-              <option value="">{isRTL ? '— اختر —' : '— None —'}</option>
-              {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
-            </select>
-          </FormField>
-          <FormField label={isRTL ? 'العملة' : 'Currency'} dir={dir}>
-            <select value={currency} onChange={e => setCurrency(e.target.value)} style={selectStyle(dir)}>
-              <option value="IQD">IQD</option>
-              <option value="USD">USD</option>
-            </select>
-          </FormField>
-        </div>
-
-        <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginTop: 8, marginBottom: 8 }}>
-          {isRTL ? 'البنود' : 'Line items'}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 8 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: '60px 90px 1fr 110px 32px', gap: 8, alignItems: 'center', fontSize: 11, color: C.textMuted, fontWeight: 600 }}>
-            <span>{isRTL ? 'السن' : 'Tooth'}</span>
-            <span>{isRTL ? 'السطح' : 'Surface'}</span>
-            <span>{isRTL ? 'الإجراء' : 'Procedure'}</span>
-            <span style={{ textAlign: 'right' }}>{isRTL ? 'المبلغ' : 'Amount'}</span>
-            <span />
-          </div>
-          {items.map((it, idx) => {
-            const toothInvalid = it.tooth_number !== '' && it.tooth_number != null && !isValidFdiTooth(it.tooth_number)
-            return (
-            <div key={idx} style={{ display: 'grid', gridTemplateColumns: '60px 90px 1fr 110px 32px', gap: 8, alignItems: 'start' }}>
-              <div>
-                <input value={it.tooth_number} onChange={e => updateItem(idx, 'tooth_number', e.target.value)} type="number" min="11" max="48" placeholder="FDI"
-                  title={isRTL ? 'ترميز FDI: ١١-١٨، ٢١-٢٨، ٣١-٣٨، ٤١-٤٨' : 'FDI: 11-18, 21-28, 31-38, 41-48'}
-                  style={{ ...inputStyle(dir), padding: '0 8px', textAlign: 'center', borderColor: toothInvalid ? '#ef4444' : undefined }} />
-                {toothInvalid && (
-                  <div style={{ fontSize: 10, color: '#ef4444', marginTop: 2, lineHeight: 1.2 }}>
-                    {isRTL ? 'ترميز FDI غير صالح' : 'Invalid FDI'}
-                  </div>
-                )}
-              </div>
-              <select value={it.surface} onChange={e => updateItem(idx, 'surface', e.target.value)} style={{ ...selectStyle(dir), padding: '0 6px' }}>
-                {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{isRTL ? s.ar : s.en}</option>)}
+          <div className="grid grid-cols-[2fr_1fr] gap-x-4">
+            <FormField label={isRTL ? 'الطبيب' : 'Doctor'} dir={dir}>
+              <select value={doctorId} onChange={e => setDoctorId(e.target.value)} style={selectStyle(dir)}>
+                <option value="">{isRTL ? '— اختر —' : '— None —'}</option>
+                {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
               </select>
-              <input value={it.procedure_label} onChange={e => updateItem(idx, 'procedure_label', e.target.value)} maxLength={200}
-                placeholder={isRTL ? 'مثال: حشوة كومبوزيت' : 'e.g. Composite filling'}
-                style={inputStyle(dir)} />
-              <input value={it.amount} onChange={e => updateItem(idx, 'amount', e.target.value)} type="number" min="0" step="0.01"
-                placeholder="0" style={{ ...inputStyle(dir), textAlign: 'right' }} />
-              <button type="button" onClick={() => removeItemRow(idx)} aria-label="Remove row" disabled={items.length === 1}
-                style={{ border: 'none', background: 'transparent', cursor: items.length === 1 ? 'default' : 'pointer', color: C.textMuted, opacity: items.length === 1 ? 0.4 : 1, padding: 4, display: 'inline-flex' }}>
-                {Icons.x(14)}
-              </button>
+            </FormField>
+            <FormField label={isRTL ? 'العملة' : 'Currency'} dir={dir}>
+              <select value={currency} onChange={e => setCurrency(e.target.value)} style={selectStyle(dir)}>
+                <option value="IQD">IQD</option>
+                <option value="USD">USD</option>
+              </select>
+            </FormField>
+          </div>
+
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-navy-500 mt-2 mb-2">
+            {isRTL ? 'البنود' : 'Line items'}
+          </div>
+          <div className="flex flex-col gap-1.5 mb-2">
+            <div className="grid grid-cols-[60px_90px_1fr_110px_32px] gap-2 items-center text-[11px] text-navy-500 font-semibold">
+              <span>{isRTL ? 'السن' : 'Tooth'}</span>
+              <span>{isRTL ? 'السطح' : 'Surface'}</span>
+              <span>{isRTL ? 'الإجراء' : 'Procedure'}</span>
+              <span className="text-end">{isRTL ? 'المبلغ' : 'Amount'}</span>
+              <span />
             </div>
-            )
-          })}
-        </div>
-        <button type="button" onClick={addItemRow} style={makeBtn('secondary', { gap: 4, fontSize: 12 })}>
-          {Icons.plus(13)} {isRTL ? 'إضافة بند' : 'Add row'}
-        </button>
+            {items.map((it, idx) => {
+              const toothInvalid = it.tooth_number !== '' && it.tooth_number != null && !isValidFdiTooth(it.tooth_number)
+              return (
+                <div key={idx} className="grid grid-cols-[60px_90px_1fr_110px_32px] gap-2 items-start">
+                  <div>
+                    <input
+                      value={it.tooth_number}
+                      onChange={e => updateItem(idx, 'tooth_number', e.target.value)}
+                      type="number" min="11" max="48" placeholder="FDI"
+                      title={isRTL ? 'ترميز FDI: ١١-١٨، ٢١-٢٨، ٣١-٣٨، ٤١-٤٨' : 'FDI: 11-18, 21-28, 31-38, 41-48'}
+                      style={{ ...inputStyle(dir), padding: '0 8px', textAlign: 'center', borderColor: toothInvalid ? '#ef4444' : undefined }}
+                    />
+                    {toothInvalid && (
+                      <div className="text-[10px] text-rose-700 mt-0.5 leading-tight">
+                        {isRTL ? 'ترميز FDI غير صالح' : 'Invalid FDI'}
+                      </div>
+                    )}
+                  </div>
+                  <select value={it.surface} onChange={e => updateItem(idx, 'surface', e.target.value)} style={{ ...selectStyle(dir), padding: '0 6px' }}>
+                    {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{isRTL ? s.ar : s.en}</option>)}
+                  </select>
+                  <input
+                    value={it.procedure_label}
+                    onChange={e => updateItem(idx, 'procedure_label', e.target.value)}
+                    maxLength={200}
+                    placeholder={isRTL ? 'مثال: حشوة كومبوزيت' : 'e.g. Composite filling'}
+                    style={inputStyle(dir)}
+                  />
+                  <input
+                    value={it.amount}
+                    onChange={e => updateItem(idx, 'amount', e.target.value)}
+                    type="number" min="0" step="0.01"
+                    placeholder="0"
+                    style={{ ...inputStyle(dir), textAlign: 'right' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeItemRow(idx)}
+                    aria-label={isRTL ? 'إزالة الصف' : 'Remove row'}
+                    disabled={items.length === 1}
+                    className={[
+                      'grid place-items-center w-7 h-7 rounded-md transition-colors',
+                      items.length === 1
+                        ? 'text-navy-300 cursor-default'
+                        : 'text-navy-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer',
+                    ].join(' ')}
+                  >
+                    {Icons.x(14)}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+          <Button variant="secondary" size="sm" iconStart={Icons.plus} onClick={addItemRow} type="button">
+            {isRTL ? 'إضافة بند' : 'Add row'}
+          </Button>
 
-        <div style={{ marginTop: 16, padding: '10px 14px', borderRadius: 8, background: C.bg, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontSize: 12, fontWeight: 600, color: C.textSec }}>{isRTL ? 'الإجمالي' : 'Total'}</span>
-          <span style={{ fontSize: 16, fontWeight: 700, color: C.text, fontVariantNumeric: 'tabular-nums' }}>{formatMoney(total, currency)}</span>
-        </div>
+          <div className="mt-4 px-3.5 py-2.5 rounded-glass bg-navy-50/60 flex items-center justify-between">
+            <span className="text-xs font-semibold text-navy-500">{isRTL ? 'الإجمالي' : 'Total'}</span>
+            <span className="text-base font-bold text-navy-900 tabular-nums">{formatMoney(total, currency)}</span>
+          </div>
 
-        <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
-          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} maxLength={1000}
-            style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
-        </FormField>
+          <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} maxLength={1000}
+              style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
+          </FormField>
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
-          <button type="button" disabled={submitting} onClick={onCancel} style={makeBtn('secondary')}>{isRTL ? 'إلغاء' : 'Cancel'}</button>
-          <button type="submit" disabled={submitting} style={makeBtn('primary', submitting ? { opacity: 0.6, cursor: 'wait' } : {})}>
-            {submitting ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'إنشاء الخطة' : 'Create Plan')}
-          </button>
-        </div>
-      </form>
+          <div className="flex gap-2 justify-end mt-2">
+            <Button variant="secondary" disabled={submitting} onClick={onCancel}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="primary" type="submit" loading={submitting} disabled={submitting}>
+              {submitting ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'إنشاء الخطة' : 'Create Plan')}
+            </Button>
+          </div>
+        </form>
+      </div>
     </Modal>
   )
 }

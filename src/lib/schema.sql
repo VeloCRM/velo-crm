@@ -617,11 +617,24 @@ ALTER TABLE messages               ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================================
 -- 8. POLICIES — OPERATORS TABLE
---    Only operators can read / write. No clinic-user policies.
+--    Operators can read / write the whole table. Authenticated users may
+--    read their OWN row only (so the client can answer "am I an operator?"
+--    via a direct supabase.from('operators') query without going through
+--    a Vercel Function).
+--    Postgres OR's overlapping permissive SELECT policies together, so the
+--    effective rule for SELECT is:
+--       is_operator()  OR  user_id = auth.uid()
 -- ============================================================================
 CREATE POLICY operators_select_operator ON operators
   FOR SELECT TO authenticated
   USING (public.is_operator());
+
+-- Self-read: any authenticated user can see whether their OWN user_id has
+-- a row in operators. The row carries no secrets — only (user_id, notes,
+-- created_at) — so exposing self-membership is safe.
+CREATE POLICY operators_self_select ON operators
+  FOR SELECT TO authenticated
+  USING (user_id = auth.uid());
 
 CREATE POLICY operators_insert_operator ON operators
   FOR INSERT TO authenticated

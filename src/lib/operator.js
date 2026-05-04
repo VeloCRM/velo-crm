@@ -5,10 +5,11 @@
  * The agency manages clinics; only operators can read/write `org_secrets`,
  * promote orgs out of test status, etc.
  *
- * Identity is established ONCE per session by OperatorContext, which calls
- * /api/auth/is-operator at sign-in. This hook is just a thin re-export so
- * existing callers (Phase 5 ClinicCredentials, App.jsx routes) keep working
- * without an import path change.
+ * Identity is established ONCE per session by OperatorContext, which runs
+ * a direct supabase.from('operators') self-select at sign-in (RLS-bounded
+ * by the `operators_self_select` policy). This hook is just a thin re-export
+ * so existing callers (Phase 5 ClinicCredentials, App.jsx routes) keep
+ * working without an import path change.
  */
 
 import { useOperator } from '../contexts/OperatorContext'
