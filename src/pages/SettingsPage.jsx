@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { C, makeBtn, card } from '../design'
+import { GlassCard } from '../components/ui'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
 import { sanitizeName, isValidEmail } from '../lib/sanitize'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -64,27 +65,57 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
   }
 
   return (
-    <div dir={dir} style={{ direction: dir }}>
-      <h1 style={{ fontSize: 24, fontWeight: 700, color: 'rgb(var(--velo-text-primary))', margin: '0 0 24px' }}>{t.settings}</h1>
-      <div style={{ display: 'flex', gap: 24 }}>
+    <div dir={dir} className="ds-root min-h-full p-6 md:p-8">
+      <h1 className="text-[28px] font-semibold text-navy-800 m-0 mb-6 leading-tight tracking-tight">
+        {t.settings}
+      </h1>
+      <div className="flex gap-6 items-start">
         {/* Sidebar tabs */}
-        <div style={{ width: 220, flexShrink: 0 }}>
-          <div style={{ ...card, padding: 8 }}>
-            {visibleTabs.map(tb => (
-              <button key={tb.id} onClick={() => setTab(tb.id)}
-                className="tab-button"
-                data-active={tab === tb.id}
-                aria-current={tab === tb.id ? 'page' : undefined}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 8, border: 'none', background: tab === tb.id ? 'rgb(var(--velo-accent-subtle))' : undefined, color: tab === tb.id ? 'rgb(var(--velo-accent-fg))' : 'rgb(var(--velo-text-secondary))', cursor: 'pointer', fontSize: 13, fontWeight: tab === tb.id ? 600 : 500, fontFamily: 'inherit', textAlign: isRTL ? 'right' : 'left', transition: 'background-color .15s, color .15s' }}>
-                <span style={{ color: tab === tb.id ? 'rgb(var(--velo-accent-fg))' : 'rgb(var(--velo-text-tertiary))', display: 'flex' }}>{tb.icon(18)}</span>
-                {tabLabels[tb.id]}
-              </button>
-            ))}
-          </div>
-        </div>
+        <GlassCard
+          as="nav"
+          padding="sm"
+          aria-label={lang === 'ar' ? 'أقسام الإعدادات' : 'Settings sections'}
+          className="w-[220px] shrink-0 sticky top-6"
+        >
+          <ul className="flex flex-col gap-0.5 list-none m-0 p-0">
+            {visibleTabs.map(tb => {
+              const isActive = tab === tb.id
+              return (
+                <li key={tb.id}>
+                  <button
+                    type="button"
+                    onClick={() => setTab(tb.id)}
+                    data-active={isActive}
+                    aria-current={isActive ? 'page' : undefined}
+                    className={[
+                      'tab-button',
+                      'w-full flex items-center gap-2.5',
+                      'py-2.5 ps-3.5 pe-3',
+                      'rounded-lg border-0 cursor-pointer',
+                      'text-[13px] text-start',
+                      'transition-colors duration-fast',
+                      'focus-visible:outline-none focus-visible:shadow-focus-cyan',
+                      isActive
+                        ? 'bg-white/80 text-navy-900 font-semibold ring-1 ring-navy-100 shadow-glass-sm'
+                        : 'bg-transparent text-navy-600 font-medium hover:bg-navy-50/70 hover:text-navy-800',
+                    ].join(' ')}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`flex shrink-0 ${isActive ? 'text-accent-cyan-600' : 'text-navy-400'}`}
+                    >
+                      {tb.icon(18)}
+                    </span>
+                    <span className="truncate">{tabLabels[tb.id]}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        </GlassCard>
 
         {/* Tab content */}
-        <div style={{ flex: 1 }} className="fade-in" key={tab}>
+        <div className="flex-1 min-w-0 fade-in" key={tab}>
           {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} />}
