@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react'
 import { C, makeBtn, card } from '../design'
-import { GlassCard } from '../components/ui'
+import { GlassCard, Button, Input, Select } from '../components/ui'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
+import { avatarGradient, avatarInitials } from '../lib/avatarGradient'
 import { sanitizeName, isValidEmail } from '../lib/sanitize'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { createInvitation, listPendingInvitations, revokeInvitation, buildInviteUrl } from '../lib/invitations'
@@ -134,6 +135,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
 
 function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
   void t
+  void dir
   void isRTL
   const [form, setForm] = useState({
     name: orgSettings.name || '',
@@ -150,39 +152,70 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
     setSaved(true); setTimeout(() => setSaved(false), 2000)
   }
 
+  const TIMEZONES = ['America/New_York','America/Chicago','America/Los_Angeles','Europe/London','Asia/Dubai','Asia/Riyadh','Asia/Baghdad','Asia/Seoul']
+
   return (
-    <div>
-      {/* Company Info */}
-      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 20px' }}>{lang === 'ar' ? 'معلومات المؤسسة' : 'Organization Info'}</h2>
+    <div className="space-y-5">
+      <GlassCard padding="lg">
+        <h2 className="text-lg font-semibold text-navy-800 m-0 mb-5">
+          {lang === 'ar' ? 'معلومات المؤسسة' : 'Organization Info'}
+        </h2>
 
         {/* Logo + Name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 24 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: `linear-gradient(135deg, ${form.primary_color}, #8250DF)`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, fontWeight: 700, flexShrink: 0 }}>
+        <div className="flex items-center gap-5 mb-6">
+          <div
+            className="grid place-items-center w-16 h-16 rounded-glass-lg text-white text-[26px] font-bold shrink-0 shadow-glass-sm"
+            style={{ background: `linear-gradient(135deg, ${form.primary_color}, #103562)` }}
+            aria-hidden="true"
+          >
             {(form.name || 'V').charAt(0).toUpperCase()}
           </div>
-          <div style={{ flex: 1 }}>
-            <FormField label={lang === 'ar' ? 'اسم الشركة' : 'Company Name'} dir={dir}>
-              <input value={form.name} onChange={e => set('name', e.target.value)} placeholder={lang === 'ar' ? 'اسم شركتك' : 'Your company name'} style={inputStyle(dir)} />
-            </FormField>
+          <div className="flex-1 min-w-0">
+            <Input
+              label={lang === 'ar' ? 'اسم الشركة' : 'Company Name'}
+              value={form.name}
+              onChange={e => set('name', e.target.value)}
+              placeholder={lang === 'ar' ? 'اسم شركتك' : 'Your company name'}
+            />
           </div>
         </div>
 
         {/* Industry */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 10 }}>{lang === 'ar' ? 'مجال العمل' : 'Industry'}</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+        <div className="mb-5">
+          <div className="text-xs font-semibold text-navy-600 mb-2.5">
+            {lang === 'ar' ? 'مجال العمل' : 'Industry'}
+          </div>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
             {INDUSTRIES.map(ind => {
               const active = form.industry === ind.id
               return (
-                <button key={ind.id} onClick={() => set('industry', ind.id)} style={{
-                  padding: '14px 10px', borderRadius: 10, textAlign: 'center', cursor: 'pointer', fontFamily: 'inherit',
-                  border: active ? `2px solid ${form.primary_color}` : `1px solid ${C.border}`,
-                  background: active ? `${form.primary_color}10` : C.white,
-                  transition: 'all .15s',
-                }}>
-                  <div style={{ fontSize: 24, marginBottom: 4 }}>{ind.icon}</div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: active ? form.primary_color : C.text }}>{lang === 'ar' ? ind.ar : ind.en}</div>
+                <button
+                  key={ind.id}
+                  type="button"
+                  onClick={() => set('industry', ind.id)}
+                  className={[
+                    'py-3.5 px-2.5 rounded-glass text-center cursor-pointer',
+                    'transition-colors duration-fast font-inter',
+                    active
+                      ? 'border-2 bg-white'
+                      : 'border border-navy-100 bg-white hover:border-navy-200',
+                  ].join(' ')}
+                  style={
+                    active
+                      ? {
+                          borderColor: form.primary_color,
+                          backgroundColor: form.primary_color + '14',
+                        }
+                      : undefined
+                  }
+                >
+                  <div className="text-2xl mb-1">{ind.icon}</div>
+                  <div
+                    className={`text-xs font-semibold ${active ? '' : 'text-navy-700'}`}
+                    style={active ? { color: form.primary_color } : undefined}
+                  >
+                    {lang === 'ar' ? ind.ar : ind.en}
+                  </div>
                 </button>
               )
             })}
@@ -190,52 +223,78 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
         </div>
 
         {/* Brand Color */}
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: C.textSec, marginBottom: 8 }}>{lang === 'ar' ? 'لون العلامة التجارية' : 'Brand Color'}</div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {BRAND_COLORS.map(c => (
-              <button key={c} onClick={() => set('primary_color', c)} style={{
-                width: 32, height: 32, borderRadius: 8, background: c, cursor: 'pointer', padding: 0,
-                border: form.primary_color === c ? '3px solid #1F2328' : '3px solid transparent',
-                transition: 'border-color .15s',
-              }} />
-            ))}
+        <div className="mb-5">
+          <div className="text-xs font-semibold text-navy-600 mb-2">
+            {lang === 'ar' ? 'لون العلامة التجارية' : 'Brand Color'}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {BRAND_COLORS.map(c => {
+              const active = form.primary_color === c
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => set('primary_color', c)}
+                  aria-label={c}
+                  aria-pressed={active}
+                  className={[
+                    'w-8 h-8 rounded-md cursor-pointer p-0',
+                    'transition-shadow duration-fast',
+                    active ? 'ring-2 ring-offset-2 ring-navy-800' : 'ring-0',
+                  ].join(' ')}
+                  style={{ background: c }}
+                />
+              )
+            })}
           </div>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-          <FormField label={lang === 'ar' ? 'العملة' : 'Currency'} dir={dir}>
-            <select value={form.currency} onChange={e => set('currency', e.target.value)} style={selectStyle(dir)}>
-              {CURRENCIES.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
-            </select>
-          </FormField>
-          <FormField label={lang === 'ar' ? 'المنطقة الزمنية' : 'Timezone'} dir={dir}>
-            <select value={form.timezone} onChange={e => set('timezone', e.target.value)} style={selectStyle(dir)}>
-              {['America/New_York','America/Chicago','America/Los_Angeles','Europe/London','Asia/Dubai','Asia/Riyadh','Asia/Baghdad','Asia/Seoul'].map(tz =>
-                <option key={tz} value={tz}>{tz.replace(/_/g, ' ')}</option>
-              )}
-            </select>
-          </FormField>
+        {/* Currency + Timezone */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Select
+            label={lang === 'ar' ? 'العملة' : 'Currency'}
+            value={form.currency}
+            onChange={e => set('currency', e.target.value)}
+            options={CURRENCIES.map(c => ({ value: c.id, label: c.label }))}
+          />
+          <Select
+            label={lang === 'ar' ? 'المنطقة الزمنية' : 'Timezone'}
+            value={form.timezone}
+            onChange={e => set('timezone', e.target.value)}
+            options={TIMEZONES.map(tz => ({ value: tz, label: tz.replace(/_/g, ' ') }))}
+          />
         </div>
-      </div>
+      </GlassCard>
 
       {/* Industry note */}
       {form.industry === 'dental' && (
-        <div style={{ padding: '12px 16px', borderRadius: 10, background: 'rgba(0,255,178,0.08)', border: '1px solid #54AEFF44', marginBottom: 20, fontSize: 13, color: '#00FFB2', lineHeight: 1.5 }}>
-          🦷 {lang === 'ar' ? 'وضع عيادة الأسنان مفعّل — ستظهر "المرضى" بدلاً من "جهات الاتصال" مع تبويبات المخطط الطبي والعلاجات والأشعة.' : 'Dental mode active — "Patients" replaces "Contacts" with Medical History, Dental Chart, Treatments, Prescriptions, and X-Rays tabs.'}
-        </div>
+        <GlassCard padding="md" className="bg-accent-cyan-50/60 border-accent-cyan-200">
+          <p className="text-[13px] text-accent-cyan-800 leading-relaxed m-0">
+            🦷{' '}
+            {lang === 'ar'
+              ? 'وضع عيادة الأسنان مفعّل — ستظهر "المرضى" بدلاً من "جهات الاتصال" مع تبويبات المخطط الطبي والعلاجات والأشعة.'
+              : 'Dental mode active — "Patients" replaces "Contacts" with Medical History, Dental Chart, Treatments, Prescriptions, and X-Rays tabs.'}
+          </p>
+        </GlassCard>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button onClick={handleSave} style={makeBtn(saved ? 'success' : 'primary', { gap: 6 })}>
-          {saved ? Icons.check(14) : null} {saved ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!') : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
-        </button>
+      <div className="flex justify-end">
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          iconStart={saved ? Icons.check : undefined}
+        >
+          {saved
+            ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!')
+            : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
+        </Button>
       </div>
     </div>
   )
 }
 
 function ProfileTab({ t, lang, dir, isRTL, user }) {
+  void dir
   void isRTL
   const [form, setForm] = useState({
     fullName: user?.user_metadata?.full_name || 'Admin User',
@@ -249,45 +308,81 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
   const fileRef = useRef(null)
 
   return (
-    <div style={{ ...card, padding: 28 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 24px' }}>{t.profile}</h2>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 20, marginBottom: 28 }}>
-        <div style={{ width: 72, height: 72, borderRadius: '50%', background: `linear-gradient(135deg, ${C.primary}, #8250DF)`, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, fontWeight: 700 }}>
-          {form.fullName.charAt(0)}
+    <GlassCard padding="lg">
+      <h2 className="text-lg font-semibold text-navy-800 m-0 mb-6">{t.profile}</h2>
+
+      <div className="flex items-center gap-5 mb-7">
+        <div
+          className={`grid place-items-center w-[72px] h-[72px] rounded-full text-white text-[28px] font-bold shrink-0 shadow-glass-sm bg-gradient-to-br ${avatarGradient(form.fullName)}`}
+          aria-hidden="true"
+        >
+          {avatarInitials(form.fullName)}
         </div>
         <div>
-          <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} />
-          <button onClick={() => fileRef.current?.click()} style={makeBtn('secondary', { fontSize: 12 })}>{Icons.upload(13)} {t.changePhoto}</button>
-          <p style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>JPG, PNG. Max 2MB</p>
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" />
+          <Button
+            variant="secondary"
+            size="sm"
+            iconStart={Icons.upload}
+            onClick={() => fileRef.current?.click()}
+          >
+            {t.changePhoto}
+          </Button>
+          <p className="text-[11px] text-navy-500 mt-1.5 m-0">JPG, PNG. Max 2MB</p>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-        <FormField label={t.fullName} dir={dir}><input value={form.fullName} onChange={e => set('fullName', e.target.value)} style={inputStyle(dir)} /></FormField>
-        <FormField label={t.emailAddress} dir={dir}><input value={form.email} onChange={e => set('email', e.target.value)} type="email" style={inputStyle(dir)} /></FormField>
-        <FormField label={t.phoneNumber} dir={dir}><input value={form.phone} onChange={e => set('phone', e.target.value)} style={inputStyle(dir)} /></FormField>
-        <FormField label={t.jobTitle} dir={dir}><input value={form.jobTitle} onChange={e => set('jobTitle', e.target.value)} style={inputStyle(dir)} /></FormField>
-        <FormField label={t.language} dir={dir}>
-          <select value={form.language} onChange={e => set('language', e.target.value)} style={selectStyle(dir)}>
-            <option value="en">English</option>
-            <option value="ar">العربية</option>
-          </select>
-        </FormField>
-        <FormField label={t.timezone} dir={dir}>
-          <select value={form.timezone} onChange={e => set('timezone', e.target.value)} style={selectStyle(dir)}>
-            <option value="America/New_York">Eastern Time (ET)</option>
-            <option value="America/Chicago">Central Time (CT)</option>
-            <option value="America/Los_Angeles">Pacific Time (PT)</option>
-            <option value="Europe/London">London (GMT)</option>
-            <option value="Asia/Dubai">Dubai (GST)</option>
-            <option value="Asia/Riyadh">Riyadh (AST)</option>
-            <option value="Asia/Seoul">Seoul (KST)</option>
-          </select>
-        </FormField>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-4">
+        <Input
+          label={t.fullName}
+          value={form.fullName}
+          onChange={e => set('fullName', e.target.value)}
+        />
+        <Input
+          label={t.emailAddress}
+          type="email"
+          value={form.email}
+          onChange={e => set('email', e.target.value)}
+        />
+        <Input
+          label={t.phoneNumber}
+          value={form.phone}
+          onChange={e => set('phone', e.target.value)}
+        />
+        <Input
+          label={t.jobTitle}
+          value={form.jobTitle}
+          onChange={e => set('jobTitle', e.target.value)}
+        />
+        <Select
+          label={t.language}
+          value={form.language}
+          onChange={e => set('language', e.target.value)}
+          options={[
+            { value: 'en', label: 'English' },
+            { value: 'ar', label: 'العربية' },
+          ]}
+        />
+        <Select
+          label={t.timezone}
+          value={form.timezone}
+          onChange={e => set('timezone', e.target.value)}
+          options={[
+            { value: 'America/New_York',    label: 'Eastern Time (ET)' },
+            { value: 'America/Chicago',     label: 'Central Time (CT)' },
+            { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
+            { value: 'Europe/London',       label: 'London (GMT)' },
+            { value: 'Asia/Dubai',          label: 'Dubai (GST)' },
+            { value: 'Asia/Riyadh',         label: 'Riyadh (AST)' },
+            { value: 'Asia/Seoul',          label: 'Seoul (KST)' },
+          ]}
+        />
       </div>
-      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-        <button className="velo-btn-primary" style={makeBtn('primary')}>{t.saveChanges}</button>
+
+      <div className="flex justify-end mt-6">
+        <Button variant="primary">{t.saveChanges}</Button>
       </div>
-    </div>
+    </GlassCard>
   )
 }
 
@@ -551,8 +646,7 @@ function TeamTab({ t, lang, dir, isRTL, toast }) {
   )
 }
 
-function NotificationsTab({ t, lang, dir }) {
-  void dir
+function NotificationsTab({ t, lang }) {
   const [notifs, setNotifs] = useState({
     emailNotif: true, whatsappNotif: false, browserNotif: true,
     dealUpdates: true, contactActivity: true, ticketUpdates: true,
@@ -576,23 +670,28 @@ function NotificationsTab({ t, lang, dir }) {
   ]
 
   return (
-    <div style={{ ...card, padding: 28 }}>
-      <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 24px' }}>{t.notifications}</h2>
+    <GlassCard padding="lg">
+      <h2 className="text-lg font-semibold text-navy-800 m-0 mb-6">{t.notifications}</h2>
       {sections.map((sec, si) => (
-        <div key={si} style={{ marginBottom: 28 }}>
-          <h3 style={{ fontSize: 11, fontWeight: 600, color: C.textSec, margin: '0 0 14px', textTransform: 'uppercase', letterSpacing: '.5px' }}>{sec.title}</h3>
+        <div key={si} className="mb-7 last:mb-0">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-navy-500 m-0 mb-3.5">
+            {sec.title}
+          </h3>
           {sec.items.map(item => (
-            <div key={item.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 0', borderBottom: `1px solid ${C.border}` }}>
-              <span style={{ fontSize: 13, color: C.text }}>{item.label}</span>
+            <div
+              key={item.key}
+              className="flex items-center justify-between py-3 border-b border-navy-100/80 last:border-b-0"
+            >
+              <span className="text-[13px] text-navy-700">{item.label}</span>
               <Toggle value={notifs[item.key]} onChange={() => toggle(item.key)} />
             </div>
           ))}
         </div>
       ))}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button className="velo-btn-primary" style={makeBtn('primary')}>{t.saveChanges}</button>
+      <div className="flex justify-end mt-6">
+        <Button variant="primary">{t.saveChanges}</Button>
       </div>
-    </div>
+    </GlassCard>
   )
 }
 
@@ -900,6 +999,7 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 
 function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
   void t
+  void dir
   // Math.random() is impure during render; pin it to a useState lazy
   // initializer so the secret is generated exactly once per mount.
   const [defaultSecret] = useState(() => orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10))
@@ -926,88 +1026,220 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
   }
 
   const Section = ({ title, icon, children }) => (
-    <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16 }}><span style={{ fontSize:24 }}>{icon}</span><h3 style={{ fontSize:16, fontWeight:700, color:C.text, margin:0 }}>{title}</h3></div>
+    <GlassCard padding="lg">
+      <div className="flex items-center gap-2.5 mb-4">
+        <span className="text-2xl" aria-hidden="true">{icon}</span>
+        <h3 className="text-base font-semibold text-navy-800 m-0">{title}</h3>
+      </div>
       {children}
-    </div>
+    </GlassCard>
   )
 
   const WaStep = ({ num, title, children, active }) => (
-    <div style={{ padding:'16px 0', borderBottom:`1px solid ${C.border}`, opacity: active?1:.5 }}>
-      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom: active?12:0, cursor:'pointer' }} onClick={()=>setWaStep(num)}>
-        <div style={{ width:28, height:28, borderRadius:'50%', background: waStep>=num?C.primary:C.bg, color: waStep>=num?'#fff':C.textMuted, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:700, flexShrink:0 }}>{waStep>num?'✓':num}</div>
-        <span style={{ fontSize:13, fontWeight:600, color: active?C.text:C.textSec }}>{title}</span>
+    <div className={`py-4 border-b border-navy-100/80 last:border-b-0 transition-opacity duration-fast ${active ? '' : 'opacity-50'}`}>
+      <div
+        className={`flex items-center gap-2.5 cursor-pointer ${active ? 'mb-3' : ''}`}
+        onClick={() => setWaStep(num)}
+      >
+        <div
+          className={[
+            'grid place-items-center w-7 h-7 rounded-full text-[12px] font-bold shrink-0 tabular-nums',
+            waStep >= num ? 'bg-navy-700 text-white' : 'bg-navy-50 text-navy-400',
+          ].join(' ')}
+          aria-hidden="true"
+        >
+          {waStep > num ? '✓' : num}
+        </div>
+        <span className={`text-[13px] font-semibold ${active ? 'text-navy-800' : 'text-navy-500'}`}>
+          {title}
+        </span>
       </div>
-      {active && <div style={{ paddingLeft:38 }}>{children}</div>}
+      {active && <div className="ps-[38px] mt-2 space-y-3">{children}</div>}
     </div>
   )
 
   return (
-    <div>
+    <div className="space-y-5">
       {/* WhatsApp — Step by step */}
       <Section title="WhatsApp Cloud API" icon="💬">
-        <WaStep num={1} title={lang==='ar'?'إنشاء حساب Meta Business':'Create Meta Business Account'} active={waStep===1}>
-          <p style={{ fontSize:12, color:C.textSec, lineHeight:1.6, marginBottom:8 }}>{lang==='ar'?'أنشئ حساب أعمال على Meta وقم بإعداد WhatsApp Cloud API':'Create a business account on Meta and set up WhatsApp Cloud API'}</p>
-          <a href="https://business.facebook.com" target="_blank" rel="noopener noreferrer" style={{ ...makeBtn('secondary',{gap:6,fontSize:12}), textDecoration:'none', display:'inline-flex' }}>{Icons.externalLink(13)} business.facebook.com</a>
-          <button type="button" onClick={()=>setWaStep(2)} className="velo-btn-primary" style={{ ...makeBtn('primary',{fontSize:12}), marginLeft:8 }}>{lang==='ar'?'التالي':'Next'}</button>
+        <WaStep num={1} title={lang === 'ar' ? 'إنشاء حساب Meta Business' : 'Create Meta Business Account'} active={waStep === 1}>
+          <p className="text-xs text-navy-600 leading-relaxed m-0">
+            {lang === 'ar' ? 'أنشئ حساب أعمال على Meta وقم بإعداد WhatsApp Cloud API' : 'Create a business account on Meta and set up WhatsApp Cloud API'}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              iconStart={Icons.externalLink}
+              onClick={() => window.open('https://business.facebook.com', '_blank', 'noopener,noreferrer')}
+            >
+              business.facebook.com
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setWaStep(2)}>
+              {lang === 'ar' ? 'التالي' : 'Next'}
+            </Button>
+          </div>
         </WaStep>
-        <WaStep num={2} title={lang==='ar'?'رقم الهاتف':'Phone Number ID'} active={waStep===2}>
-          <FormField label="Phone Number ID" dir={dir}><input value={wa.phone_id} onChange={e=>setWa(p=>({...p,phone_id:e.target.value}))} placeholder="123456789012345" style={inputStyle(dir)} /></FormField>
-          <button type="button" onClick={()=>setWaStep(3)} disabled={!wa.phone_id} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+
+        <WaStep num={2} title={lang === 'ar' ? 'رقم الهاتف' : 'Phone Number ID'} active={waStep === 2}>
+          <Input
+            label="Phone Number ID"
+            value={wa.phone_id}
+            onChange={e => setWa(p => ({ ...p, phone_id: e.target.value }))}
+            placeholder="123456789012345"
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setWaStep(3)}
+            disabled={!wa.phone_id}
+          >
+            {lang === 'ar' ? 'التالي' : 'Next'}
+          </Button>
         </WaStep>
-        <WaStep num={3} title={lang==='ar'?'رمز الوصول':'Access Token'} active={waStep===3}>
-          <FormField label="Permanent Access Token" dir={dir}><input value={wa.token} onChange={e=>setWa(p=>({...p,token:e.target.value}))} type="password" placeholder="EAAx..." style={inputStyle(dir)} /></FormField>
-          <button type="button" onClick={()=>setWaStep(4)} disabled={!wa.token} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+
+        <WaStep num={3} title={lang === 'ar' ? 'رمز الوصول' : 'Access Token'} active={waStep === 3}>
+          <Input
+            label="Permanent Access Token"
+            type="password"
+            value={wa.token}
+            onChange={e => setWa(p => ({ ...p, token: e.target.value }))}
+            placeholder="EAAx..."
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => setWaStep(4)}
+            disabled={!wa.token}
+          >
+            {lang === 'ar' ? 'التالي' : 'Next'}
+          </Button>
         </WaStep>
-        <WaStep num={4} title={lang==='ar'?'معرف حساب WhatsApp Business':'WABA ID'} active={waStep===4}>
-          <FormField label="WhatsApp Business Account ID" dir={dir}><input value={wa.waba_id} onChange={e=>setWa(p=>({...p,waba_id:e.target.value}))} placeholder="123456789012345" style={inputStyle(dir)} /></FormField>
-          <button type="button" onClick={()=>setWaStep(5)} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+
+        <WaStep num={4} title={lang === 'ar' ? 'معرف حساب WhatsApp Business' : 'WABA ID'} active={waStep === 4}>
+          <Input
+            label="WhatsApp Business Account ID"
+            value={wa.waba_id}
+            onChange={e => setWa(p => ({ ...p, waba_id: e.target.value }))}
+            placeholder="123456789012345"
+          />
+          <Button variant="primary" size="sm" onClick={() => setWaStep(5)}>
+            {lang === 'ar' ? 'التالي' : 'Next'}
+          </Button>
         </WaStep>
-        <WaStep num={5} title={lang==='ar'?'إعداد Webhook':'Webhook Setup'} active={waStep===5}>
-          <div style={{ padding:'10px 14px', borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, marginBottom:12 }}>
-            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>Webhook URL</div>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <code style={{ fontSize:12, color:C.primary, flex:1, wordBreak:'break-all' }}>{webhookUrl}</code>
-              <button type="button" onClick={()=>navigator.clipboard?.writeText(webhookUrl)} style={makeBtn('secondary',{fontSize:10,padding:'4px 8px'})}>{Icons.copy(12)}</button>
+
+        <WaStep num={5} title={lang === 'ar' ? 'إعداد Webhook' : 'Webhook Setup'} active={waStep === 5}>
+          <div className="bg-navy-50 border border-navy-100 rounded-glass p-3.5">
+            <div className="text-[11px] text-navy-500 mb-1">Webhook URL</div>
+            <div className="flex items-center gap-2">
+              <code className="text-[12px] text-accent-cyan-700 font-mono break-all flex-1">
+                {webhookUrl}
+              </code>
+              <Button
+                variant="secondary"
+                size="sm"
+                iconStart={Icons.copy}
+                onClick={() => navigator.clipboard?.writeText(webhookUrl)}
+                aria-label={lang === 'ar' ? 'نسخ' : 'Copy'}
+              />
             </div>
           </div>
-          <button type="button" onClick={()=>setWaStep(6)} className="velo-btn-primary" style={makeBtn('primary',{fontSize:12})}>{lang==='ar'?'التالي':'Next'}</button>
+          <Button variant="primary" size="sm" onClick={() => setWaStep(6)}>
+            {lang === 'ar' ? 'التالي' : 'Next'}
+          </Button>
         </WaStep>
-        <WaStep num={6} title={lang==='ar'?'رمز التحقق':'Verify Token'} active={waStep===6}>
-          <div style={{ padding:'10px 14px', borderRadius:8, background:C.bg, border:`1px solid ${C.border}`, marginBottom:12 }}>
-            <div style={{ fontSize:11, color:C.textMuted, marginBottom:4 }}>Verify Token ({lang==='ar'?'انسخه إلى Meta':'paste in Meta'})</div>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <code style={{ fontSize:12, color:C.primary, flex:1 }}>{wa.secret}</code>
-              <button type="button" onClick={()=>navigator.clipboard?.writeText(wa.secret)} style={makeBtn('secondary',{fontSize:10,padding:'4px 8px'})}>{Icons.copy(12)}</button>
+
+        <WaStep num={6} title={lang === 'ar' ? 'رمز التحقق' : 'Verify Token'} active={waStep === 6}>
+          <div className="bg-navy-50 border border-navy-100 rounded-glass p-3.5">
+            <div className="text-[11px] text-navy-500 mb-1">
+              Verify Token ({lang === 'ar' ? 'انسخه إلى Meta' : 'paste in Meta'})
+            </div>
+            <div className="flex items-center gap-2">
+              <code className="text-[12px] text-accent-cyan-700 font-mono flex-1">
+                {wa.secret}
+              </code>
+              <Button
+                variant="secondary"
+                size="sm"
+                iconStart={Icons.copy}
+                onClick={() => navigator.clipboard?.writeText(wa.secret)}
+                aria-label={lang === 'ar' ? 'نسخ' : 'Copy'}
+              />
             </div>
           </div>
-          <div style={{ display:'flex', gap:8 }}>
-            <button type="button" onClick={testWhatsApp} style={makeBtn('secondary',{gap:6,fontSize:12})}>
-              {waTestResult==='testing'?'...' : waTestResult==='success'?'✓ Connected':lang==='ar'?'اختبار الاتصال':'Test Connection'}
-            </button>
-            {waTestResult && waTestResult !== 'testing' && waTestResult !== 'success' && <span style={{ fontSize:11, color:'#ef4444', alignSelf:'center' }}>{waTestResult}</span>}
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="secondary" size="sm" onClick={testWhatsApp}>
+              {waTestResult === 'testing'
+                ? '...'
+                : waTestResult === 'success'
+                  ? '✓ Connected'
+                  : (lang === 'ar' ? 'اختبار الاتصال' : 'Test Connection')}
+            </Button>
+            {waTestResult && waTestResult !== 'testing' && waTestResult !== 'success' && (
+              <span className="text-[11px] text-rose-600">{waTestResult}</span>
+            )}
           </div>
         </WaStep>
       </Section>
 
       {/* Facebook / Instagram */}
       <Section title="Facebook & Instagram" icon="📱">
-        <p style={{ fontSize:13, color:C.textSec, lineHeight:1.6, marginBottom:12 }}>{lang==='ar'?'اربط صفحة فيسبوك لتلقي رسائل Messenger و Instagram DM.':'Connect your Facebook Page to receive Messenger and Instagram DM messages.'}</p>
-        <FormField label="Meta Access Token" dir={dir}><input value={meta.token} onChange={e=>setMeta({token:e.target.value})} type="password" placeholder="EAAx..." style={inputStyle(dir)} /></FormField>
-        <div style={{ display:'flex', gap:8 }}>
-          <button type="button" style={makeBtn('secondary',{gap:6})}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1877F2" strokeWidth="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg> {lang==='ar'?'ربط فيسبوك':'Connect Facebook'}</button>
-          <button type="button" style={makeBtn('secondary',{gap:6})}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E4405F" strokeWidth="2"><rect x="2" y="2" width="20" height="20" rx="5" ry="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/></svg> {lang==='ar'?'ربط إنستغرام':'Connect Instagram'}</button>
+        <p className="text-[13px] text-navy-600 leading-relaxed m-0 mb-3">
+          {lang === 'ar' ? 'اربط صفحة فيسبوك لتلقي رسائل Messenger و Instagram DM.' : 'Connect your Facebook Page to receive Messenger and Instagram DM messages.'}
+        </p>
+        <div className="mb-3">
+          <Input
+            label="Meta Access Token"
+            type="password"
+            value={meta.token}
+            onChange={e => setMeta({ token: e.target.value })}
+            placeholder="EAAx..."
+          />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary">
+            {/* Brand-correctness: Facebook blue stroke kept inline by design */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1877F2" strokeWidth="2" aria-hidden="true">
+              <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+            </svg>
+            {lang === 'ar' ? 'ربط فيسبوك' : 'Connect Facebook'}
+          </Button>
+          <Button variant="secondary">
+            {/* Brand-correctness: Instagram pink stroke kept inline by design */}
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E4405F" strokeWidth="2" aria-hidden="true">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+            </svg>
+            {lang === 'ar' ? 'ربط إنستغرام' : 'Connect Instagram'}
+          </Button>
         </div>
       </Section>
 
       {/* Gmail */}
       <Section title="Gmail" icon="📧">
-        <FormField label={lang==='ar'?'بريد Gmail':'Connected Gmail'} dir={dir}><input value={gmail.email} onChange={e=>setGmail({email:e.target.value})} placeholder="your@gmail.com" style={inputStyle(dir)} /></FormField>
-        <button type="button" style={makeBtn('secondary',{gap:6})}>{Icons.externalLink(13)} {lang==='ar'?'ربط حساب Google':'Connect Google Account'}</button>
+        <div className="mb-3">
+          <Input
+            label={lang === 'ar' ? 'بريد Gmail' : 'Connected Gmail'}
+            value={gmail.email}
+            onChange={e => setGmail({ email: e.target.value })}
+            placeholder="your@gmail.com"
+          />
+        </div>
+        <Button variant="secondary" iconStart={Icons.externalLink}>
+          {lang === 'ar' ? 'ربط حساب Google' : 'Connect Google Account'}
+        </Button>
       </Section>
 
-      <div style={{ display:'flex', justifyContent:'flex-end' }}>
-        <button type="button" onClick={handleSave} style={makeBtn(saved?'success':'primary',{gap:6})}>{saved?Icons.check(14):null} {saved?(lang==='ar'?'تم الحفظ!':'Saved!'):(lang==='ar'?'حفظ الإعدادات':'Save Settings')}</button>
+      <div className="flex justify-end">
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          iconStart={saved ? Icons.check : undefined}
+        >
+          {saved
+            ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!')
+            : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
+        </Button>
       </div>
     </div>
   )
