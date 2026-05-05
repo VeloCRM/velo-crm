@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { C, makeBtn, card } from '../design'
-import { GlassCard, Button, Input, Select } from '../components/ui'
+import { GlassCard, Button, Input, Select, Modal, Badge } from '../components/ui'
 import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
 import { avatarGradient, avatarInitials } from '../lib/avatarGradient'
 import { sanitizeName, isValidEmail } from '../lib/sanitize'
@@ -489,159 +489,162 @@ function TeamTab({ t, lang, dir, isRTL, toast }) {
   }
 
   if (identityLoading) {
-    return <p style={{ color: C.textMuted, fontSize: 13 }}>{isRTL ? 'جاري التحميل...' : 'Loading…'}</p>
+    return <p className="text-sm text-navy-500 m-0">{isRTL ? 'جاري التحميل...' : 'Loading…'}</p>
   }
 
   return (
-    <div>
-      {/* Owner-gated invite form */}
+    <div className="space-y-5">
+      {/* Owner-gated invite form OR non-owner notice */}
       {isOwner ? (
-        <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-          <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>{t.inviteMember}</h2>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <input
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
+        <GlassCard padding="lg">
+          <h2 className="text-lg font-semibold text-navy-800 m-0 mb-5">{t.inviteMember}</h2>
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_180px_auto] gap-3 items-end">
+            <Input
               type="email"
               maxLength={255}
+              value={inviteEmail}
+              onChange={e => setInviteEmail(e.target.value)}
               placeholder="email@company.com"
-              style={{ ...inputStyle(dir), flex: 1 }}
               onKeyDown={e => e.key === 'Enter' && invite()}
+              aria-label={t.inviteMember}
             />
-            <select value={inviteRole} onChange={e => setInviteRole(e.target.value)} style={{ ...selectStyle(dir), width: 160 }}>
-              {INVITABLE_ROLES.map(r => (
-                <option key={r} value={r}>
-                  {(ROLE_LABELS[lang] || ROLE_LABELS.en)[r] || r}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={invite}
-              disabled={inviting}
-              className="velo-btn-primary"
-              style={{ ...makeBtn('primary'), opacity: inviting ? 0.6 : 1, cursor: inviting ? 'wait' : 'pointer' }}
-            >
-              {inviting ? '…' : t.inviteMember}
-            </button>
+            <Select
+              value={inviteRole}
+              onChange={e => setInviteRole(e.target.value)}
+              options={INVITABLE_ROLES.map(r => ({ value: r, label: (ROLE_LABELS[lang] || ROLE_LABELS.en)[r] || r }))}
+              aria-label={isRTL ? 'الدور' : 'Role'}
+            />
+            <Button variant="primary" onClick={invite} loading={inviting}>
+              {t.inviteMember}
+            </Button>
           </div>
-          <p style={{ fontSize: 11, color: C.textMuted, margin: '10px 0 0' }}>
-            <strong style={{ color: C.textSec }}>
+          <p className="text-xs text-navy-500 m-0 mt-3">
+            <strong className="text-navy-700 font-semibold">
               {(ROLE_LABELS[lang] || ROLE_LABELS.en)[inviteRole] || inviteRole}
             </strong>
             {(ROLE_DESCRIPTIONS[lang] || ROLE_DESCRIPTIONS.en)[inviteRole]
               ? ' — ' + (ROLE_DESCRIPTIONS[lang] || ROLE_DESCRIPTIONS.en)[inviteRole]
               : ''}
           </p>
-          <p style={{ fontSize: 11, color: C.textMuted, margin: '6px 0 0' }}>
+          <p className="text-xs text-navy-500 m-0 mt-1.5">
             {isRTL
               ? 'سيتم إنشاء رابط دعوة يمكنك نسخه وإرساله يدوياً (واتساب، بريد إلكتروني). صالح 7 أيام.'
               : 'Generates a copyable invite link you can send manually (WhatsApp, SMS, email). Expires in 7 days.'}
           </p>
-        </div>
+        </GlassCard>
       ) : (
-        <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-          <p style={{ fontSize: 13, color: C.textMuted, margin: 0 }}>
+        <GlassCard padding="md">
+          <p className="text-sm text-navy-600 m-0">
             {isRTL
               ? 'إدارة الفريق متاحة لمالكي العيادة فقط.'
               : 'Team management is available to clinic owners.'}
           </p>
-        </div>
+        </GlassCard>
       )}
 
       {/* Invite link modal — owner only (only shown after a successful create) */}
-      {isOwner && inviteLink && (
-        <div
-          onClick={() => setInviteLink(null)}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 9999, padding: 16 }}
-        >
-          <div onClick={e => e.stopPropagation()} style={{ ...card, padding: 24, maxWidth: 560, width: '100%', direction: dir }}>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
-              {isRTL ? 'رابط الدعوة جاهز' : 'Invitation link ready'}
-            </h3>
-            <p style={{ fontSize: 12, color: C.textMuted, margin: '0 0 14px' }}>
-              {isRTL
-                ? `أرسل هذا الرابط إلى ${inviteLink.email} عبر واتساب أو الرسائل أو البريد الإلكتروني. صالح لمدة 7 أيام.`
-                : `Share this link with ${inviteLink.email} via WhatsApp, SMS, or email. The link expires in 7 days.`}
-            </p>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <input
-                id="velo-invite-link-input"
-                readOnly
-                value={inviteLink.url}
-                onFocus={e => e.target.select()}
-                style={{ ...inputStyle(dir), flex: 1, fontFamily: 'monospace', fontSize: 12 }}
-              />
-              <button onClick={copyLink} className="velo-btn-primary" style={makeBtn('primary')}>
-                {copied ? (isRTL ? 'تم النسخ' : 'Copied!') : (isRTL ? 'نسخ' : 'Copy')}
-              </button>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 16 }}>
-              <button onClick={() => setInviteLink(null)} style={makeBtn('secondary')}>
-                {isRTL ? 'إغلاق' : 'Done'}
-              </button>
-            </div>
+      <Modal
+        open={!!(isOwner && inviteLink)}
+        onClose={() => setInviteLink(null)}
+        title={isRTL ? 'رابط الدعوة جاهز' : 'Invitation link ready'}
+        closeLabel={isRTL ? 'إغلاق' : 'Close'}
+        size="lg"
+        footer={
+          <Button variant="secondary" onClick={() => setInviteLink(null)}>
+            {isRTL ? 'إغلاق' : 'Done'}
+          </Button>
+        }
+      >
+        <div dir={dir}>
+          <p className="text-xs text-navy-600 leading-relaxed m-0 mb-3.5">
+            {isRTL
+              ? `أرسل هذا الرابط إلى ${inviteLink?.email || ''} عبر واتساب أو الرسائل أو البريد الإلكتروني. صالح لمدة 7 أيام.`
+              : `Share this link with ${inviteLink?.email || ''} via WhatsApp, SMS, or email. The link expires in 7 days.`}
+          </p>
+          <div className="flex gap-2 items-stretch">
+            <input
+              id="velo-invite-link-input"
+              readOnly
+              value={inviteLink?.url || ''}
+              onFocus={e => e.target.select()}
+              className="flex-1 min-w-0 h-11 px-3.5 rounded-glass bg-white/85 backdrop-blur-glass-sm border border-navy-100 text-xs font-mono text-navy-800 outline-none transition-all duration-fast ease-standard focus:border-accent-cyan-500 focus:shadow-focus-cyan"
+              aria-label={isRTL ? 'رابط الدعوة' : 'Invitation link'}
+            />
+            <Button variant="primary" onClick={copyLink}>
+              {copied ? (isRTL ? 'تم النسخ' : 'Copied!') : (isRTL ? 'نسخ' : 'Copy')}
+            </Button>
           </div>
         </div>
-      )}
+      </Modal>
 
       {/* Pending invitations — owner only */}
       {isOwner && pending.length > 0 && (
-        <div style={{ ...card, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
-            <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>
-              {isRTL ? `دعوات معلقة (${pending.length})` : `Pending invitations (${pending.length})`}
+        <GlassCard padding="none">
+          <div className="flex items-center justify-between border-b border-navy-100 px-5 py-3.5">
+            <h3 className="text-sm font-semibold text-navy-800 m-0">
+              {isRTL ? 'دعوات معلقة' : 'Pending invitations'}
             </h3>
+            <Badge tone="navy"><span className="tabular-nums lining-nums">{pending.length}</span></Badge>
           </div>
-          {pending.map(inv => {
+          {pending.map((inv, idx) => {
             const url = buildInviteUrl(inv.token)
             const expires = inv.expires_at ? new Date(inv.expires_at).toLocaleDateString(lang === 'ar' ? 'ar-IQ' : 'en-US', { month: 'short', day: 'numeric' }) : ''
+            const isLast = idx === pending.length - 1
             return (
-              <div key={inv.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
-                <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.bg, color: C.textSec, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>{(inv.email || '?').charAt(0).toUpperCase()}</div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{inv.email}</div>
-                  <div style={{ fontSize: 11, color: C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div key={inv.id} className={`flex items-center gap-3.5 px-5 py-3.5 ${isLast ? '' : 'border-b border-navy-100'}`}>
+                <div className="grid place-items-center w-9 h-9 rounded-full bg-navy-50 text-navy-600 text-sm font-semibold shrink-0" aria-hidden="true">
+                  {(inv.email || '?').charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-semibold text-navy-800 truncate">{inv.email}</div>
+                  <div className="text-[11px] text-navy-500 truncate tabular-nums lining-nums">
                     {(ROLE_LABELS[lang] || ROLE_LABELS.en)[inv.role] || inv.role}
                     {expires ? ` · ${isRTL ? 'تنتهي' : 'expires'} ${expires}` : ''}
                   </div>
                 </div>
-                <button onClick={() => setInviteLink({ url, email: inv.email })} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.primary, fontSize: 12, fontFamily: 'inherit', fontWeight: 600 }}>
+                <Button variant="ghost" size="sm" onClick={() => setInviteLink({ url, email: inv.email })}>
                   {isRTL ? 'نسخ الرابط' : 'Copy link'}
-                </button>
-                <button onClick={() => revoke(inv.id)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }} title={isRTL ? 'إلغاء' : 'Revoke'}>
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => revoke(inv.id)}
+                  aria-label={isRTL ? 'إلغاء الدعوة' : 'Revoke invitation'}
+                  className="grid place-items-center w-8 h-8 rounded-glass text-navy-400 hover:text-rose-600 hover:bg-rose-50 transition-colors duration-fast"
+                >
                   {Icons.trash(14)}
                 </button>
               </div>
             )
           })}
-        </div>
+        </GlassCard>
       )}
 
       {/* Team list — visible to everyone in the org */}
-      <div style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>
-            {t.teamMembers} ({team.length})
-          </h3>
+      <GlassCard padding="none">
+        <div className="flex items-center justify-between border-b border-navy-100 px-5 py-3.5">
+          <h3 className="text-sm font-semibold text-navy-800 m-0">{t.teamMembers}</h3>
+          <Badge tone="navy"><span className="tabular-nums lining-nums">{team.length}</span></Badge>
         </div>
-        {team.map(member => (
-          <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
-            <div style={{ width: 36, height: 36, borderRadius: '50%', background: C.primaryBg, color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 600, flexShrink: 0 }}>
-              {member.avatar}
+        {team.map((member, idx) => {
+          const isLast = idx === team.length - 1
+          return (
+            <div key={member.id} className={`flex items-center gap-3.5 px-5 py-3.5 ${isLast ? '' : 'border-b border-navy-100'}`}>
+              <div
+                className={`grid place-items-center w-9 h-9 rounded-full text-white text-sm font-bold shrink-0 shadow-glass-sm bg-gradient-to-br ${avatarGradient(member.name)}`}
+                aria-hidden="true"
+              >
+                {avatarInitials(member.name)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-semibold text-navy-800 truncate">{member.name}</div>
+              </div>
+              <Badge tone={member.role === 'owner' ? 'cyan' : 'navy'}>
+                {(ROLE_LABELS[lang] || ROLE_LABELS.en)[member.role] || member.role}
+              </Badge>
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{member.name}</div>
-            </div>
-            <span style={{
-              fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
-              background: member.role === 'owner' ? C.primaryBg : C.bg,
-              color: member.role === 'owner' ? C.primary : C.textSec,
-            }}>
-              {(ROLE_LABELS[lang] || ROLE_LABELS.en)[member.role] || member.role}
-            </span>
-          </div>
-        ))}
-      </div>
+          )
+        })}
+      </GlassCard>
     </div>
   )
 }
@@ -703,53 +706,82 @@ function BillingTab({ t, lang, dir }) {
     { id: 'inv3', date: 'Feb 1, 2026', amount: '$49.00', status: 'Paid' },
   ]
 
+  const meters = [
+    { label: t.contacts_used, used: 248, total: 1000 },
+    { label: t.appointments_used || (lang === 'ar' ? 'المواعيد' : 'Appointments'), used: 34, total: 100 },
+    { label: t.storage_used, used: 1.2, total: 5, unit: 'GB' },
+  ]
+
   return (
-    <div>
-      {/* Current plan */}
-      <div style={{ ...card, padding: 24, marginBottom: 20, background: `linear-gradient(135deg, ${C.primary}08, #8250DF08)`, border: `1px solid ${C.primary}22` }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 6, background: C.primaryBg, color: C.primary }}>{t.proPlanBadge || 'Pro Plan'}</span>
-              <span style={{ fontSize: 12, color: C.textMuted }}>{t.currentPlan}</span>
+    <div className="space-y-5">
+      {/* Current plan — cyan-tinted glass card */}
+      <GlassCard padding="lg" className="bg-accent-cyan-50/40 ring-1 ring-accent-cyan-100">
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+              <Badge tone="cyan">{t.proPlanBadge || 'Pro Plan'}</Badge>
+              <span className="text-xs text-navy-500">{t.currentPlan}</span>
             </div>
-            <div style={{ fontSize: 32, fontWeight: 800, color: C.text }}>$49<span style={{ fontSize: 14, fontWeight: 500, color: C.textMuted }}>{t.perMonth}</span></div>
+            <div className="text-[32px] font-extrabold text-navy-900 tabular-nums lining-nums leading-none">
+              $49<span className="text-sm font-medium text-navy-500 ms-1">{t.perMonth}</span>
+            </div>
           </div>
-          <button className="velo-btn-primary" style={makeBtn('primary', { gap: 6 })}>{Icons.trendUp(14)} {t.upgradeNow}</button>
+          <Button variant="primary" iconStart={Icons.trendUp}>{t.upgradeNow}</Button>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 16, marginTop: 20 }}>
-          {[
-            { label: t.contacts_used, used: 248, total: 1000 },
-            { label: t.appointments_used || (lang === 'ar' ? 'المواعيد' : 'Appointments'), used: 34, total: 100 },
-            { label: t.storage_used, used: 1.2, total: 5, unit: 'GB' },
-          ].map((u, i) => (
-            <div key={i}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.textSec, marginBottom: 6 }}>
-                <span>{u.label}</span><span>{u.unit ? `${u.used}${u.unit}` : u.used} / {u.unit ? `${u.total}${u.unit}` : u.total}</span>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
+          {meters.map((u, i) => {
+            const pct = Math.min(100, Math.max(0, (u.used / u.total) * 100))
+            return (
+              <div key={i}>
+                <div className="flex justify-between text-xs text-navy-600 mb-1.5">
+                  <span>{u.label}</span>
+                  <span className="tabular-nums lining-nums">
+                    {u.unit ? `${u.used}${u.unit}` : u.used} / {u.unit ? `${u.total}${u.unit}` : u.total}
+                  </span>
+                </div>
+                <div
+                  className="h-1.5 rounded-full bg-accent-cyan-100/60 overflow-hidden"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={u.total}
+                  aria-valuenow={u.used}
+                  aria-label={u.label}
+                >
+                  <div
+                    className="h-full rounded-full bg-accent-cyan-600 transition-[width] duration-base ease-standard"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
               </div>
-              <div style={{ height: 6, borderRadius: 3, background: `${C.primary}22` }}>
-                <div style={{ height: '100%', borderRadius: 3, background: C.primary, width: `${(u.used / u.total) * 100}%` }} />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
-      </div>
+      </GlassCard>
 
       {/* Invoice history */}
-      <div style={{ ...card, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: `1px solid ${C.border}` }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>{lang === 'ar' ? 'سجل الفواتير' : 'Invoice History'}</h3>
+      <GlassCard padding="none">
+        <div className="border-b border-navy-100 px-5 py-3.5">
+          <h3 className="text-sm font-semibold text-navy-800 m-0">{lang === 'ar' ? 'سجل الفواتير' : 'Invoice History'}</h3>
         </div>
-        {invoices.map(inv => (
-          <div key={inv.id} style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderBottom: `1px solid ${C.border}`, gap: 16 }}>
-            <span style={{ fontSize: 13, color: C.textSec, flex: 1 }}>{inv.date}</span>
-            <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{inv.amount}</span>
-            <span style={{ fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6, background: 'rgba(0,255,136,0.1)', color: '#00ff88' }}>{inv.status}</span>
-            <button style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.primary, fontSize: 12, fontFamily: 'inherit' }}>{Icons.download(13)}</button>
-          </div>
-        ))}
-      </div>
+        {invoices.map((inv, idx) => {
+          const isLast = idx === invoices.length - 1
+          return (
+            <div key={inv.id} className={`flex items-center gap-4 px-5 py-3 ${isLast ? '' : 'border-b border-navy-100'}`}>
+              <span className="text-sm text-navy-600 flex-1 tabular-nums lining-nums">{inv.date}</span>
+              <span className="text-sm font-semibold text-navy-900 tabular-nums lining-nums">{inv.amount}</span>
+              <Badge tone="success">{inv.status}</Badge>
+              <button
+                type="button"
+                aria-label={lang === 'ar' ? 'تنزيل الفاتورة' : 'Download invoice'}
+                className="grid place-items-center w-8 h-8 rounded-glass text-navy-500 hover:text-navy-700 hover:bg-navy-50 transition-colors duration-fast"
+              >
+                {Icons.download(14)}
+              </button>
+            </div>
+          )
+        })}
+      </GlassCard>
     </div>
   )
 }
@@ -764,30 +796,25 @@ function ApiKeysTab({ lang }) {
   const operatorContact = import.meta.env.VITE_OPERATOR_CONTACT || ''
 
   return (
-    <div>
-      <div style={{ ...card, padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 12,
-            background: `linear-gradient(135deg, ${C.primary}, #8250DF)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="space-y-5">
+      <GlassCard padding="lg">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="grid place-items-center w-11 h-11 rounded-glass bg-accent-cyan-50 ring-1 ring-accent-cyan-100 shrink-0 text-accent-cyan-600" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
             </svg>
           </div>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-navy-800 m-0">
               {ar ? 'بيانات الاعتماد يديرها المشغّل' : 'Credentials are managed by the operator'}
             </h2>
-            <p style={{ fontSize: 12, color: C.textMuted, margin: '2px 0 0' }}>
+            <p className="text-xs text-navy-500 m-0 mt-0.5">
               {ar ? 'لم تعد العيادات تخزن مفاتيح API محلياً' : 'Clinics no longer store API keys locally'}
             </p>
           </div>
         </div>
 
-        <p style={{ fontSize: 14, color: C.textSec, lineHeight: 1.6, margin: '0 0 12px' }}>
+        <p className="text-sm text-navy-600 leading-relaxed m-0 mb-3">
           {ar
             ? 'تتم إدارة ميزات الذكاء الاصطناعي و WhatsApp والتكاملات الأخرى بواسطة المشغل. تواصل مع المشغل لتفعيل أي ميزة لهذه العيادة.'
             : 'AI features, WhatsApp, and other integrations are configured by the operator. Contact the operator to enable AI for this clinic.'}
@@ -798,35 +825,25 @@ function ApiKeysTab({ lang }) {
             href={operatorContact}
             target="_blank"
             rel="noopener noreferrer"
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 8,
-              padding: '10px 18px', borderRadius: 8, marginTop: 4,
-              background: C.primary, color: '#07080E',
-              fontSize: 13, fontWeight: 600, textDecoration: 'none',
-              fontFamily: 'inherit',
-            }}
+            className="inline-flex items-center gap-2 h-10 px-4 rounded-glass navy-gradient text-white text-sm font-semibold shadow-navy-glow no-underline transition-all duration-fast ease-standard hover:-translate-y-px hover:shadow-navy-glow active:translate-y-0 active:shadow-navy-glow-soft focus-visible:outline-none focus-visible:shadow-focus-cyan"
           >
             {ar ? 'تواصل مع المشغل' : 'Contact the operator'}
           </a>
         ) : (
-          <div style={{
-            marginTop: 8, padding: '10px 14px', borderRadius: 8,
-            background: 'rgba(245,158,11,0.08)',
-            border: '1px solid rgba(245,158,11,0.2)',
-            color: '#D29922', fontSize: 12,
-          }}>
+          <div className="mt-2 px-3.5 py-2.5 rounded-glass bg-amber-50/60 ring-1 ring-amber-200 text-xs text-amber-800">
             {ar
               ? 'لم يتم إعداد جهة اتصال المشغل بعد.'
               : 'Operator contact has not been configured yet.'}
           </div>
         )}
-      </div>
+      </GlassCard>
     </div>
   )
 }
 
 function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
   void t
+  void dir
   // The Anthropic key lives only on the server now (Phase 4). Clinic users
   // configure prompt/personality/knowledge here; the secret never leaves the
   // server proxy at /api/ai/chat.
@@ -859,139 +876,214 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
     reader.readAsText(file)
   }
 
+  const PERSONALITIES = [
+    { id: 'professional', l: lang === 'ar' ? 'مهني' : 'Professional', i: '👔' },
+    { id: 'friendly',     l: lang === 'ar' ? 'ودود'  : 'Friendly',     i: '😊' },
+    { id: 'formal',       l: lang === 'ar' ? 'رسمي'  : 'Formal',       i: '📋' },
+  ]
+
   return (
-    <div>
+    <div className="space-y-5">
       {/* Header — credentials are operator-managed now (Phase 4) */}
-      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${C.primary}, #8250DF)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      <GlassCard padding="lg">
+        <div className="flex items-center gap-3 mb-3">
+          <div className="grid place-items-center w-9 h-9 rounded-glass bg-accent-cyan-50 ring-1 ring-accent-cyan-100 shrink-0 text-accent-cyan-600" aria-hidden="true">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
           </div>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>{lang === 'ar' ? 'إعدادات الذكاء الاصطناعي' : 'AI Agent Settings'}</h2>
-            <p style={{ fontSize: 12, color: C.textMuted, margin: 0 }}>Powered by Claude (Anthropic)</p>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-navy-800 m-0">{lang === 'ar' ? 'إعدادات الذكاء الاصطناعي' : 'AI Agent Settings'}</h2>
+            <p className="text-xs text-navy-500 m-0 mt-0.5">Powered by Claude (Anthropic)</p>
           </div>
         </div>
-        <p style={{ fontSize: 13, color: C.textSec, lineHeight: 1.6, margin: 0 }}>
+        <p className="text-sm text-navy-600 leading-relaxed m-0">
           {lang === 'ar'
             ? 'يقوم المشغّل بإدارة بيانات اعتماد Anthropic. الإعدادات أدناه (الشخصية، قاعدة المعرفة، القنوات، ساعات العمل) تُحفظ على مستوى العيادة وتُمرَّر إلى الخادم عند الرد التلقائي.'
             : 'Anthropic credentials are managed by the operator. The settings below (personality, knowledge base, channels, working hours) are saved per-clinic and forwarded to the server when auto-replies fire.'}
         </p>
-      </div>
+      </GlassCard>
 
       {/* Personality */}
-      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'شخصية الرد' : 'AI Personality'}</h3>
-        <div style={{ display: 'flex', gap: 10 }}>
-          {[{ id: 'professional', l: lang === 'ar' ? 'مهني' : 'Professional', i: '👔' }, { id: 'friendly', l: lang === 'ar' ? 'ودود' : 'Friendly', i: '😊' }, { id: 'formal', l: lang === 'ar' ? 'رسمي' : 'Formal', i: '📋' }].map(p => (
-            <button key={p.id} onClick={() => setPersonality(p.id)} style={{ flex: 1, padding: '16px 12px', borderRadius: 12, border: personality === p.id ? `2px solid ${C.primary}` : `1px solid ${C.border}`, background: personality === p.id ? C.primaryBg : C.white, cursor: 'pointer', fontFamily: 'inherit', textAlign: 'center' }}>
-              <div style={{ fontSize: 28, marginBottom: 6 }}>{p.i}</div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: personality === p.id ? C.primary : C.text }}>{p.l}</div>
-            </button>
-          ))}
+      <GlassCard padding="lg">
+        <h3 className="text-base font-semibold text-navy-800 m-0 mb-3.5">{lang === 'ar' ? 'شخصية الرد' : 'AI Personality'}</h3>
+        <div className="grid grid-cols-3 gap-2.5">
+          {PERSONALITIES.map(p => {
+            const active = personality === p.id
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPersonality(p.id)}
+                aria-pressed={active}
+                className={[
+                  'py-4 px-3 rounded-glass text-center cursor-pointer',
+                  'transition-colors duration-fast ease-standard',
+                  'focus-visible:outline-none focus-visible:shadow-focus-cyan',
+                  active
+                    ? 'bg-accent-cyan-50/60 ring-2 ring-accent-cyan-500 text-accent-cyan-700'
+                    : 'bg-white ring-1 ring-navy-100 text-navy-700 hover:ring-navy-200',
+                ].join(' ')}
+              >
+                <div className="text-[28px] leading-none mb-1.5" aria-hidden="true">{p.i}</div>
+                <div className="text-[13px] font-semibold">{p.l}</div>
+              </button>
+            )
+          })}
         </div>
-      </div>
+      </GlassCard>
 
       {/* Channels + Working Hours */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, marginBottom: 20 }}>
-        <div style={{ ...card, padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'القنوات المفعّلة' : 'Enabled Channels'}</h3>
-          {Object.entries(channels).map(([ch, on]) => (
-            <div key={ch} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}` }}>
-              <span style={{ fontSize: 13, color: C.text, textTransform: 'capitalize' }}>{ch}</span>
-              <Toggle value={on} onChange={() => setChannels(p => ({ ...p, [ch]: !p[ch] }))} />
-            </div>
-          ))}
-        </div>
-        <div style={{ ...card, padding: 24 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'ساعات العمل' : 'Working Hours'}</h3>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <span style={{ fontSize: 13, color: C.text }}>{lang === 'ar' ? 'نشط دائماً' : 'Always Active'}</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <GlassCard padding="lg">
+          <h3 className="text-base font-semibold text-navy-800 m-0 mb-3.5">{lang === 'ar' ? 'القنوات المفعّلة' : 'Enabled Channels'}</h3>
+          {Object.entries(channels).map(([ch, on], idx, arr) => {
+            const isLast = idx === arr.length - 1
+            return (
+              <div key={ch} className={`flex items-center justify-between py-2.5 ${isLast ? '' : 'border-b border-navy-100'}`}>
+                <span className="text-[13px] text-navy-700 capitalize">{ch}</span>
+                <Toggle value={on} onChange={() => setChannels(p => ({ ...p, [ch]: !p[ch] }))} />
+              </div>
+            )
+          })}
+        </GlassCard>
+        <GlassCard padding="lg">
+          <h3 className="text-base font-semibold text-navy-800 m-0 mb-3.5">{lang === 'ar' ? 'ساعات العمل' : 'Working Hours'}</h3>
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[13px] text-navy-700">{lang === 'ar' ? 'نشط دائماً' : 'Always Active'}</span>
             <Toggle value={workingHours.always_on} onChange={() => setWorkingHours(p => ({ ...p, always_on: !p.always_on }))} />
           </div>
           {!workingHours.always_on && (
-            <div style={{ display: 'flex', gap: 12 }}>
-              <FormField label={lang === 'ar' ? 'من' : 'From'} dir={dir}><input type="time" value={workingHours.start} onChange={e => setWorkingHours(p => ({ ...p, start: e.target.value }))} style={inputStyle(dir)} /></FormField>
-              <FormField label={lang === 'ar' ? 'إلى' : 'To'} dir={dir}><input type="time" value={workingHours.end} onChange={e => setWorkingHours(p => ({ ...p, end: e.target.value }))} style={inputStyle(dir)} /></FormField>
+            <div className="grid grid-cols-2 gap-3">
+              <Input
+                type="time"
+                label={lang === 'ar' ? 'من' : 'From'}
+                value={workingHours.start}
+                onChange={e => setWorkingHours(p => ({ ...p, start: e.target.value }))}
+              />
+              <Input
+                type="time"
+                label={lang === 'ar' ? 'إلى' : 'To'}
+                value={workingHours.end}
+                onChange={e => setWorkingHours(p => ({ ...p, end: e.target.value }))}
+              />
             </div>
           )}
-        </div>
+        </GlassCard>
       </div>
 
       {/* Knowledge Base */}
-      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-          <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: 0 }}>{lang === 'ar' ? 'قاعدة المعرفة' : 'Knowledge Base'}</h3>
-          <div style={{ display:'flex', gap:6 }}>
-            <input ref={fileRef} type="file" accept=".txt,.pdf,.md,.docx" style={{ display: 'none' }} onChange={handleFileUpload} />
-            <button type="button" onClick={() => fileRef.current?.click()} style={makeBtn('secondary', { fontSize: 12, gap: 4 })}>{Icons.upload(13)} {lang === 'ar' ? 'رفع ملف' : 'Upload File'}</button>
-            <button type="button" onClick={() => setShowTestChat(!showTestChat)} style={makeBtn('secondary', { fontSize: 12, gap: 4 })}>🧪 {lang === 'ar' ? 'اختبار' : 'Test AI'}</button>
+      <GlassCard padding="lg">
+        <div className="flex items-center justify-between gap-3 mb-3.5 flex-wrap">
+          <h3 className="text-base font-semibold text-navy-800 m-0">{lang === 'ar' ? 'قاعدة المعرفة' : 'Knowledge Base'}</h3>
+          <div className="flex items-center gap-2">
+            <input ref={fileRef} type="file" accept=".txt,.pdf,.md,.docx" className="hidden" onChange={handleFileUpload} />
+            <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()} iconStart={Icons.upload}>
+              {lang === 'ar' ? 'رفع ملف' : 'Upload File'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowTestChat(!showTestChat)}>
+              <span aria-hidden="true">🧪</span> {lang === 'ar' ? 'اختبار' : 'Test AI'}
+            </Button>
           </div>
         </div>
         {/* Uploaded files list */}
         {kbFiles.length > 0 && (
-          <div style={{ marginBottom:12, display:'flex', gap:6, flexWrap:'wrap' }}>
-            {kbFiles.map((f,i) => (
-              <span key={i} style={{ display:'flex', alignItems:'center', gap:4, fontSize:11, padding:'4px 8px', borderRadius:6, background:C.bg, border:`1px solid ${C.border}`, color:C.textSec }}>
-                📄 {f.name}
-                <button type="button" onClick={()=>{const next=kbFiles.filter((_,j)=>j!==i); setKbFiles(next); localStorage.setItem('velo_kb_files',JSON.stringify(next))}} style={{ border:'none', background:'transparent', cursor:'pointer', color:C.textMuted, fontSize:12, padding:0 }}>&times;</button>
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {kbFiles.map((f, i) => (
+              <span key={i} className="inline-flex items-center gap-1.5 h-6 ps-2.5 pe-1.5 rounded-full bg-navy-50 ring-1 ring-navy-100 text-navy-700 text-[11px]">
+                <span aria-hidden="true">📄</span> {f.name}
+                <button
+                  type="button"
+                  onClick={() => { const next = kbFiles.filter((_, j) => j !== i); setKbFiles(next); localStorage.setItem('velo_kb_files', JSON.stringify(next)) }}
+                  aria-label={(lang === 'ar' ? 'إزالة ' : 'Remove ') + f.name}
+                  className="grid place-items-center w-4 h-4 rounded-full text-navy-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                >&times;</button>
               </span>
             ))}
           </div>
         )}
-        <textarea value={knowledgeBase} onChange={e => setKnowledgeBase(e.target.value)} rows={6} placeholder={lang === 'ar' ? 'الصق نص الأسئلة الشائعة أو معلومات المنتج هنا...' : 'Paste FAQ text or product information here...'} style={{ ...inputStyle(dir), resize: 'vertical', lineHeight: 1.6 }} />
-        <p style={{ fontSize: 11, color: C.textMuted, marginTop: 6 }}>{lang === 'ar' ? 'سيستخدم الذكاء الاصطناعي هذه المعلومات للرد على العملاء' : 'AI will use this information to answer customer questions'}</p>
-      </div>
+        <textarea
+          value={knowledgeBase}
+          onChange={e => setKnowledgeBase(e.target.value)}
+          rows={6}
+          placeholder={lang === 'ar' ? 'الصق نص الأسئلة الشائعة أو معلومات المنتج هنا...' : 'Paste FAQ text or product information here...'}
+          className="w-full min-h-[140px] px-3.5 py-2.5 rounded-glass bg-white/85 backdrop-blur-glass-sm border border-navy-100 text-sm text-navy-800 placeholder:text-navy-400 leading-relaxed resize-y outline-none transition-all duration-fast ease-standard hover:border-navy-200 focus:border-accent-cyan-500 focus:shadow-focus-cyan"
+        />
+        <p className="text-[11px] text-navy-500 mt-1.5 m-0">{lang === 'ar' ? 'سيستخدم الذكاء الاصطناعي هذه المعلومات للرد على العملاء' : 'AI will use this information to answer customer questions'}</p>
+      </GlassCard>
 
       {/* Auto-Reply Configuration */}
-      <div style={{ ...card, padding: 24, marginBottom: 20 }}>
-        <h3 style={{ fontSize: 15, fontWeight: 600, color: C.text, margin: '0 0 14px' }}>{lang === 'ar' ? 'إعدادات الرد التلقائي' : 'Auto-Reply Settings'}</h3>
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'0 16px' }}>
-          <FormField label={lang === 'ar' ? 'كلمات التصعيد' : 'Escalation Keywords'} dir={dir}>
-            <input value={escalationKeywords} onChange={e=>setEscalationKeywords(e.target.value)} placeholder="urgent, help, complaint" style={inputStyle(dir)} />
-            <p style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>{lang === 'ar' ? 'إذا ذكر العميل هذه الكلمات → يتم إبلاغ الفريق' : 'If customer mentions these → notify team'}</p>
-          </FormField>
-          <FormField label={lang === 'ar' ? 'تأخير الرد' : 'Response Delay'} dir={dir}>
-            <select value={responseDelay} onChange={e=>setResponseDelay(e.target.value)} style={selectStyle(dir)}>
-              <option value="instant">{lang === 'ar' ? 'فوري' : 'Instant'}</option>
-              <option value="1min">{lang === 'ar' ? 'دقيقة واحدة' : '1 minute'}</option>
-              <option value="3min">{lang === 'ar' ? '3 دقائق' : '3 minutes'}</option>
-            </select>
-            <p style={{ fontSize:10, color:C.textMuted, marginTop:4 }}>{lang === 'ar' ? 'تأخير يجعل الرد يبدو أكثر طبيعية' : 'Delay makes replies feel more human'}</p>
-          </FormField>
+      <GlassCard padding="lg">
+        <h3 className="text-base font-semibold text-navy-800 m-0 mb-3.5">{lang === 'ar' ? 'إعدادات الرد التلقائي' : 'Auto-Reply Settings'}</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Input
+            label={lang === 'ar' ? 'كلمات التصعيد' : 'Escalation Keywords'}
+            value={escalationKeywords}
+            onChange={e => setEscalationKeywords(e.target.value)}
+            placeholder="urgent, help, complaint"
+            helper={lang === 'ar' ? 'إذا ذكر العميل هذه الكلمات → يتم إبلاغ الفريق' : 'If customer mentions these → notify team'}
+          />
+          <Select
+            label={lang === 'ar' ? 'تأخير الرد' : 'Response Delay'}
+            value={responseDelay}
+            onChange={e => setResponseDelay(e.target.value)}
+            options={[
+              { value: 'instant', label: lang === 'ar' ? 'فوري' : 'Instant' },
+              { value: '1min',    label: lang === 'ar' ? 'دقيقة واحدة' : '1 minute' },
+              { value: '3min',    label: lang === 'ar' ? '3 دقائق' : '3 minutes' },
+            ]}
+            helper={lang === 'ar' ? 'تأخير يجعل الرد يبدو أكثر طبيعية' : 'Delay makes replies feel more human'}
+          />
         </div>
-      </div>
+      </GlassCard>
 
       {/* Test Chat */}
       {showTestChat && (
-        <div style={{ ...card, padding: 20, marginBottom: 20 }}>
-          <h3 style={{ fontSize: 14, fontWeight: 600, color: C.text, margin: '0 0 12px' }}>🧪 {lang === 'ar' ? 'اختبار الذكاء الاصطناعي' : 'Test AI Responses'}</h3>
-          <div style={{ maxHeight:200, overflow:'auto', marginBottom:12, display:'flex', flexDirection:'column', gap:8 }}>
-            {testMessages.map((m,i) => (
-              <div key={i} style={{ display:'flex', justifyContent:m.role==='user'?'flex-end':'flex-start' }}>
-                <div style={{ maxWidth:'80%', padding:'8px 12px', borderRadius:10, background:m.role==='user'?C.primary:C.bg, color:m.role==='user'?'#fff':C.text, fontSize:12, lineHeight:1.5 }}>{m.content}</div>
+        <GlassCard padding="md">
+          <h3 className="text-sm font-semibold text-navy-800 m-0 mb-3">
+            <span aria-hidden="true">🧪</span> {lang === 'ar' ? 'اختبار الذكاء الاصطناعي' : 'Test AI Responses'}
+          </h3>
+          <div className="max-h-[200px] overflow-auto mb-3 flex flex-col gap-2">
+            {testMessages.map((m, i) => (
+              <div
+                key={i}
+                className={[
+                  'max-w-[80%] px-3 py-2 rounded-glass text-xs leading-relaxed',
+                  m.role === 'user'
+                    ? 'self-end bg-accent-cyan-600 text-white shadow-glass-sm'
+                    : 'self-start bg-navy-50 ring-1 ring-navy-100 text-navy-800',
+                ].join(' ')}
+              >
+                {m.content}
               </div>
             ))}
           </div>
-          <div style={{ display:'flex', gap:8 }}>
-            <input value={testInput} onChange={e=>setTestInput(e.target.value)} placeholder={lang === 'ar' ? 'اكتب رسالة تجريبية...' : 'Type a test message...'} style={{ ...inputStyle(dir), flex:1 }}
-              onKeyDown={async e => {
-                if(e.key==='Enter'&&testInput.trim()) {
-                  const msg = testInput.trim(); setTestInput('')
-                  setTestMessages(prev=>[...prev, {role:'user',content:msg}])
-                  try {
-                    const { callClaude, buildAutoReplySystem } = await import('../lib/ai')
-                    const reply = await callClaude({ messages:[{role:'user',content:msg}], system: buildAutoReplySystem(knowledgeBase, personality, 'Test Customer'), maxTokens:256 })
-                    setTestMessages(prev=>[...prev, {role:'assistant',content:reply}])
-                  } catch { setTestMessages(prev=>[...prev, {role:'assistant',content: lang === 'ar' ? 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.' : 'An error occurred while contacting the AI service.'}]) }
-                }
-              }} />
-          </div>
-        </div>
+          <Input
+            value={testInput}
+            onChange={e => setTestInput(e.target.value)}
+            placeholder={lang === 'ar' ? 'اكتب رسالة تجريبية...' : 'Type a test message...'}
+            aria-label={lang === 'ar' ? 'رسالة تجريبية' : 'Test message'}
+            onKeyDown={async e => {
+              if (e.key === 'Enter' && testInput.trim()) {
+                const msg = testInput.trim(); setTestInput('')
+                setTestMessages(prev => [...prev, { role: 'user', content: msg }])
+                try {
+                  const { callClaude, buildAutoReplySystem } = await import('../lib/ai')
+                  const reply = await callClaude({ messages: [{ role: 'user', content: msg }], system: buildAutoReplySystem(knowledgeBase, personality, 'Test Customer'), maxTokens: 256 })
+                  setTestMessages(prev => [...prev, { role: 'assistant', content: reply }])
+                } catch { setTestMessages(prev => [...prev, { role: 'assistant', content: lang === 'ar' ? 'حدث خطأ أثناء الاتصال بالذكاء الاصطناعي.' : 'An error occurred while contacting the AI service.' }]) }
+              }
+            }}
+          />
+        </GlassCard>
       )}
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="button" onClick={handleSave} style={makeBtn(saved ? 'success' : 'primary', { gap: 6 })}>{saved ? Icons.check(14) : null} {saved ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!') : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}</button>
+      <div className="flex justify-end">
+        <Button
+          variant="primary"
+          onClick={handleSave}
+          iconStart={saved ? Icons.check : undefined}
+        >
+          {saved ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!') : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
+        </Button>
       </div>
     </div>
   )
