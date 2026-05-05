@@ -754,7 +754,7 @@ export default function App() {
     <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:"'DM Sans',-apple-system,sans-serif", direction:dir }}>
       {/* ── SIDEBAR (desktop) ────────────────────────────────────────── */}
       <aside
-        className="desktop-sidebar relative z-raised flex flex-col bg-white border-e border-navy-100 overflow-hidden transition-[width,min-width] duration-base ease-standard"
+        className="desktop-sidebar relative z-raised flex flex-col bg-navy-50 border-e border-navy-100 overflow-hidden transition-[width,min-width] duration-base ease-standard"
         style={{ width: sidebarCollapsed ? 56 : 228, minWidth: sidebarCollapsed ? 56 : 228 }}
       >
         <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[60px] py-4 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
@@ -810,8 +810,8 @@ export default function App() {
                       'focus-visible:outline-none focus-visible:shadow-focus-cyan',
                       sidebarCollapsed ? 'justify-center px-0' : 'justify-start px-2.5',
                       active
-                        ? 'bg-navy-50/80 text-navy-900 font-semibold ring-1 ring-navy-100 shadow-glass-sm'
-                        : 'bg-transparent text-navy-600 font-medium hover:bg-navy-50/70 hover:text-navy-800',
+                        ? 'bg-white text-navy-900 font-semibold ring-1 ring-navy-100 shadow-glass-sm'
+                        : 'bg-transparent text-navy-600 font-medium hover:bg-white/70 hover:text-navy-800',
                     ].join(' ')}
                   >
                     <span aria-hidden="true" className={`flex items-center shrink-0 ${active ? 'text-accent-cyan-600' : 'text-navy-400'}`}>{item.icon(16)}</span>
