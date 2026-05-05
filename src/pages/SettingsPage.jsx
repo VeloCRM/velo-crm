@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { C, makeBtn, card } from '../design'
 import { GlassCard, Button, Input, Select, Modal, Badge } from '../components/ui'
-import { Icons, Toggle, FormField, inputStyle, selectStyle } from '../components/shared'
+import { Icons, Toggle } from '../components/shared'
 import { avatarGradient, avatarInitials } from '../lib/avatarGradient'
 import { sanitizeName, isValidEmail } from '../lib/sanitize'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -1345,34 +1344,29 @@ function AgencyAITab({ lang }) {
   // to configure here from the UI anymore.
   const isRTL = lang === 'ar'
   return (
-    <div>
-      <div style={{ ...card, padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-          <div style={{
-            width: 44, height: 44, borderRadius: 12,
-            background: 'linear-gradient(135deg, rgb(var(--velo-accent-solid)), #7c3aed)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="space-y-5">
+      <GlassCard padding="lg">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="grid place-items-center w-11 h-11 rounded-glass bg-accent-cyan-50 ring-1 ring-accent-cyan-100 shrink-0 text-accent-cyan-600" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 2L2 7l10 5 10-5-10-5z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" />
             </svg>
           </div>
-          <div>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: 'rgb(var(--velo-text-primary))', margin: 0 }}>
+          <div className="min-w-0">
+            <h2 className="text-lg font-semibold text-navy-800 m-0">
               {isRTL ? 'AI الوكالة' : 'Agency AI'}
             </h2>
-            <p style={{ fontSize: 12, color: 'rgb(var(--velo-text-secondary))', margin: '2px 0 0' }}>
+            <p className="text-xs text-navy-600 m-0 mt-0.5">
               {isRTL ? 'يدار خادمياً' : 'Server-managed'}
             </p>
           </div>
         </div>
-        <p style={{ fontSize: 14, color: 'rgb(var(--velo-text-secondary))', lineHeight: 1.6, margin: 0 }}>
+        <p className="text-sm text-navy-600 leading-relaxed m-0">
           {isRTL
             ? 'يتم تكوين ميزات الذكاء الاصطناعي عبر المتغير البيئي للخادم ANTHROPIC_API_KEY بواسطة المشغل. لم تعد هناك إعدادات قابلة للتعديل من واجهة المستخدم.'
             : 'AI features are configured by the operator via the server-side ANTHROPIC_API_KEY env var. Nothing is configurable from the UI anymore — contact support to enable or rotate the key.'}
         </p>
-      </div>
+      </GlassCard>
     </div>
   )
 }
@@ -1398,6 +1392,7 @@ function doctorTint(id) {
 
 function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
   void lang
+  void dir
   const [doctors, setDoctors] = useState(() =>
     isSupabaseConfigured() ? [] : SAMPLE_DENTAL_DOCTORS
   )
@@ -1476,48 +1471,65 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
     if (setTab) setTab('team')
   }
 
-  if (loading) return <div style={{ ...card, padding: 40, textAlign: 'center', color: C.textMuted }}>Loading...</div>
+  if (loading) {
+    return (
+      <GlassCard padding="lg" className="text-center">
+        <p className="text-sm text-navy-500 m-0">Loading...</p>
+      </GlassCard>
+    )
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="space-y-5">
       {/* Doctors */}
-      <div style={{ ...card, padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-          <div>
-            <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: 0 }}>{isRTL ? 'الاطباء' : 'Doctors'}</h3>
-            <p style={{ fontSize: 13, color: C.textSec, margin: '4px 0 0' }}>
+      <GlassCard padding="lg">
+        <div className="flex items-start justify-between gap-3 mb-5 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <h3 className="text-lg font-semibold text-navy-800 m-0">{isRTL ? 'الاطباء' : 'Doctors'}</h3>
+            <p className="text-sm text-navy-600 leading-relaxed m-0 mt-1">
               {isRTL
                 ? 'الأطباء مستخدمو Velo — ادعهم من تبويب الفريق بدور "طبيب"'
                 : 'Doctors are Velo users — invite from the Team tab with role "Doctor"'}
             </p>
           </div>
-          <button onClick={handleAddDoctor} className="velo-btn-primary" style={makeBtn('primary')}>{Icons.users(14)} {isRTL ? 'تبويب الفريق' : 'Go to Team'}</button>
+          <Button variant="primary" onClick={handleAddDoctor} iconStart={Icons.users}>
+            {isRTL ? 'تبويب الفريق' : 'Go to Team'}
+          </Button>
         </div>
 
         {doctors.length === 0 ? (
-          <div style={{ padding: 32, textAlign: 'center', color: C.textMuted, fontSize: 13, border: '1px dashed var(--border-subtle)', borderRadius: 10 }}>
+          <div className="text-center py-8 px-4 rounded-glass border border-dashed border-navy-200 text-sm text-navy-500 italic">
             {isRTL ? 'لا يوجد أطباء بعد. ادعهم من تبويب الفريق.' : 'No doctors yet — invite them from the Team tab.'}
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="flex flex-col gap-2">
             {doctors.map(doc => {
               const tint = doctorTint(doc.id)
               return (
-                <div key={doc.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 10, border: '1px solid var(--border-subtle)', background: 'var(--bg-void)' }}>
+                <div key={doc.id} className="flex items-center gap-3 px-4 py-3 rounded-glass bg-white/85 ring-1 ring-navy-100">
                   {doc.avatar_url ? (
-                    <img src={doc.avatar_url} alt="" style={{ width: 40, height: 40, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }} />
+                    <img src={doc.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover shrink-0" />
                   ) : (
-                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: `${tint}20`, border: `2px solid ${tint}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: tint, fontWeight: 700, fontSize: 16, flexShrink: 0 }}>
+                    <div
+                      className="grid place-items-center w-10 h-10 rounded-full text-base font-bold shrink-0"
+                      style={{ background: `${tint}20`, border: `2px solid ${tint}`, color: tint }}
+                      aria-hidden="true"
+                    >
                       {(doc.full_name || 'D').charAt(0)}
                     </div>
                   )}
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{doc.full_name || '—'}</div>
-                    <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-navy-800 truncate">{doc.full_name || '—'}</div>
+                    <div className="text-[11px] text-navy-500 mt-0.5">
                       {ROLE_LABELS[isRTL ? 'ar' : 'en'].doctor}
                     </div>
                   </div>
-                  <button onClick={() => { setEditDoc(doc); setShowDocForm(true) }} style={{ ...makeBtn('ghost'), padding: 6, height: 30 }} title={isRTL ? 'تعديل' : 'Edit'}>
+                  <button
+                    type="button"
+                    onClick={() => { setEditDoc(doc); setShowDocForm(true) }}
+                    aria-label={isRTL ? 'تعديل' : 'Edit'}
+                    className="grid place-items-center w-8 h-8 rounded-glass text-navy-500 hover:text-navy-700 hover:bg-navy-50 transition-colors duration-fast"
+                  >
                     {Icons.edit(14)}
                   </button>
                 </div>
@@ -1526,44 +1538,56 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
           </div>
         )}
 
-        {showDocForm && <DoctorForm doc={editDoc} onSave={saveDoctor} onCancel={() => { setShowDocForm(false); setEditDoc(null) }} dir={dir} isRTL={isRTL} />}
-      </div>
+        {showDocForm && <DoctorForm doc={editDoc} onSave={saveDoctor} onCancel={() => { setShowDocForm(false); setEditDoc(null) }} isRTL={isRTL} />}
+      </GlassCard>
 
       {/* Working Hours */}
-      <div style={{ ...card, padding: 24 }}>
-        <h3 style={{ fontSize: 17, fontWeight: 700, color: C.text, margin: '0 0 16px' }}>{isRTL ? 'ساعات العمل' : 'Working Hours'}</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 20, maxWidth: 400 }}>
-          <FormField label={isRTL ? 'وقت الفتح' : 'Open Time'} dir={dir}>
-            <input type="time" value={hours.open} onChange={e => saveHours({ ...hours, open: e.target.value })} style={inputStyle(dir)} />
-          </FormField>
-          <FormField label={isRTL ? 'وقت الاغلاق' : 'Close Time'} dir={dir}>
-            <input type="time" value={hours.close} onChange={e => saveHours({ ...hours, close: e.target.value })} style={inputStyle(dir)} />
-          </FormField>
+      <GlassCard padding="lg">
+        <h3 className="text-lg font-semibold text-navy-800 m-0 mb-4">{isRTL ? 'ساعات العمل' : 'Working Hours'}</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5 max-w-md">
+          <Input
+            type="time"
+            label={isRTL ? 'وقت الفتح' : 'Open Time'}
+            value={hours.open}
+            onChange={e => saveHours({ ...hours, open: e.target.value })}
+          />
+          <Input
+            type="time"
+            label={isRTL ? 'وقت الاغلاق' : 'Close Time'}
+            value={hours.close}
+            onChange={e => saveHours({ ...hours, close: e.target.value })}
+          />
         </div>
-        <div style={{ fontSize: 12, fontWeight: 700, color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>
+        <div className="text-[11px] font-semibold uppercase tracking-wider text-navy-500 mb-2.5">
           {isRTL ? 'ايام العطلة' : 'Days Off'}
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap gap-2">
           {(isRTL ? WEEK_DAYS_AR : WEEK_DAYS_EN).map((day, i) => {
             const isOff = hours.daysOff?.includes(i)
             return (
-              <button key={i} onClick={() => {
-                const next = isOff ? hours.daysOff.filter(d => d !== i) : [...(hours.daysOff || []), i]
-                saveHours({ ...hours, daysOff: next })
-              }}
-                style={{
-                  padding: '8px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
-                  border: isOff ? '1px solid rgba(255,107,107,0.3)' : '1px solid var(--border-subtle)',
-                  background: isOff ? 'rgba(255,107,107,0.08)' : 'transparent',
-                  color: isOff ? '#FF6B6B' : C.text,
-                  transition: 'all 0.15s',
-                }}>
+              <button
+                key={i}
+                type="button"
+                aria-pressed={isOff}
+                onClick={() => {
+                  const next = isOff ? hours.daysOff.filter(d => d !== i) : [...(hours.daysOff || []), i]
+                  saveHours({ ...hours, daysOff: next })
+                }}
+                className={[
+                  'h-9 px-4 rounded-glass text-[13px] font-semibold cursor-pointer',
+                  'transition-colors duration-fast ease-standard',
+                  'focus-visible:outline-none focus-visible:shadow-focus-cyan',
+                  isOff
+                    ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-200'
+                    : 'bg-transparent text-navy-700 ring-1 ring-navy-100 hover:ring-navy-200 hover:bg-navy-50',
+                ].join(' ')}
+              >
                 {day}
               </button>
             )
           })}
         </div>
-      </div>
+      </GlassCard>
     </div>
   )
 }
@@ -1571,6 +1595,7 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
 // New profiles schema only allows clinic-side edits to full_name, avatar_url,
 // and locale. Role / org_id are operator-managed and locked by trigger.
 function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
+  void dir
   const [form, setForm] = useState({
     full_name: doc?.full_name || '',
     avatar_url: doc?.avatar_url || '',
@@ -1579,32 +1604,49 @@ function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   return (
-    <div style={{ marginTop: 16, padding: 20, borderRadius: 12, border: '1px solid var(--border-subtle)', background: 'var(--bg-surface)' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-        <FormField label={isRTL ? 'الاسم' : 'Name'} dir={dir}>
-          <input value={form.full_name} onChange={e => set('full_name', e.target.value)} style={inputStyle(dir)} placeholder="Dr. ..." />
-        </FormField>
-        <FormField label={isRTL ? 'اللغة' : 'Locale'} dir={dir}>
-          <select value={form.locale} onChange={e => set('locale', e.target.value)} style={selectStyle(dir)}>
-            <option value="">{isRTL ? '— تلقائي —' : '— Auto —'}</option>
-            <option value="en">English</option>
-            <option value="ar">العربية</option>
-          </select>
-        </FormField>
+    <div className="mt-4 p-5 rounded-glass bg-navy-50/40 ring-1 ring-navy-100">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+        <Input
+          label={isRTL ? 'الاسم' : 'Name'}
+          value={form.full_name}
+          onChange={e => set('full_name', e.target.value)}
+          placeholder="Dr. ..."
+        />
+        <Select
+          label={isRTL ? 'اللغة' : 'Locale'}
+          value={form.locale}
+          onChange={e => set('locale', e.target.value)}
+          options={[
+            { value: '',   label: isRTL ? '— تلقائي —' : '— Auto —' },
+            { value: 'en', label: 'English' },
+            { value: 'ar', label: 'العربية' },
+          ]}
+        />
       </div>
-      <FormField label={isRTL ? 'رابط الصورة' : 'Avatar URL'} dir={dir}>
-        <input value={form.avatar_url} onChange={e => set('avatar_url', e.target.value)} style={inputStyle(dir)} placeholder="https://..." />
-      </FormField>
-      <div style={{ marginTop: 4, marginBottom: 12, fontSize: 11, color: C.textMuted, fontStyle: 'italic' }}>
+      <div className="mb-3">
+        <Input
+          label={isRTL ? 'رابط الصورة' : 'Avatar URL'}
+          value={form.avatar_url}
+          onChange={e => set('avatar_url', e.target.value)}
+          placeholder="https://..."
+        />
+      </div>
+      <p className="text-[11px] text-navy-500 italic m-0 mb-4">
         {isRTL
           ? 'يتم إدارة الدور (طبيب / موظف استقبال) من قبل المشغل، لا يمكن تعديله من هنا.'
           : 'Role (doctor / receptionist / etc.) is operator-managed and cannot be changed from this form.'}
-      </div>
-      <div style={{ display: 'flex', gap: 8 }}>
-        <button onClick={onCancel} style={makeBtn('secondary')}>{isRTL ? 'الغاء' : 'Cancel'}</button>
-        <button onClick={() => { if (form.full_name.trim()) onSave(form) }} disabled={!form.full_name.trim()} className="velo-btn-primary" style={{ ...makeBtn('primary'), opacity: form.full_name.trim() ? 1 : 0.5 }}>
+      </p>
+      <div className="flex gap-2 justify-end">
+        <Button variant="secondary" onClick={onCancel}>
+          {isRTL ? 'الغاء' : 'Cancel'}
+        </Button>
+        <Button
+          variant="primary"
+          onClick={() => { if (form.full_name.trim()) onSave(form) }}
+          disabled={!form.full_name.trim()}
+        >
           {isRTL ? 'تحديث' : 'Update'}
-        </button>
+        </Button>
       </div>
     </div>
   )
