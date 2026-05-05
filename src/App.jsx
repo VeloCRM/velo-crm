@@ -753,100 +753,118 @@ export default function App() {
   return (
     <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:"'DM Sans',-apple-system,sans-serif", direction:dir }}>
       {/* ── SIDEBAR (desktop) ────────────────────────────────────────── */}
-      <aside className="desktop-sidebar" style={{
-        width: sidebarCollapsed?56:228, minWidth: sidebarCollapsed?56:228,
-        background: C.sidebar, display:'flex', flexDirection:'column',
-        transition:'width 200ms ease, min-width 200ms ease',
-        borderRight: isRTL?'none':`1px solid ${C.sidebarBorder}`,
-        borderLeft: isRTL?`1px solid ${C.sidebarBorder}`:'none',
-        overflow:'hidden', position:'relative', zIndex:10,
-      }}>
-        <div style={{ padding: sidebarCollapsed?'16px 8px':'16px 16px', display:'flex', alignItems:'center', gap:12, borderBottom:`1px solid ${C.sidebarBorder}`, minHeight:60 }}>
+      <aside
+        className="desktop-sidebar relative z-raised flex flex-col bg-navy-50 border-e border-navy-100 overflow-hidden transition-[width,min-width] duration-base ease-standard"
+        style={{ width: sidebarCollapsed ? 56 : 228, minWidth: sidebarCollapsed ? 56 : 228 }}
+      >
+        <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[60px] py-4 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
           {isAgencyMode ? (
             <>
-              <div style={{ width:36, height:36, borderRadius:10, background:'rgba(0,255,178,0.1)', border:'1px solid rgba(0,255,178,0.25)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFB2" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
+              <div className="w-9 h-9 rounded-[10px] bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan-600"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
               </div>
-              {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
-                <div style={{color:C.text,fontWeight:800,fontSize:17,fontFamily:"'Syne',sans-serif",letterSpacing:'-0.03em',display:'flex',alignItems:'center',gap:8}}>
-                  {isRTL ? 'وكالة Velo' : 'Velo Agency'}
-                  <span style={{fontSize:9,fontWeight:700,padding:'2px 6px',borderRadius:4,background:'rgba(0,255,178,0.1)',color:'#00FFB2',letterSpacing:'0.05em',textTransform:'uppercase',lineHeight:'14px',border:'1px solid rgba(0,255,178,0.25)'}}>PRO</span>
+              {!sidebarCollapsed && (
+                <div className="overflow-hidden">
+                  <div className="flex items-center gap-2 font-display text-[17px] font-extrabold tracking-[-0.03em] text-navy-900">
+                    {isRTL ? 'وكالة Velo' : 'Velo Agency'}
+                    <span className="text-[9px] font-bold leading-[14px] tracking-[0.05em] uppercase rounded px-1.5 py-0.5 bg-accent-cyan-50 text-accent-cyan-700 ring-1 ring-accent-cyan-100">PRO</span>
+                  </div>
+                  <div className="text-[11px] mt-0.5 font-sans text-navy-500">{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
                 </div>
-                <div style={{color:C.sidebarText,fontSize:11,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
-              </div>}
+              )}
             </>
           ) : (
             <>
-              {/* Logo mark — 36x36 rounded 10, tooth SVG in mint */}
-              <div style={{ width:36, height:36, borderRadius:10, background:'rgba(0,255,178,0.1)', border:'1px solid rgba(0,255,178,0.25)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00FFB2" strokeWidth="2"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="#00FFB2"/><circle cx="15" cy="19" r="1" fill="#00FFB2"/></svg>
+              {/* Logo mark — 36x36 rounded 10, tooth glyph in cyan */}
+              <div className="w-9 h-9 rounded-[10px] bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan-600"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
               </div>
-              {!sidebarCollapsed && <div style={{overflow:'hidden'}}>
-                <div style={{color:C.text,fontWeight:800,fontSize:17,fontFamily:"'Syne',sans-serif",letterSpacing:'-0.03em'}}>{orgSettings.name || t.appName}</div>
-                <div style={{color:C.sidebarText,fontSize:11,marginTop:2,fontFamily:"'DM Sans',sans-serif"}}>{orgSettings.name ? t.appName : t.appTagline}</div>
-              </div>}
+              {!sidebarCollapsed && (
+                <div className="overflow-hidden">
+                  <div className="font-display text-[17px] font-extrabold tracking-[-0.03em] text-navy-900">{orgSettings.name || t.appName}</div>
+                  <div className="text-[11px] mt-0.5 font-sans text-navy-500">{orgSettings.name ? t.appName : t.appTagline}</div>
+                </div>
+              )}
             </>
           )}
         </div>
-        <nav style={{ flex:1, overflowY:'auto', padding:'8px', minHeight:0 }}>
+        <nav className="flex-1 overflow-y-auto p-2 min-h-0">
           {visibleNavGroups.map((group, gi) => (
-            <div key={gi} style={{ marginBottom:4 }}>
-              {!sidebarCollapsed && <div style={{ color:C.textMuted, fontSize:9.5, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.1em', padding:'14px 12px 5px', fontFamily:"'DM Sans',sans-serif" }}>{group.label}</div>}
+            <div key={gi} className="mb-1">
+              {!sidebarCollapsed && (
+                <div className="text-[9.5px] font-semibold uppercase tracking-[0.1em] pt-3.5 pb-1.5 px-3 font-sans text-navy-500">{group.label}</div>
+              )}
               {group.items.map(item => {
                 const active = page === item.id
                 return (
-                  <button key={item.id} onClick={() => setPage(item.id)}
-                    style={{ width:'100%', display:'flex', alignItems:'center', gap:8,
-                      padding: sidebarCollapsed?'8px 0':'0 10px', height:36, justifyContent: sidebarCollapsed?'center':'flex-start',
-                      borderRadius:8, border:'none', background: active?'rgba(0,255,178,0.08)':'transparent',
-                      color: active?'#00FFB2':C.sidebarText, cursor:'pointer', fontSize:13,
-                      fontWeight: active?500:400, transition:'all 0.18s ease', fontFamily:"'DM Sans',sans-serif",
-                      textAlign: isRTL?'right':'left', direction:dir,
-                      borderLeft: active && !isRTL ? '2px solid #00FFB2' : '2px solid transparent',
-                      borderRight: active && isRTL ? '2px solid #00FFB2' : '2px solid transparent',
-                      boxShadow: 'none',
-                    }}
-                    onMouseEnter={e=>{if(!active){ e.currentTarget.style.background='rgba(255,255,255,0.04)'; e.currentTarget.style.color='#E8EAF5' }}}
-                    onMouseLeave={e=>{if(!active){ e.currentTarget.style.background='transparent'; e.currentTarget.style.color=C.sidebarText }}}>
-                    <span style={{ display:'flex', alignItems:'center', color: active?'#00FFB2':C.sidebarText, flexShrink:0, opacity: active?1:0.55, transition:'all 0.18s ease' }}>{item.icon(16)}</span>
-                    {!sidebarCollapsed && <><span style={{flex:1}}>{item.label}</span>{item.badge && <span style={{ background:'#00FFB2', color:'#07080E', fontSize:9.5, fontWeight:700, padding:'0 7px', borderRadius:10, height:18, display:'inline-flex', alignItems:'center' }}>{item.badge}</span>}</>}
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setPage(item.id)}
+                    data-active={active}
+                    aria-current={active ? 'page' : undefined}
+                    className={[
+                      'w-full flex items-center gap-2 h-9',
+                      'rounded-lg border-0 cursor-pointer text-[13px] font-sans text-start',
+                      'transition-colors duration-fast',
+                      'focus-visible:outline-none focus-visible:shadow-focus-cyan',
+                      sidebarCollapsed ? 'justify-center px-0' : 'justify-start px-2.5',
+                      active
+                        ? 'bg-white text-navy-900 font-semibold ring-1 ring-navy-100 shadow-glass-sm'
+                        : 'bg-transparent text-navy-600 font-medium hover:bg-white/70 hover:text-navy-800',
+                    ].join(' ')}
+                  >
+                    <span aria-hidden="true" className={`flex items-center shrink-0 ${active ? 'text-accent-cyan-600' : 'text-navy-400'}`}>{item.icon(16)}</span>
+                    {!sidebarCollapsed && (
+                      <>
+                        <span className="flex-1 truncate">{item.label}</span>
+                        {item.badge && (
+                          <span className="bg-accent-cyan-600 text-white text-[9.5px] font-bold leading-none px-1.5 rounded-[10px] h-[18px] inline-flex items-center tabular-nums">{item.badge}</span>
+                        )}
+                      </>
+                    )}
                   </button>
                 )
               })}
             </div>
           ))}
         </nav>
-        {/* User section (desktop only) — gradient avatar with online dot glow */}
-        {!sidebarCollapsed && user && (
-          <div style={{ borderTop:`1px solid ${C.sidebarBorder}`, padding:'12px 14px', display:'flex', alignItems:'center', gap:10 }}>
-            <div style={{ position:'relative', flexShrink:0 }}>
-              <div style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, #00FFB2, #4DA6FF)', display:'flex', alignItems:'center', justifyContent:'center', color:'#07080E', fontSize:12, fontWeight:700, fontFamily:"'DM Sans',sans-serif" }}>
-                {(user?.email || 'U').charAt(0).toUpperCase()}
+        {/* User section (desktop only) — deterministic-by-name gradient avatar with cyan online-dot */}
+        {!sidebarCollapsed && user && (() => {
+          const fullName = user?.user_metadata?.full_name || (user?.email || '').split('@')[0] || t.adminUser
+          return (
+            <div className="border-t border-navy-100 py-3 px-3.5 flex items-center gap-2.5">
+              <div className="relative shrink-0">
+                <div className={`grid place-items-center w-8 h-8 rounded-full text-white text-[12px] font-bold font-sans bg-gradient-to-br shadow-glass-sm ${avatarGradient(fullName)}`}>
+                  {avatarInitials(fullName)}
+                </div>
+                <div
+                  className="absolute -bottom-px end-[-1px] w-1.5 h-1.5 rounded-full bg-accent-cyan-600 ring-2 ring-white"
+                  style={{ boxShadow: '0 0 6px rgba(6,182,212,0.6)' }}
+                />
               </div>
-              {/* Online indicator: 6px mint dot with glow */}
-              <div style={{ position:'absolute', bottom:-1, [isRTL?'left':'right']:-1, width:6, height:6, borderRadius:'50%', background:'#00FFB2', boxShadow:'0 0 6px #00FFB2', border:`2px solid ${C.sidebar}` }} />
+              <div className="min-w-0 flex-1">
+                <div className="text-[12px] font-semibold text-navy-900 truncate font-sans">{fullName}</div>
+                <div className="text-[10px] text-navy-500 truncate">{user?.email || 'demo@velo.app'}</div>
+              </div>
             </div>
-            <div style={{ minWidth:0, flex:1 }}>
-              <div style={{ fontSize:12, fontWeight:600, color:C.text, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontFamily:"'DM Sans',sans-serif" }}>
-                {user?.user_metadata?.full_name || (user?.email || '').split('@')[0] || t.adminUser}
-              </div>
-              <div style={{ fontSize:10, color:C.textMuted, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                {user?.email || 'demo@velo.app'}
-              </div>
-            </div>
-          </div>
-        )}
-        <button onClick={() => setSidebarCollapsed(c=>!c)} style={{ height:40, border:'none', background:'transparent', color:C.sidebarText, cursor:'pointer', borderTop:`1px solid ${C.sidebarBorder}`, display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'inherit', transition:'color 150ms ease' }}
-          onMouseEnter={e=>e.currentTarget.style.color=C.sidebarActiveText} onMouseLeave={e=>e.currentTarget.style.color=C.sidebarText}>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
-            {sidebarCollapsed ? (isRTL?<polyline points="15 18 9 12 15 6"/>:<polyline points="9 18 15 12 9 6"/>) : (isRTL?<polyline points="9 18 15 12 9 6"/>:<polyline points="15 18 9 12 15 6"/>)}
+          )
+        })()}
+        <button
+          type="button"
+          onClick={() => setSidebarCollapsed(c => !c)}
+          aria-label={sidebarCollapsed ? (isRTL ? 'توسيع الشريط الجانبي' : 'Expand sidebar') : (isRTL ? 'طي الشريط الجانبي' : 'Collapse sidebar')}
+          className="h-10 border-0 bg-transparent cursor-pointer border-t border-navy-100 flex items-center justify-center transition-colors duration-fast text-navy-400 hover:text-accent-cyan-600 focus-visible:outline-none focus-visible:shadow-focus-cyan"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" className="rtl:-scale-x-100">
+            {sidebarCollapsed ? <polyline points="9 18 15 12 9 6"/> : <polyline points="15 18 9 12 15 6"/>}
           </svg>
         </button>
       </aside>
 
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'rgb(var(--velo-surface-canvas))' }}>
-        <header className="mobile-header" style={{ height:52, minHeight:52, background: C.sidebar, borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
+        <header className="mobile-header" style={{ height:52, minHeight:52, background: '#FFFFFF', borderBottom:'1px solid #DDE7F4', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
           {/* Mobile: Logo + company name in header */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
@@ -855,11 +873,11 @@ export default function App() {
             </div>
           )}
           {/* Search → opens Command Palette */}
-          <div onClick={() => setCmdPaletteOpen(true)} style={{ display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'0 12px', height:34, border:'1px solid rgba(255,255,255,0.07)', flex:1, maxWidth:320, cursor:'pointer', transition:'border-color 0.18s ease' }}
-            onMouseEnter={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.14)'} onMouseLeave={e=>e.currentTarget.style.borderColor='rgba(255,255,255,0.07)'}>
-            <span style={{color:C.textMuted,display:'flex'}}>{Icons.search(16)}</span>
-            <span style={{ fontSize:13, color:C.textMuted, flex:1 }}>{t.searchPlaceholder}</span>
-            <kbd style={{ padding:'2px 6px', borderRadius:4, background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.065)', fontSize:10, color:C.textMuted, fontFamily:"'DM Sans',sans-serif" }}>Ctrl+K</kbd>
+          <div onClick={() => setCmdPaletteOpen(true)} style={{ display:'flex', alignItems:'center', gap:8, background:'#F1F5FB', borderRadius:8, padding:'0 12px', height:34, border:'1px solid #DDE7F4', flex:1, maxWidth:320, cursor:'pointer', transition:'border-color 0.18s ease' }}
+            onMouseEnter={e=>e.currentTarget.style.borderColor='#B6CAE5'} onMouseLeave={e=>e.currentTarget.style.borderColor='#DDE7F4'}>
+            <span style={{color:'#5680B3',display:'flex'}}>{Icons.search(16)}</span>
+            <span style={{ fontSize:13, color:'#5680B3', flex:1 }}>{t.searchPlaceholder}</span>
+            <kbd style={{ padding:'2px 6px', borderRadius:4, background:'#FFFFFF', border:'1px solid #DDE7F4', fontSize:10, color:'#5680B3', fontFamily:"'DM Sans',sans-serif" }}>Ctrl+K</kbd>
           </div>
           <div style={{flex:1}}/>
           {!isMobile && (
@@ -868,10 +886,10 @@ export default function App() {
             </button>
           )}
           {/* Notifications */}
-          <button onClick={() => setNotifOpen(v => !v)} style={{ width:32, height:32, borderRadius:8, border:'1px solid rgba(255,255,255,0.07)', background:'rgba(255,255,255,0.03)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:C.textSec, position:'relative', transition:'all 0.18s ease' }}
-            onMouseEnter={e=>e.currentTarget.style.background='rgba(255,255,255,0.07)'} onMouseLeave={e=>e.currentTarget.style.background='rgba(255,255,255,0.03)'}>
+          <button onClick={() => setNotifOpen(v => !v)} style={{ width:32, height:32, borderRadius:8, border:'1px solid #DDE7F4', background:'#F1F5FB', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#103562', position:'relative', transition:'all 0.18s ease' }}
+            onMouseEnter={e=>e.currentTarget.style.background='#DDE7F4'} onMouseLeave={e=>e.currentTarget.style.background='#F1F5FB'}>
             {Icons.bell(16)}
-            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:'#FF6B6B', color:'#07080E', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #07080E' }}>{notifications.filter(n => !n.read).length}</span>}
+            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:'#FF6B6B', color:'#07080E', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #FFFFFF' }}>{notifications.filter(n => !n.read).length}</span>}
           </button>
           {/* User avatar + dropdown */}
           <div style={{ position:'relative' }}>
