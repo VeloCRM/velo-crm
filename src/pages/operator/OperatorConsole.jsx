@@ -6,26 +6,6 @@ import { withTimeout } from '../../lib/sanitize'
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const INDUSTRY_LABELS = {
-  general: 'General',
-  dental: 'Dental',
-  real_estate: 'Real Estate',
-  beauty: 'Beauty & Spa',
-  legal: 'Legal',
-  restaurant: 'Restaurant',
-}
-
-const INDUSTRY_OPTIONS = Object.entries(INDUSTRY_LABELS)
-
-const PLAN_OPTIONS = ['free', 'starter', 'pro', 'enterprise']
-
-const PLAN_BADGE = {
-  free:       { color: '#3A3D55', bg: 'rgba(255,255,255,0.04)' },
-  starter:    { color: '#00FFB2', bg: 'rgba(0,255,178,0.08)' },
-  pro:        { color: '#A78BFA', bg: 'rgba(167,139,250,0.08)' },
-  enterprise: { color: '#00FFB2', bg: 'rgba(0,255,178,0.08)' },
-}
-
 const STATUS_BADGE = {
   active:    { color: '#00FFB2', bg: 'rgba(0,255,178,0.08)', border: 'rgba(0,255,178,0.2)' },
   suspended: { color: '#FFB347', bg: 'rgba(255,179,71,0.08)', border: 'rgba(255,179,71,0.2)' },
@@ -33,13 +13,15 @@ const STATUS_BADGE = {
 }
 
 const SAMPLE_ORGS = [
-  { id: 'demo-1', name: 'Bright Dental Clinic', industry: 'dental', plan: 'pro', status: 'active', created_at: '2025-11-01T10:00:00Z', contact_count: 234 },
-  { id: 'demo-2', name: 'Skyline Real Estate', industry: 'real_estate', plan: 'enterprise', status: 'active', created_at: '2025-09-15T08:30:00Z', contact_count: 1120 },
-  { id: 'demo-3', name: 'Glow Beauty Spa', industry: 'beauty', plan: 'starter', status: 'active', created_at: '2025-12-20T14:00:00Z', contact_count: 87 },
-  { id: 'demo-4', name: 'Justice Partners LLP', industry: 'legal', plan: 'pro', status: 'suspended', created_at: '2026-01-05T09:00:00Z', contact_count: 542 },
-  { id: 'demo-5', name: 'Mama Rosa Restaurant', industry: 'restaurant', plan: 'free', status: 'active', created_at: '2026-02-14T12:00:00Z', contact_count: 45 },
-  { id: 'demo-6', name: 'Ali Consulting Group', industry: 'general', plan: 'starter', status: 'deleted', created_at: '2025-06-10T16:45:00Z', contact_count: 0 },
+  { id: 'demo-1', name: 'Bright Dental Clinic',  status: 'active',    created_at: '2025-11-01T10:00:00Z' },
+  { id: 'demo-2', name: 'Skyline Real Estate',   status: 'active',    created_at: '2025-09-15T08:30:00Z' },
+  { id: 'demo-3', name: 'Glow Beauty Spa',       status: 'active',    created_at: '2025-12-20T14:00:00Z' },
+  { id: 'demo-4', name: 'Justice Partners LLP',  status: 'suspended', created_at: '2026-01-05T09:00:00Z' },
+  { id: 'demo-5', name: 'Mama Rosa Restaurant',  status: 'active',    created_at: '2026-02-14T12:00:00Z' },
+  { id: 'demo-6', name: 'Ali Consulting Group',  status: 'deleted',   created_at: '2025-06-10T16:45:00Z' },
 ]
+
+const AVATAR_TINT = { color: '#A78BFA', bg: 'rgba(167,139,250,0.08)' }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -50,7 +32,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
-  const [newOrg, setNewOrg] = useState({ name: '', industry: 'general', plan: 'free', admin_email: '' })
+  const [newOrg, setNewOrg] = useState({ name: '', admin_email: '' })
   const [saving, setSaving] = useState(false)
 
   // ── Fetch organizations ─────────────────────────────────────────────────
@@ -63,39 +45,14 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
       try {
         const fetchOrgsLogic = async () => {
           const { data, error } = await supabase
-            .from('organizations')
+            .from('orgs')
             .select('*')
             .order('created_at', { ascending: false })
           if (error) throw error
-          const enriched = await Promise.all((data || []).map(async (org) => {
-            try {
-              const { count } = await supabase
-                .from('contacts')
-                .select('id', { count: 'exact', head: true })
-                .eq('org_id', org.id)
-              
-              let next_due_date = null
-              try {
-                const { data: invData } = await supabase
-                  .from('invoices')
-                  .select('due_date')
-                  .eq('org_id', org.id)
-                  .eq('status', 'pending')
-                  .order('due_date', { ascending: true })
-                  .limit(1)
-                next_due_date = invData?.[0]?.due_date
-              } catch (e) {}
-
-              return { ...org, contact_count: count || 0, next_due_date }
-            } catch {
-              return { ...org, contact_count: null }
-            }
-          }))
-          return enriched
+          return data || []
         }
-        
-        const enrichedOrgs = await withTimeout(fetchOrgsLogic(), 10000)
-        setOrgs(enrichedOrgs)
+        const rows = await withTimeout(fetchOrgsLogic(), 10000)
+        setOrgs(rows)
       } catch (err) {
         console.error('Failed to fetch orgs:', err)
         setOrgs(SAMPLE_ORGS)
@@ -121,19 +78,6 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
     setOrgs(prev => prev.map(o => o.id === orgId ? { ...o, status } : o))
   }
 
-  async function updateOrgPlan(orgId, plan) {
-    if (isSupabaseConfigured()) {
-      const { data: session } = await supabase.auth.getSession()
-      const res = await fetch('/api/admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.session?.access_token}` },
-        body: JSON.stringify({ action: 'updateOrgPlan', payload: { id: orgId, plan } })
-      })
-      if (!res.ok) { console.error(await res.text()); return }
-    }
-    setOrgs(prev => prev.map(o => o.id === orgId ? { ...o, plan } : o))
-  }
-
   async function deleteOrg(orgId) {
     if (isSupabaseConfigured()) {
       const { data: session } = await supabase.auth.getSession()
@@ -149,7 +93,8 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
   }
 
   async function handleAddOrg() {
-    if (!newOrg.name.trim()) return
+    const name = newOrg.name.trim()
+    if (!name) return
     setSaving(true)
     if (isSupabaseConfigured()) {
       try {
@@ -157,29 +102,30 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
         const res = await fetch('/api/admin', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.session?.access_token}` },
-          body: JSON.stringify({ action: 'createOrg', payload: { ...newOrg, name: newOrg.name.trim() } })
+          body: JSON.stringify({ action: 'createOrg', payload: { name, admin_email: newOrg.admin_email } })
         })
         const result = await res.json()
         if (!res.ok) throw new Error(result.error || 'Failed to create org')
-        
-        setOrgs(prev => [{ ...result.org, contact_count: 0 }, ...prev])
+
+        setOrgs(prev => [result.org, ...prev])
+        if (result.invite?.url) {
+          console.log('Invite link for new org:', result.invite.url)
+          alert(result.invite.url)
+        }
       } catch (err) {
         console.error('Failed to create org:', err)
       }
     } else {
       const demo = {
         id: 'demo-' + Date.now(),
-        name: newOrg.name.trim(),
-        industry: newOrg.industry,
-        plan: newOrg.plan,
+        name,
         status: 'active',
         created_at: new Date().toISOString(),
-        contact_count: 0,
       }
       setOrgs(prev => [demo, ...prev])
     }
     setSaving(false)
-    setNewOrg({ name: '', industry: 'general', plan: 'free', admin_email: '' })
+    setNewOrg({ name: '', admin_email: '' })
     setShowAddModal(false)
   }
 
@@ -189,20 +135,13 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
     if (statusFilter !== 'all' && o.status !== statusFilter) return false
     if (search) {
       const q = search.toLowerCase()
-      return (
-        (o.name || '').toLowerCase().includes(q) ||
-        (o.industry || '').toLowerCase().includes(q) ||
-        (o.plan || '').toLowerCase().includes(q)
-      )
+      return (o.name || '').toLowerCase().includes(q)
     }
     return true
   })
 
   const totalOrgs = orgs.length
   const totalActive = orgs.filter(o => o.status === 'active').length
-  const totalContacts = orgs.reduce((sum, o) => sum + (o.contact_count || 0), 0)
-
-  const dataFont = "'JetBrains Mono', 'SF Mono', monospace"
 
   // ── Render ──────────────────────────────────────────────────────────────
 
@@ -249,7 +188,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
           <div>
             <h1 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 24, letterSpacing: '-0.03em', color: '#E8EAF5', margin: 0 }}>Agency Dashboard</h1>
             <p style={{ fontSize: 13, color: '#3A3D55', margin: '4px 0 0' }}>
-              Manage all organizations, plans, and access
+              Manage all organizations and access
             </p>
           </div>
           <button onClick={() => setShowAddModal(true)} className="velo-btn-primary" style={makeBtn('primary', { height: 38, fontSize: 14 })}>
@@ -263,7 +202,6 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
           {[
             { label: 'Total Organizations', value: totalOrgs, icon: Icons.building(20), color: '#00FFB2', glowClass: 'velo-card-glow-cyan' },
             { label: 'Active', value: totalActive, icon: Icons.check(20), color: '#00FFB2', glowClass: 'velo-card-glow-green' },
-            { label: 'Total Contacts', value: totalContacts.toLocaleString(), icon: Icons.users(20), color: '#A78BFA', glowClass: 'velo-card-glow-purple' },
             { label: 'Revenue (MRR)', value: '$\u2014', icon: Icons.dollar(20), color: '#FFB347', glowClass: 'velo-card-glow-yellow' },
           ].map((s, i) => (
             <div key={i} className={`velo-card ${s.glowClass}`} style={{ padding: 20, display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -323,7 +261,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
                 <thead>
                   <tr style={{ background: '#0C0E1A', borderBottom: '1px solid rgba(0,255,178,0.12)' }}>
-                    {['Org Name', 'Industry', 'Plan', 'Status', 'Contacts', 'Created', 'Actions'].map(h => (
+                    {['Org Name', 'Status', 'Created', 'Actions'].map(h => (
                       <th key={h} style={{
                         padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600,
                         color: '#3A3D55', textTransform: 'uppercase', letterSpacing: 0.5, whiteSpace: 'nowrap',
@@ -334,7 +272,6 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
                 <tbody>
                   {filtered.map((org, idx) => {
                     const sb = STATUS_BADGE[org.status] || STATUS_BADGE.active
-                    const pb = PLAN_BADGE[org.plan] || PLAN_BADGE.free
                     return (
                       <tr
                         key={org.id}
@@ -353,50 +290,25 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <div style={{
                               width: 30, height: 30, borderRadius: 6,
-                              background: `linear-gradient(135deg, ${pb.bg}, ${pb.color}15)`,
+                              background: `linear-gradient(135deg, ${AVATAR_TINT.bg}, ${AVATAR_TINT.color}15)`,
                               display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              color: pb.color, fontSize: 13, fontWeight: 700, flexShrink: 0,
-                              border: `1px solid ${pb.color}25`,
+                              color: AVATAR_TINT.color, fontSize: 13, fontWeight: 700, flexShrink: 0,
+                              border: `1px solid ${AVATAR_TINT.color}25`,
                             }}>
                               {(org.name || '?')[0].toUpperCase()}
                             </div>
                             {org.name}
                           </div>
                         </td>
-                        {/* Industry */}
-                        <td style={{ padding: '12px 14px', color: '#7B7F9E' }}>
-                          {INDUSTRY_LABELS[org.industry] || org.industry || '\u2014'}
-                        </td>
-                        {/* Plan */}
+                        {/* Status */}
                         <td style={{ padding: '12px 14px' }}>
                           <span style={{
                             display: 'inline-block', padding: '2px 10px', borderRadius: 99,
-                            fontSize: 12, fontWeight: 600, color: pb.color, background: pb.bg,
-                            border: `1px solid ${pb.color}20`,
+                            fontSize: 12, fontWeight: 600, color: sb.color, background: sb.bg,
+                            border: `1px solid ${sb.border}`,
                           }}>
-                            {(org.plan || 'free').charAt(0).toUpperCase() + (org.plan || 'free').slice(1)}
+                            {(org.status || 'active').charAt(0).toUpperCase() + (org.status || 'active').slice(1)}
                           </span>
-                        </td>
-                        {/* Status */}
-                        <td style={{ padding: '12px 14px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
-                            <span style={{
-                              display: 'inline-block', padding: '2px 10px', borderRadius: 99,
-                              fontSize: 12, fontWeight: 600, color: sb.color, background: sb.bg,
-                              border: `1px solid ${sb.border}`,
-                            }}>
-                              {(org.status || 'active').charAt(0).toUpperCase() + (org.status || 'active').slice(1)}
-                            </span>
-                            {org.next_due_date && org.status === 'active' && Math.ceil((new Date(org.next_due_date) - new Date()) / (1000 * 60 * 60 * 24)) <= 7 && (
-                              <span style={{ fontSize: 10, color: '#FFB347', fontWeight: 500 }}>
-                                Warning: Suspending in {Math.ceil((new Date(org.next_due_date) - new Date()) / (1000 * 60 * 60 * 24))} days
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        {/* Contacts */}
-                        <td style={{ padding: '12px 14px', color: '#7B7F9E', fontFamily: dataFont, fontSize: 13 }}>
-                          {org.contact_count != null ? org.contact_count.toLocaleString() : '\u2014'}
                         </td>
                         {/* Created */}
                         <td style={{ padding: '12px 14px', color: '#3A3D55', fontSize: 13, whiteSpace: 'nowrap' }}>
@@ -421,21 +333,6 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
                                 style={makeBtn('success', { height: 28, fontSize: 12, padding: '0 10px' })}
                               >Activate</button>
                             ) : null}
-
-                            <select
-                              value={org.plan || 'free'}
-                              onChange={e => updateOrgPlan(org.id, e.target.value)}
-                              style={{
-                                height: 28, fontSize: 12, borderRadius: 6,
-                                border: '1px solid rgba(255,255,255,0.08)', background: '#0C0E1A',
-                                padding: '0 6px', color: '#7B7F9E', cursor: 'pointer',
-                                fontFamily: 'inherit', outline: 'none',
-                              }}
-                            >
-                              {PLAN_OPTIONS.map(p => (
-                                <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
-                              ))}
-                            </select>
 
                             <button
                               onClick={() => setConfirmDelete(org)}
@@ -485,30 +382,6 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
                 style={inputStyle()}
                 autoFocus
               />
-            </FormField>
-
-            <FormField label="Industry">
-              <select
-                value={newOrg.industry}
-                onChange={e => setNewOrg(p => ({ ...p, industry: e.target.value }))}
-                style={selectStyle()}
-              >
-                {INDUSTRY_OPTIONS.map(([val, label]) => (
-                  <option key={val} value={val}>{label}</option>
-                ))}
-              </select>
-            </FormField>
-
-            <FormField label="Plan">
-              <select
-                value={newOrg.plan}
-                onChange={e => setNewOrg(p => ({ ...p, plan: e.target.value }))}
-                style={selectStyle()}
-              >
-                {PLAN_OPTIONS.map(p => (
-                  <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
-                ))}
-              </select>
             </FormField>
 
             <FormField label="Admin Email (invite)">
