@@ -2505,6 +2505,36 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
 }
 
 
+// ─── Agency Placeholder (for upcoming agency pages) ─────────────────────────
+function AgencyPlaceholder({ title, description, icon }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
+      <div style={{ width: 56, height: 56, borderRadius: 16, background: C.purpleBg, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20 }}>
+        <span style={{ color: C.purple, display: 'flex' }}>{icon(28)}</span>
+      </div>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>{title}</h2>
+      <p style={{ fontSize: 14, color: C.textMuted, margin: 0, maxWidth: 400 }}>{description}</p>
+    </div>
+  )
+}
+
+function AgencyEmptyState({ isRTL, setPage }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '80px 20px', textAlign: 'center' }}>
+      <div style={{ fontSize: 48, marginBottom: 20 }}>👈</div>
+      <h2 style={{ fontSize: 20, fontWeight: 700, color: C.text, margin: '0 0 8px' }}>
+        {isRTL ? 'انتقل إلى لوحة الوكالة واختر مؤسسة لعرض بياناتها' : 'Go to Agency Dashboard and enter an organization to view their data'}
+      </h2>
+      <p style={{ fontSize: 14, color: C.textMuted, margin: '0 0 24px', maxWidth: 420 }}>
+        {isRTL ? 'اختر مؤسسة من لوحة الوكالة لعرض بياناتها.' : 'Select an organization from the Agency Dashboard to view their data.'}
+      </p>
+      <button onClick={() => setPage('agency')} style={makeBtn('primary', { gap: 8 })}>
+        {Icons.building(16)} {isRTL ? 'لوحة الوكالة' : 'Go to Agency Dashboard'}
+      </button>
+    </div>
+  )
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // PLACEHOLDER
 // ═══════════════════════════════════════════════════════════════════════════
