@@ -8,7 +8,43 @@
 
 ## Session summary
 
-_Pending — written at end of Phase 3._
+**Branch:** `audit/static-pass-2026-05-07`, off `master@92f2306`.
+
+**Findings by severity:**
+- CRITICAL: 0
+- HIGH: 0
+- MEDIUM: 1 (Pass 8 — `chair_id` is still throughout the appointments domain despite the audit prompt's premise that "chairs were fully removed"; UI still renders a `<FormField label="Chair">`. Architectural decision required, escalated.)
+- LOW: 19 (14 unused imports + 5 hardcoded English strings)
+
+**Phase 2 commits (in order on this branch):**
+1. `df6d33f` — `audit: Phase 1 findings + scanner scripts (2026-05-07)` (read-only artifact: findings .md + 3 scanner .cjs files)
+2. `d78e4f0` — `audit: remove 13 unused named imports across 7 files`
+
+Total: **2 commits** beyond `master`. Each cherry-pickable; the second carries the only source-tree change.
+
+**Lint:**
+- Starting baseline (master @92f2306): **54 problems** (45 errors, 9 warnings)
+- After Phase 2 commit `d78e4f0`: **46 problems** (37 errors, 9 warnings)
+- Net: **−8 errors**, no new warnings, no regressions.
+
+**Build:** clean throughout — `vite ✓ built in 475ms` after final commit. Pre-existing chunk-size warning on `assets/index-*.js` (640 kB / 178 kB gzip) is unrelated to this work.
+
+**Time-boxed / skipped tasks:**
+- None skipped due to time. Comment-aware regex tooling for Passes 3–7 took several iterations to be trustworthy; results are in §Pass 4's auditor's note. The dead-ref scanner needed three rewrites and the unused-imports scanner needed two before the spot-checks aligned with manual greps.
+
+**Concerns / surprises to flag:**
+
+1. **Pass 8 — premise mismatch on chairs.** The audit prompt asserts "chairs were fully removed; verify nothing slipped through." The codebase has 15 `chair_id` references across 6 files including a live UI form field (`AddAppointmentModal.jsx:328`) and the schema definition (`schema.sql:224`). Memory has no entry stating chairs were fully removed; closest is *"Velo Clinical Luxury session 3 progress (incomplete) — Commit B (DayView chair→doctor axis pivot, 7 hunks) approved but not applied"*, which describes a *single-view* axis pivot, not a model-level removal. Either the prompt's premise is mis-remembered, or the chair-removal work was intended but not yet done. Logged for review — no fix attempted (architectural decision required).
+
+2. **Pass 5 — theme.css is not a zombie.** It's actively `@import`-ed at `src/index.css:2`. The migration backlog item is real (165 lines of legacy CSS still loaded) but it is not unused — removing or migrating it is multi-file, architectural work, and was correctly out of audit scope.
+
+3. **`React` default import in `AddAppointmentModal.jsx`** is unused (the project uses automatic JSX runtime; no other file in `src/` imports React explicitly). I deliberately did not remove it, because the audit spec says "Remove unused **named** imports" and `React` is a default import. Trivial human-call follow-up if you want lint at 45.
+
+4. **Audit tooling artifacts kept in repo.** `.audit-dead-refs.cjs`, `.audit-unused-imports.cjs`, `.audit-hardcoded-strings.cjs` are committed alongside the findings file. They're re-runnable for future audits and document the limitations of regex-based JS parsing (see §Pass 3's note). If you don't want them in the tree they're trivial to revert with a single commit.
+
+5. **Hardcoded strings sample, not exhaustive.** `.audit-hardcoded-strings.cjs` only catches JSX *text content between tags*. Strings inside attributes (`title=`, `aria-label=`, `placeholder=`), template literals, and `style={{ ... 'string' ... }}` patterns are not in scope. If full i18n coverage is the goal, a tokenizer-based pass is needed.
+
+6. **Files I never touched in Phase 2:** `App.jsx`, all of `src/pages/*` other than the three above, `src/lib/*` other than `database.js`, all of `src/contexts/*`, and the api/ and scripts/ folders. The bounds intentionally limited Phase 2 to import-removal — nothing else was eligible.
 
 ---
 
