@@ -23,7 +23,6 @@ import {
   sanitizeEmail,
   sanitizePhone,
   sanitizeNotes,
-  LIMITS,
   toSafeNumber,
 } from './sanitize'
 import { requireUser, getCurrentOrgId } from './auth_session'

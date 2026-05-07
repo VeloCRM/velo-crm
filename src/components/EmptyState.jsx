@@ -1,4 +1,4 @@
-import { C, makeBtn } from '../design'
+import { C } from '../design'
 
 const illustrations = {
   contacts: (
