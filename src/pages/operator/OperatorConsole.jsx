@@ -34,6 +34,9 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
   const [confirmDelete, setConfirmDelete] = useState(null)
   const [newOrg, setNewOrg] = useState({ name: '', admin_email: '' })
   const [saving, setSaving] = useState(false)
+  const [inviteSuccess, setInviteSuccess] = useState(null)
+  // shape: null | { orgName: string, email: string, inviteUrl: string }
+  const [copied, setCopied] = useState(false)
 
   // ── Fetch organizations ─────────────────────────────────────────────────
 
@@ -109,8 +112,11 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
 
         setOrgs(prev => [result.org, ...prev])
         if (result.invite?.url) {
-          console.log('Invite link for new org:', result.invite.url)
-          alert(result.invite.url)
+          setInviteSuccess({
+            orgName: result.org.name,
+            email: newOrg.admin_email,
+            inviteUrl: result.invite.url,
+          })
         }
       } catch (err) {
         console.error('Failed to create org:', err)
@@ -127,6 +133,19 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
     setSaving(false)
     setNewOrg({ name: '', admin_email: '' })
     setShowAddModal(false)
+  }
+
+  async function copyInviteUrl() {
+    if (!inviteSuccess?.inviteUrl) return
+    try {
+      await navigator.clipboard.writeText(inviteSuccess.inviteUrl)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.warn('Clipboard write failed:', err)
+      const el = document.getElementById('velo-operator-invite-link-input')
+      if (el && el.select) el.select()
+    }
   }
 
   // ── Derived data ────────────────────────────────────────────────────────
@@ -402,6 +421,50 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
                 className="velo-btn-primary" style={makeBtn('primary', { opacity: saving || !newOrg.name.trim() ? 0.5 : 1 })}
               >
                 {saving ? 'Creating...' : 'Create Organization'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Invite Success Modal ───────────────────────────────────────── */}
+      {inviteSuccess && (
+        <Modal onClose={() => setInviteSuccess(null)} width={480}>
+          <div style={{ padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <h2 style={{ fontSize: 18, fontWeight: 700, color: '#E8EAF5', margin: 0 }}>Organization created</h2>
+              <button onClick={() => setInviteSuccess(null)} style={makeBtn('ghost', { height: 28, width: 28, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' })}>
+                {Icons.x(16)}
+              </button>
+            </div>
+
+            <p style={{ fontSize: 13, color: '#7B7F9E', margin: '0 0 16px', lineHeight: 1.5 }}>
+              <strong style={{ color: '#E8EAF5' }}>{inviteSuccess.orgName}</strong> is ready. Send this invite link to <strong style={{ color: '#E8EAF5' }}>{inviteSuccess.email}</strong> to onboard them as owner. Link expires in 7 days.
+            </p>
+
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <input
+                id="velo-operator-invite-link-input"
+                type="text"
+                readOnly
+                value={inviteSuccess.inviteUrl}
+                onClick={e => e.target.select()}
+                style={{ ...inputStyle(), flex: 1, fontFamily: "'JetBrains Mono', 'Fira Code', ui-monospace, monospace", fontSize: 12 }}
+              />
+              <button
+                onClick={copyInviteUrl}
+                style={makeBtn('primary', { height: 42, fontSize: 14, minWidth: 88 })}
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 20 }}>
+              <button
+                onClick={() => setInviteSuccess(null)}
+                style={makeBtn('secondary', { height: 38, fontSize: 14 })}
+              >
+                Done
               </button>
             </div>
           </div>
