@@ -1081,7 +1081,6 @@ function AppointmentModal({ onClose, onSave, patients, doctors, editApt, default
       type: editApt.type || 'checkup',
       notes: editApt.notes || '',
       status: editApt.status || 'scheduled',
-      chair_id: editApt.chair_id || '',
     }
     return {
       patient_id: '',
@@ -1092,7 +1091,6 @@ function AppointmentModal({ onClose, onSave, patients, doctors, editApt, default
       type: 'checkup',
       notes: '',
       status: 'scheduled',
-      chair_id: '',
     }
   })
 
@@ -1145,7 +1143,6 @@ function AppointmentModal({ onClose, onSave, patients, doctors, editApt, default
       status: form.status,
       scheduled_at,
       duration_minutes: form.duration_minutes,
-      chair_id: form.chair_id || null,
       notes: form.notes || null,
     })
   }
