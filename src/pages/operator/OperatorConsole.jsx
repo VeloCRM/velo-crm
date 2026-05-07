@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { C, makeBtn, card } from '../../design'
+import { makeBtn, card } from '../../design'
 import { Icons, Modal, FormField, inputStyle, selectStyle } from '../../components/shared'
 import { supabase, isSupabaseConfigured } from '../../lib/supabase'
 import { withTimeout } from '../../lib/sanitize'

@@ -12,9 +12,8 @@
  */
 
 import { useState, useEffect, useMemo, useCallback } from 'react'
-import { C, makeBtn, card } from '../design'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
-import { GlassCard, Button, Badge } from './ui'
+import { GlassCard, Button } from './ui'
 import {
   fetchPatientMedicalHistory,
   updatePatientMedicalHistory,
