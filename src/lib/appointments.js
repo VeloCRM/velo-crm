@@ -3,7 +3,7 @@
  *
  * Schema columns (src/lib/schema.sql):
  *   id, org_id, patient_id, doctor_id, type, status, scheduled_at,
- *   duration_minutes, chair_id, notes, created_at, updated_at.
+ *   duration_minutes, notes, created_at, updated_at.
  *
  * Type enum:   checkup | cleaning | filling | extraction | root_canal |
  *              crown | whitening | consultation | emergency
@@ -74,9 +74,6 @@ function sanitizeAppointmentPayload(p) {
   if (p.duration_minutes !== undefined || p.durationMinutes !== undefined) {
     out.duration_minutes = Math.max(1, toSafeNumber(p.duration_minutes ?? p.durationMinutes, 30))
   }
-  if (p.chair_id !== undefined || p.chairId !== undefined) {
-    out.chair_id = p.chair_id ?? p.chairId ?? null
-  }
   if (p.notes !== undefined) {
     out.notes = p.notes ? sanitizeNotes(p.notes) : null
   }
@@ -96,7 +93,7 @@ export async function listAppointmentsBetween(startTs, endTs) {
   const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('appointments')
-    .select('id, org_id, patient_id, doctor_id, type, status, scheduled_at, duration_minutes, chair_id, notes, created_at, updated_at, patients:patient_id(id, full_name, phone)')
+    .select('id, org_id, patient_id, doctor_id, type, status, scheduled_at, duration_minutes, notes, created_at, updated_at, patients:patient_id(id, full_name, phone)')
     .eq('org_id', orgId)
     .gte('scheduled_at', startTs)
     .lte('scheduled_at', endTs)
@@ -224,7 +221,7 @@ export async function listAppointmentsForPatient(patientId) {
   const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('appointments')
-    .select('id, org_id, patient_id, doctor_id, type, status, scheduled_at, duration_minutes, chair_id, notes, created_at')
+    .select('id, org_id, patient_id, doctor_id, type, status, scheduled_at, duration_minutes, notes, created_at')
     .eq('org_id', orgId)
     .eq('patient_id', patientId)
     .order('scheduled_at', { ascending: false })
