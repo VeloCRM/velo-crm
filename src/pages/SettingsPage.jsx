@@ -8,7 +8,7 @@ import { createInvitation, listPendingInvitations, revokeInvitation, buildInvite
 import { listDoctorsInOrg, updateProfile, listTeamMembersInOrg, fetchMyProfile } from '../lib/profiles'
 import { getCurrentOrgId } from '../lib/auth_session'
 
-import { ROLES, ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
+import { ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
 import { SAMPLE_DENTAL_DOCTORS } from '../sampleData'
 
 const TABS = [

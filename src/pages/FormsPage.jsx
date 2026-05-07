@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { C, makeBtn, card } from '../design'
-import { Icons, Modal, FormField, inputStyle, selectStyle } from '../components/shared'
-import { sanitizeText, sanitizeNotes, stripHtml } from '../lib/sanitize'
+import { Icons, FormField, inputStyle, selectStyle } from '../components/shared'
 
 const FIELD_TYPES = [
   { id:'short_text', icon:'Aa', label:'Short Text', ar:'نص قصير' },

@@ -1,5 +1,3 @@
-import { C } from '../design'
-
 // ─── SVG Icon helper (Heroicons style, consistent 1.5px stroke) ────────────
 const I = (s, children) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
 
