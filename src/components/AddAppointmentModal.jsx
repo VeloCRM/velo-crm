@@ -77,7 +77,6 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
     duration_minutes: editAppointment?.duration_minutes || 30,
     type: editAppointment?.type || 'checkup',
     status: editAppointment?.status || 'scheduled',
-    chair_id: editAppointment?.chair_id || '',
     notes: editAppointment?.notes || '',
   })
 
@@ -180,7 +179,6 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
         status: form.status,
         scheduled_at,
         duration_minutes: Number(form.duration_minutes),
-        chair_id: form.chair_id || null,
         notes: form.notes || null,
       }
       const saved = await upsertAppointment(
@@ -325,9 +323,6 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
-        <FormField label="Chair">
-          <input value={form.chair_id} onChange={e => set('chair_id', e.target.value)} placeholder="e.g. chair-1" style={inputStyle('ltr')} />
-        </FormField>
         {editAppointment && (
           <FormField label="Status">
             <select value={form.status} onChange={e => set('status', e.target.value)} style={selectStyle('ltr')}>
