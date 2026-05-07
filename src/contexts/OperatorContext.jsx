@@ -91,6 +91,7 @@ export function OperatorProvider({ children }) {
         return
       }
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
+        setState(s => ({ ...s, loading: true }))
         ;(async () => {
           const isOperator = await fetchIsOperatorFromServer()
           if (!cancelled) setState({ loading: false, isOperator })
