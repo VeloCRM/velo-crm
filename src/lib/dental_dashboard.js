@@ -42,7 +42,7 @@ export async function fetchDentalDashboardStats({ dayStartIso, dayEndIso, firstO
   ] = await Promise.all([
     supabase
       .from('appointments')
-      .select('id, patient_id, doctor_id, type, status, scheduled_at, duration_minutes, chair_id, notes, patients:patient_id(id, full_name, phone)')
+      .select('id, patient_id, doctor_id, type, status, scheduled_at, duration_minutes, notes, patients:patient_id(id, full_name, phone)')
       .eq('org_id', orgId)
       .gte('scheduled_at', dayStartIso)
       .lt('scheduled_at', dayEndIso)

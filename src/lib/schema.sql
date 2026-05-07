@@ -221,7 +221,6 @@ CREATE TABLE appointments (
   status            appointment_status NOT NULL DEFAULT 'scheduled',
   scheduled_at      timestamptz NOT NULL,
   duration_minutes  int NOT NULL DEFAULT 30 CHECK (duration_minutes > 0),
-  chair_id          text,
   notes             text,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()

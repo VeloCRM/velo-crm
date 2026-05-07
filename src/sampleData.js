@@ -821,7 +821,6 @@ export function getSampleDentalAppointmentsWeek() {
       status: a.status,
       scheduled_at: _isoFor(todayDate, a.time),
       duration_minutes: a.duration_minutes,
-      chair_id: null,
       notes: a.notes || '',
       patients: p ? { id: p.id, full_name: p.full_name, phone: p.phone } : null,
     }
@@ -846,7 +845,6 @@ export function getSampleDentalAppointmentsWeek() {
         status,
         scheduled_at: _isoFor(dayDate, tpl.time),
         duration_minutes: tpl.duration_minutes,
-        chair_id: null,
         notes: tpl.notes || '',
         patients: p ? { id: p.id, full_name: p.full_name, phone: p.phone } : null,
       }
