@@ -51,6 +51,7 @@ import EmptyState from './components/EmptyState'
 // gated on an `open` flag, so this is rendered for a single frame at most.
 const OverlayFallback = () => null
 import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
+import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
 import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
@@ -353,9 +354,16 @@ export default function App() {
       return
     }
     // Operator without impersonation has no org context; calling getCurrentOrgId()
-    // here would throw "No org membership for current user". Skip the load entirely
-    // and let operator-mode pages render their own data (or AgencyPlaceholder).
-    if (isOperator && !impersonation) {
+    // here would throw "No org membership for current user". Use the live
+    // getImpersonationContext() (localStorage-backed, same source of truth as
+    // getCurrentOrgId) rather than the React state — exit-impersonation paths
+    // call loadAllData() synchronously after setImpersonation(null) +
+    // localStorage.removeItem('velo_impersonating'), and the React state update
+    // is async while localStorage is sync. The closure here would see
+    // impersonation=truthy (stale) but getCurrentOrgId would see localStorage
+    // as cleared — they'd disagree, the guard would miss, and the throw would
+    // surface as the banner.
+    if (isOperator && !getImpersonationContext()) {
       setPatients([]); setPatientsTotal(0); setAllPayments([])
       setDataLoading(false)
       return
