@@ -56,6 +56,12 @@ export async function getCurrentUser() {
  */
 export async function getCurrentOrgId() {
   const user = await requireUser()
+  // Operator impersonation: when an operator is acting on a tenant, the
+  // effective org context comes from the impersonation record, not from
+  // profiles.org_id (operators don't belong to a clinic org). Bypass cache —
+  // getImpersonationContext is a sync localStorage read.
+  const imp = getImpersonationContext()
+  if (imp?.orgId) return imp.orgId
   if (_orgIdCache.userId === user.id && _orgIdCache.orgId) {
     return _orgIdCache.orgId
   }

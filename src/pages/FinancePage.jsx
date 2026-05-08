@@ -98,10 +98,11 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   const [patientQuery, setPatientQuery] = useState('')
 
   useEffect(() => {
+    if (isOperator) return
     let cancelled = false
     fetchMyProfile().then(p => { if (!cancelled) setRole(p?.role || null) }).catch(() => {})
     return () => { cancelled = true }
-  }, [])
+  }, [isOperator])
 
   const reload = async () => {
     if (!isSupabaseConfigured()) {
@@ -128,7 +129,7 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   }
 
   // Re-fetch when server-side filters change. Patient text-filter is client-only.
-  useEffect(() => { reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateFrom, dateTo, methodFilter])
+  useEffect(() => { if (isOperator) return; reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateFrom, dateTo, methodFilter, isOperator])
 
   // Apply the patient-name client filter on top of the server-side rows.
   const filteredRows = useMemo(() => {

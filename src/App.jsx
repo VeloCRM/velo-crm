@@ -352,6 +352,14 @@ export default function App() {
       setPatients([]); setPatientsTotal(0); setAllPayments([])
       return
     }
+    // Operator without impersonation has no org context; calling getCurrentOrgId()
+    // here would throw "No org membership for current user". Skip the load entirely
+    // and let operator-mode pages render their own data (or AgencyPlaceholder).
+    if (isOperator && !impersonation) {
+      setPatients([]); setPatientsTotal(0); setAllPayments([])
+      setDataLoading(false)
+      return
+    }
     setDataLoading(true)
     setDataError(null)
     try {
