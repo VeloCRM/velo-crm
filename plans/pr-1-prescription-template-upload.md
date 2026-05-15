@@ -29,7 +29,7 @@ Add the upload-side groundwork for the per-doctor prescription print feature:
 | Question | Decision | Why |
 |----------|----------|-----|
 | Storage location | Supabase Storage bucket `prescription-templates`, private | RLS gates reads (no signed URLs leaked publicly); aligns with existing tenant-scoped data invariants |
-| Path scheme | `{org_id}/{doctor_id}.{ext}` | RLS uses `storage.foldername(name)[1]::uuid` to extract org; basename gives doctor_id. Predictable URLs → simple preview rendering |
+| Path scheme | `{org_id}/{doctor_id}/template.{ext}` (3-segment, mirrors dental_xrays convention) | RLS extracts both org_id and doctor_id via `storage.foldername` — the helper returns folder segments only, NOT basenames. doctor_id therefore lives as a folder, not a basename. Predictable URLs → simple preview rendering. Basename `template.{ext}` is a fixed placeholder; basename slot stays free for future versioning |
 | File types | PNG, JPG only | Print-ready raster; PDF would change the print pipeline |
 | File size cap | 5 MB | Generous for high-DPI A4 templates; protects free-tier storage quota |
 | Filename collision | Overwrite (single template per doctor) | One pad per doctor; new upload replaces old. No versioning needed in PR 1 |
@@ -75,7 +75,7 @@ This PR mirrors the structural shape (foldername + idempotent block) and supplie
 
 ```sql
 -- Per-doctor prescription pad template stored in Supabase Storage.
--- Path: prescription-templates/{org_id}/{doctor_id}.{ext}
+-- Path: prescription-templates/{org_id}/{doctor_id}/template.{ext}
 -- NULL = doctor has not uploaded a template yet.
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS prescription_template_url TEXT;
@@ -89,9 +89,14 @@ The `storage.buckets` row is created via Supabase dashboard (size/MIME constrain
 
 ```sql
 -- prescription-templates bucket RLS
--- Path shape: {org_id}/{doctor_id}.{ext}
+-- Path shape: {org_id}/{doctor_id}/template.{ext}
 --   - segment 1 (storage.foldername(name)[1]): org UUID
---   - basename (split_part of segment 2): doctor UUID
+--   - segment 2 (storage.foldername(name)[2]): doctor UUID
+--   - basename: 'template.{ext}' (placeholder; not used by RLS)
+-- NOTE: storage.foldername returns FOLDER segments only, excluding the basename.
+-- doctor_id therefore lives as a folder segment, not as a basename prefix —
+-- the 2-segment scheme {org_id}/{doctor_id}.{ext} would NOT work because
+-- foldername[2] would be NULL.
 -- Any deviation from this shape will fail the UUID cast and deny access (fail-closed).
 
 -- READ: any authenticated member of the org can preview templates.
@@ -119,19 +124,21 @@ DO $$ BEGIN
           SELECT org_id FROM public.profiles WHERE id = auth.uid()
         )
         AND (
-          -- self-upload branch: doctor uploading to their own path, role-tightened
+          -- self-upload branch: doctor uploading to their own folder, role-tightened
           (
-            (split_part((storage.foldername(name))[2], '.', 1))::uuid = auth.uid()
+            (storage.foldername(name))[2]::uuid = auth.uid()
             AND EXISTS (
               SELECT 1 FROM public.profiles
               WHERE id = auth.uid() AND role = 'doctor'
             )
           )
           OR
-          -- admin branch: same-org clinic owner
+          -- admin branch: same-org clinic owner (explicit org_id binding for defense-in-depth)
           EXISTS (
             SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() AND role = 'owner'
+            WHERE id = auth.uid()
+              AND role = 'owner'
+              AND org_id = (storage.foldername(name))[1]::uuid
           )
         )
       );
@@ -150,7 +157,7 @@ DO $$ BEGIN
         )
         AND (
           (
-            (split_part((storage.foldername(name))[2], '.', 1))::uuid = auth.uid()
+            (storage.foldername(name))[2]::uuid = auth.uid()
             AND EXISTS (
               SELECT 1 FROM public.profiles
               WHERE id = auth.uid() AND role = 'doctor'
@@ -158,7 +165,9 @@ DO $$ BEGIN
           )
           OR EXISTS (
             SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() AND role = 'owner'
+            WHERE id = auth.uid()
+              AND role = 'owner'
+              AND org_id = (storage.foldername(name))[1]::uuid
           )
         )
       );
@@ -177,7 +186,7 @@ DO $$ BEGIN
         )
         AND (
           (
-            (split_part((storage.foldername(name))[2], '.', 1))::uuid = auth.uid()
+            (storage.foldername(name))[2]::uuid = auth.uid()
             AND EXISTS (
               SELECT 1 FROM public.profiles
               WHERE id = auth.uid() AND role = 'doctor'
@@ -185,7 +194,9 @@ DO $$ BEGIN
           )
           OR EXISTS (
             SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() AND role = 'owner'
+            WHERE id = auth.uid()
+              AND role = 'owner'
+              AND org_id = (storage.foldername(name))[1]::uuid
           )
         )
       );
@@ -235,7 +246,7 @@ export async function uploadPrescriptionTemplate(doctorId, file) {
   }
 
   const ext = file.type === 'image/png' ? 'png' : 'jpg'
-  const path = `${orgId}/${doctorId}.${ext}`
+  const path = `${orgId}/${doctorId}/template.${ext}`
 
   const { error: upErr } = await supabase.storage
     .from('prescription-templates')
@@ -373,7 +384,7 @@ Per CLAUDE.md "Schema changes to dental tables require dry-run on a copy + writt
 2. Create the bucket via dashboard, apply RLS from `scripts/prescription-templates-bucket.sql`
 3. Test from multiple identities:
    - Doctor in org A uploading own template → expect success
-   - Same doctor uploading at path `{org_B}/{doctor_id}.png` → expect RLS denial
+   - Same doctor uploading at path `{org_B}/{doctor_id}/template.png` → expect RLS denial
    - Receptionist in org A uploading to own slot → expect denial (role-tightened)
    - Clinic owner in org A uploading on behalf of doctor in org A → expect success
    - Doctor in org A downloading template from org B → expect denial

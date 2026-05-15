@@ -1414,3 +1414,134 @@ $$;
 GRANT EXECUTE ON FUNCTION get_invitation_preview(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION accept_invitation(text) TO authenticated;
 
+-- ============================================================================
+-- Prescription Template Storage (PR 1 — feat/prescription-template-upload)
+-- ============================================================================
+-- Per-doctor prescription pad templates stored in Supabase Storage.
+--
+-- Path: prescription-templates/{org_id}/{doctor_id}/template.{ext}
+--   - segment 1 (storage.foldername(name)[1]): org UUID
+--   - segment 2 (storage.foldername(name)[2]): doctor UUID
+--   - basename: 'template.{ext}' (placeholder; not used by RLS)
+--
+-- NOTE: storage.foldername returns FOLDER segments only, excluding the basename.
+-- The doctor_id therefore lives as a folder segment, not a basename prefix.
+-- A 2-segment scheme {org_id}/{doctor_id}.{ext} would NOT work — foldername[2]
+-- would be NULL. The 3-segment scheme also mirrors the dental_xrays convention.
+--
+-- Bucket creation is manual via Supabase dashboard (size/MIME constraints aren't
+-- cleanly settable via SQL). Bucket settings:
+--   - Name: prescription-templates
+--   - Public: OFF (private)
+--   - File size limit: 5242880 (5 MB)
+--   - Allowed MIME types: image/png, image/jpeg
+--
+-- Standalone RLS-only script for re-pasting: scripts/prescription-templates-bucket.sql
+
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS prescription_template_url text;
+
+-- READ: any authenticated member of the org can preview templates.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'prescription_templates_select' AND schemaname = 'storage') THEN
+    CREATE POLICY "prescription_templates_select" ON storage.objects FOR SELECT
+      USING (
+        bucket_id = 'prescription-templates'
+        AND (storage.foldername(name))[1]::uuid IN (
+          SELECT org_id FROM public.profiles WHERE id = auth.uid()
+        )
+      );
+  END IF;
+END $$;
+
+-- INSERT: doctor uploading their own template (role-tightened), OR same-org owner.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'prescription_templates_insert' AND schemaname = 'storage') THEN
+    CREATE POLICY "prescription_templates_insert" ON storage.objects FOR INSERT
+      WITH CHECK (
+        bucket_id = 'prescription-templates'
+        AND (storage.foldername(name))[1]::uuid IN (
+          SELECT org_id FROM public.profiles WHERE id = auth.uid()
+        )
+        AND (
+          -- self-upload branch: doctor uploading to their own folder, role-tightened
+          (
+            (storage.foldername(name))[2]::uuid = auth.uid()
+            AND EXISTS (
+              SELECT 1 FROM public.profiles
+              WHERE id = auth.uid() AND role = 'doctor'
+            )
+          )
+          OR
+          -- admin branch: same-org clinic owner (explicit org_id binding)
+          EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid()
+              AND role = 'owner'
+              AND org_id = (storage.foldername(name))[1]::uuid
+          )
+        )
+      );
+  END IF;
+END $$;
+
+-- UPDATE: same predicate as INSERT.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'prescription_templates_update' AND schemaname = 'storage') THEN
+    CREATE POLICY "prescription_templates_update" ON storage.objects FOR UPDATE
+      USING (
+        bucket_id = 'prescription-templates'
+        AND (storage.foldername(name))[1]::uuid IN (
+          SELECT org_id FROM public.profiles WHERE id = auth.uid()
+        )
+        AND (
+          (
+            (storage.foldername(name))[2]::uuid = auth.uid()
+            AND EXISTS (
+              SELECT 1 FROM public.profiles
+              WHERE id = auth.uid() AND role = 'doctor'
+            )
+          )
+          OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid()
+              AND role = 'owner'
+              AND org_id = (storage.foldername(name))[1]::uuid
+          )
+        )
+      );
+  END IF;
+END $$;
+
+-- DELETE: same predicate as INSERT/UPDATE.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'prescription_templates_delete' AND schemaname = 'storage') THEN
+    CREATE POLICY "prescription_templates_delete" ON storage.objects FOR DELETE
+      USING (
+        bucket_id = 'prescription-templates'
+        AND (storage.foldername(name))[1]::uuid IN (
+          SELECT org_id FROM public.profiles WHERE id = auth.uid()
+        )
+        AND (
+          (
+            (storage.foldername(name))[2]::uuid = auth.uid()
+            AND EXISTS (
+              SELECT 1 FROM public.profiles
+              WHERE id = auth.uid() AND role = 'doctor'
+            )
+          )
+          OR EXISTS (
+            SELECT 1 FROM public.profiles
+            WHERE id = auth.uid()
+              AND role = 'owner'
+              AND org_id = (storage.foldername(name))[1]::uuid
+          )
+        )
+      );
+  END IF;
+END $$;
+
