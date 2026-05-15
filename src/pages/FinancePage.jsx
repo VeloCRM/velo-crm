@@ -162,12 +162,12 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
       <div dir={dir} className="ds-root min-h-full p-6 md:p-8">
         <GlassCard padding="lg" className="max-w-xl mx-auto text-center">
           <h2 className="text-lg font-semibold text-navy-800 m-0 mb-2">
-            {isRTL ? 'المالية' : 'Finance'}
+            {isRTL ? 'الاشتراكات والإيرادات الشهرية' : 'Subscriptions & MRR'}
           </h2>
           <p className="text-sm text-navy-600 m-0">
             {isRTL
-              ? 'إيرادات الاشتراكات تُدار من لوحة المشغل (OperatorConsole).'
-              : 'Subscription revenue is managed in the OperatorConsole, not on this page.'}
+              ? 'تتبع إيرادات الوكالة قريبًا.'
+              : 'Agency revenue tracking is coming soon.'}
           </p>
         </GlassCard>
       </div>
