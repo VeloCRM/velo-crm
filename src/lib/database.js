@@ -563,6 +563,20 @@ export async function insertProfile(profile, orgId) {
 // Bucket: prescription-templates (private, 5 MB cap, image/png + image/jpeg)
 // Path:   prescription-templates/{org_id}/{doctor_id}/template.{ext}
 
+export async function fetchPrescriptionTemplatePath(doctorId) {
+  if (!doctorId) throw new Error('fetchPrescriptionTemplatePath: doctorId is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('prescription_template_url')
+    .eq('id', doctorId)
+    .eq('org_id', orgId)
+    .single()
+  if (error) throw error
+  return data?.prescription_template_url || null
+}
+
 export async function uploadPrescriptionTemplate(doctorId, file) {
   if (!doctorId) throw new Error('uploadPrescriptionTemplate: doctorId is required')
   if (!file) throw new Error('uploadPrescriptionTemplate: file is required')
