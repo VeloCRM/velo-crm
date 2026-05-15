@@ -533,15 +533,17 @@ export default function App() {
   // Operator-no-impersonation landing on a clinic-only page (most commonly
   // /dashboard, the default after sign-in) gets bounced to /agency where the
   // OperatorConsole lives. Operator-only routes (`agency`, `billing`,
-  // `agency-profile`, `operator/*`, `design-system`, `settings`) are
-  // untouched. Without this, the operator would see a "No org membership"
-  // error banner above an empty clinic dashboard.
+  // `agency-profile`, `operator/*`, `settings`) are untouched. The internal
+  // `design-system` showcase is allowlisted only in DEV builds; in prod a
+  // manual URL entry bounces to /agency. Without this, the operator would
+  // see a "No org membership" error banner above an empty clinic dashboard.
   useEffect(() => {
     if (operatorLoading) return
     if (!isOperator || impersonation) return
     const operatorPages = new Set([
       'agency', 'billing', 'agency-profile', 'operator',
-      'design-system', 'settings', 'finance',
+      'settings', 'finance',
+      ...(import.meta.env.DEV ? ['design-system'] : []),
     ])
     if (!operatorPages.has(page)) {
       navigate('/agency', { replace: true })
@@ -760,7 +762,9 @@ export default function App() {
           label: isRTL ? 'المشغل' : 'Operator',
           items: [
             { id: 'operator/credentials', icon: Icons.settings, label: isRTL ? 'بيانات اعتماد العيادات' : 'Clinic Credentials' },
-            { id: 'design-system',        icon: Icons.dashboard, label: isRTL ? 'نظام التصميم' : 'Design System' },
+            ...(import.meta.env.DEV
+              ? [{ id: 'design-system', icon: Icons.dashboard, label: isRTL ? 'نظام التصميم' : 'Design System' }]
+              : []),
           ],
         },
       ]
@@ -1026,7 +1030,7 @@ export default function App() {
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
               {page === 'settings' && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isOperator={isOperator} /></Suspense>}
               {page === 'operator' && pageSubId === 'credentials' && isOperator && <Suspense fallback={<SkeletonGeneric />}><ClinicCredentialsPage lang={lang} /></Suspense>}
-              {page === 'design-system' && isOperator && <Suspense fallback={<SkeletonGeneric />}><DesignSystemPage lang={lang} /></Suspense>}
+              {page === 'design-system' && isOperator && import.meta.env.DEV && <Suspense fallback={<SkeletonGeneric />}><DesignSystemPage lang={lang} /></Suspense>}
             </>
           )}
         </div>
