@@ -6,6 +6,12 @@ import { sanitizeName, isValidEmail } from '../lib/sanitize'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { createInvitation, listPendingInvitations, revokeInvitation, buildInviteUrl } from '../lib/invitations'
 import { listDoctorsInOrg, updateProfile, listTeamMembersInOrg, fetchMyProfile } from '../lib/profiles'
+import {
+  fetchPrescriptionTemplatePath,
+  uploadPrescriptionTemplate,
+  deletePrescriptionTemplate,
+  getPrescriptionTemplateSignedUrl,
+} from '../lib/database'
 import { getCurrentOrgId } from '../lib/auth_session'
 
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
@@ -1487,7 +1493,7 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
           </div>
         )}
 
-        {showDocForm && <DoctorForm doc={editDoc} onSave={saveDoctor} onCancel={() => { setShowDocForm(false); setEditDoc(null) }} isRTL={isRTL} />}
+        {showDocForm && <DoctorForm doc={editDoc} onSave={saveDoctor} onCancel={() => { setShowDocForm(false); setEditDoc(null) }} isRTL={isRTL} toast={toast} />}
       </GlassCard>
 
       {/* Working Hours */}
@@ -1543,8 +1549,192 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
 
 // New profiles schema only allows clinic-side edits to full_name, avatar_url,
 // and locale. Role / org_id are operator-managed and locked by trigger.
-function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
+function PrescriptionTemplatePanel({ doctor, toast, isRTL }) {
+  const [currentPath, setCurrentPath] = useState(null)
+  const [signedUrl, setSignedUrl] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [confirmingRemove, setConfirmingRemove] = useState(false)
+  const fileInputRef = useRef(null)
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        const path = await fetchPrescriptionTemplatePath(doctor.id)
+        if (cancelled) return
+        setCurrentPath(path)
+        if (path) {
+          const url = await getPrescriptionTemplateSignedUrl(path)
+          if (!cancelled) setSignedUrl(url)
+        }
+      } catch (err) {
+        console.error('[PrescriptionTemplatePanel] fetch failed:', err)
+        if (!cancelled && toast) toast(isRTL ? 'فشل تحميل القالب' : 'Failed to load template', 'error')
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    })()
+    return () => { cancelled = true }
+    // toast/isRTL intentionally excluded from deps: refetching on
+    // language change or parent re-render would re-run the network
+    // call unnecessarily. Mount-time capture is correct here.
+  }, [doctor.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const refreshSignedUrl = async (path) => {
+    try {
+      const url = await getPrescriptionTemplateSignedUrl(path)
+      setSignedUrl(url)
+    } catch (err) {
+      console.error('[PrescriptionTemplatePanel] signed URL refresh failed:', err)
+    }
+  }
+
+  const handleFileChange = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (fileInputRef.current) fileInputRef.current.value = ''
+    setUploading(true)
+    try {
+      const newPath = await uploadPrescriptionTemplate(doctor.id, file)
+      setCurrentPath(newPath)
+      await refreshSignedUrl(newPath)
+      if (toast) toast(isRTL ? 'تم تحميل القالب' : 'Template uploaded', 'success')
+    } catch (err) {
+      console.error('[PrescriptionTemplatePanel] upload failed:', err)
+      if (toast) toast(err?.message || (isRTL ? 'فشل التحميل' : 'Upload failed'), 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  const handleConfirmRemove = async () => {
+    setUploading(true)
+    try {
+      await deletePrescriptionTemplate(doctor.id)
+      setCurrentPath(null)
+      setSignedUrl(null)
+      setConfirmingRemove(false)
+      if (toast) toast(isRTL ? 'تم حذف القالب' : 'Template removed', 'success')
+    } catch (err) {
+      console.error('[PrescriptionTemplatePanel] delete failed:', err)
+      if (toast) toast(err?.message || (isRTL ? 'فشل الحذف' : 'Remove failed'), 'error')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="py-8 text-center text-sm text-navy-500">
+        {isRTL ? 'جارٍ التحميل…' : 'Loading…'}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/png,image/jpeg"
+        onChange={handleFileChange}
+        className="hidden"
+        disabled={uploading}
+      />
+
+      {!currentPath && (
+        <div className="text-center py-6">
+          <Button
+            variant="primary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {uploading
+              ? (isRTL ? 'جارٍ التحميل…' : 'Uploading…')
+              : (isRTL ? 'تحميل PNG أو JPG' : 'Upload PNG or JPG')}
+          </Button>
+          <p className="text-[11px] text-navy-500 mt-3 m-0">
+            {isRTL
+              ? '5 ميجابايت كحد أقصى. الموصى به: 2480×3508 (A4 بدقة 300 DPI).'
+              : '5 MB max. Recommended 2480×3508 (A4 @ 300 DPI).'}
+          </p>
+        </div>
+      )}
+
+      {currentPath && (
+        <div className="flex gap-4 items-start">
+          <div className="w-32 h-44 rounded-glass overflow-hidden bg-navy-50 ring-1 ring-navy-100 shrink-0 grid place-items-center">
+            {signedUrl ? (
+              <img src={signedUrl} alt="" className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-[11px] text-navy-400">
+                {isRTL ? 'لا توجد معاينة' : 'No preview'}
+              </span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-[13px] text-navy-700 m-0 mb-3">
+              {isRTL ? 'القالب الحالي' : 'Current template'}
+            </p>
+            {!confirmingRemove && (
+              <div className="flex gap-2 flex-wrap">
+                <Button
+                  variant="secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                >
+                  {uploading
+                    ? (isRTL ? 'جارٍ التحميل…' : 'Uploading…')
+                    : (isRTL ? 'استبدال' : 'Replace')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={() => setConfirmingRemove(true)}
+                  disabled={uploading}
+                >
+                  {isRTL ? 'حذف' : 'Remove'}
+                </Button>
+              </div>
+            )}
+            {confirmingRemove && (
+              <div className="rounded-glass bg-red-50/60 ring-1 ring-red-100 p-3">
+                <p className="text-[13px] text-navy-800 m-0 mb-2">
+                  {isRTL
+                    ? 'هل تريد حذف قالب الوصفة؟ سيحتاج الطبيب إلى إعادة التحميل لطباعة الوصفات.'
+                    : 'Remove prescription template? The doctor will need to re-upload to print prescriptions.'}
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setConfirmingRemove(false)}
+                    disabled={uploading}
+                  >
+                    {isRTL ? 'الغاء' : 'Cancel'}
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleConfirmRemove}
+                    disabled={uploading}
+                  >
+                    {uploading
+                      ? (isRTL ? 'جارٍ الحذف…' : 'Removing…')
+                      : (isRTL ? 'تأكيد الحذف' : 'Confirm Remove')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
+function DoctorForm({ doc, onSave, onCancel, dir, isRTL, toast }) {
   void dir
+  const [tab, setTab] = useState('profile')
   const [form, setForm] = useState({
     full_name: doc?.full_name || '',
     avatar_url: doc?.avatar_url || '',
@@ -1554,48 +1744,87 @@ function DoctorForm({ doc, onSave, onCancel, dir, isRTL }) {
 
   return (
     <div className="mt-4 p-5 rounded-glass bg-navy-50/40 ring-1 ring-navy-100">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
-        <Input
-          label={isRTL ? 'الاسم' : 'Name'}
-          value={form.full_name}
-          onChange={e => set('full_name', e.target.value)}
-          placeholder="Dr. ..."
-        />
-        <Select
-          label={isRTL ? 'اللغة' : 'Locale'}
-          value={form.locale}
-          onChange={e => set('locale', e.target.value)}
-          options={[
-            { value: '',   label: isRTL ? '— تلقائي —' : '— Auto —' },
-            { value: 'en', label: 'English' },
-            { value: 'ar', label: 'العربية' },
-          ]}
-        />
+      <div className="flex gap-1 mb-5 p-1 rounded-lg bg-white/40">
+        {[
+          { id: 'profile',  label: isRTL ? 'الملف الشخصي' : 'Profile' },
+          { id: 'template', label: isRTL ? 'قالب الوصفة' : 'Prescription Template' },
+        ].map(t => {
+          const isActive = tab === t.id
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              data-active={isActive}
+              aria-current={isActive ? 'page' : undefined}
+              className={[
+                'flex-1 py-2 px-3 rounded-md cursor-pointer border-0',
+                'text-[13px] transition-colors duration-fast',
+                'focus-visible:outline-none focus-visible:shadow-focus-cyan',
+                isActive
+                  ? 'bg-white/80 text-navy-900 font-semibold ring-1 ring-navy-100 shadow-glass-sm'
+                  : 'bg-transparent text-navy-600 font-medium hover:bg-navy-50/70 hover:text-navy-800',
+              ].join(' ')}
+            >
+              {t.label}
+            </button>
+          )
+        })}
       </div>
-      <div className="mb-3">
-        <Input
-          label={isRTL ? 'رابط الصورة' : 'Avatar URL'}
-          value={form.avatar_url}
-          onChange={e => set('avatar_url', e.target.value)}
-          placeholder="https://..."
-        />
-      </div>
-      <p className="text-[11px] text-navy-500 italic m-0 mb-4">
-        {isRTL
-          ? 'يتم إدارة الدور (طبيب / موظف استقبال) من قبل المشغل، لا يمكن تعديله من هنا.'
-          : 'Role (doctor / receptionist / etc.) is operator-managed and cannot be changed from this form.'}
-      </p>
-      <div className="flex gap-2 justify-end">
+
+      {tab === 'profile' && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+            <Input
+              label={isRTL ? 'الاسم' : 'Name'}
+              value={form.full_name}
+              onChange={e => set('full_name', e.target.value)}
+              placeholder="Dr. ..."
+            />
+            <Select
+              label={isRTL ? 'اللغة' : 'Locale'}
+              value={form.locale}
+              onChange={e => set('locale', e.target.value)}
+              options={[
+                { value: '',   label: isRTL ? '— تلقائي —' : '— Auto —' },
+                { value: 'en', label: 'English' },
+                { value: 'ar', label: 'العربية' },
+              ]}
+            />
+          </div>
+          <div className="mb-3">
+            <Input
+              label={isRTL ? 'رابط الصورة' : 'Avatar URL'}
+              value={form.avatar_url}
+              onChange={e => set('avatar_url', e.target.value)}
+              placeholder="https://..."
+            />
+          </div>
+          <p className="text-[11px] text-navy-500 italic m-0 mb-4">
+            {isRTL
+              ? 'يتم إدارة الدور (طبيب / موظف استقبال) من قبل المشغل، لا يمكن تعديله من هنا.'
+              : 'Role (doctor / receptionist / etc.) is operator-managed and cannot be changed from this form.'}
+          </p>
+        </>
+      )}
+
+      {tab === 'template' && (
+        <PrescriptionTemplatePanel doctor={doc} toast={toast} isRTL={isRTL} />
+      )}
+
+      <div className="flex gap-2 justify-end mt-4">
         <Button variant="secondary" onClick={onCancel}>
           {isRTL ? 'الغاء' : 'Cancel'}
         </Button>
-        <Button
-          variant="primary"
-          onClick={() => { if (form.full_name.trim()) onSave(form) }}
-          disabled={!form.full_name.trim()}
-        >
-          {isRTL ? 'تحديث' : 'Update'}
-        </Button>
+        {tab === 'profile' && (
+          <Button
+            variant="primary"
+            onClick={() => { if (form.full_name.trim()) onSave(form) }}
+            disabled={!form.full_name.trim()}
+          >
+            {isRTL ? 'تحديث' : 'Update'}
+          </Button>
+        )}
       </div>
     </div>
   )

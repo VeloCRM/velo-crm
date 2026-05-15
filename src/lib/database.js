@@ -557,6 +557,112 @@ export async function insertProfile(profile, orgId) {
 }
 
 
+// ─── Prescription Templates ───────────────────────────────────────────────
+// Per-doctor prescription pad templates stored in Supabase Storage.
+// Schema: profiles.prescription_template_url (nullable text)
+// Bucket: prescription-templates (private, 5 MB cap, image/png + image/jpeg)
+// Path:   prescription-templates/{org_id}/{doctor_id}/template.{ext}
+
+export async function fetchPrescriptionTemplatePath(doctorId) {
+  if (!doctorId) throw new Error('fetchPrescriptionTemplatePath: doctorId is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('prescription_template_url')
+    .eq('id', doctorId)
+    .eq('org_id', orgId)
+    .single()
+  if (error) throw error
+  return data?.prescription_template_url || null
+}
+
+export async function uploadPrescriptionTemplate(doctorId, file) {
+  if (!doctorId) throw new Error('uploadPrescriptionTemplate: doctorId is required')
+  if (!file) throw new Error('uploadPrescriptionTemplate: file is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
+  // Client-side fast-fail (RLS + bucket-level limits are the real gate)
+  if (!['image/png', 'image/jpeg'].includes(file.type)) {
+    throw new Error('Only PNG and JPG are accepted.')
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    throw new Error('File exceeds 5 MB.')
+  }
+
+  const ext = file.type === 'image/png' ? 'png' : 'jpg'
+  const path = `${orgId}/${doctorId}/template.${ext}`
+
+  const { error: upErr } = await supabase.storage
+    .from('prescription-templates')
+    .upload(path, file, { upsert: true, contentType: file.type })
+  if (upErr) throw upErr
+
+  const { error: pErr } = await supabase
+    .from('profiles')
+    .update({ prescription_template_url: path })
+    .eq('id', doctorId)
+    .eq('org_id', orgId)
+  if (pErr) throw pErr
+
+  await logAuditEvent({
+    orgId,
+    action: 'profile.prescription_template.upload',
+    entityType: 'profile',
+    entityId: doctorId,
+    payload: { ext, size_bytes: file.size },
+  })
+
+  return path
+}
+
+export async function deletePrescriptionTemplate(doctorId) {
+  if (!doctorId) throw new Error('deletePrescriptionTemplate: doctorId is required')
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+
+  const { data: profile, error: fetchErr } = await supabase
+    .from('profiles')
+    .select('prescription_template_url')
+    .eq('id', doctorId)
+    .eq('org_id', orgId)
+    .single()
+  if (fetchErr) throw fetchErr
+  const path = profile?.prescription_template_url
+  if (!path) return // already cleared — idempotent, no audit-log event
+
+  const { error: delErr } = await supabase.storage
+    .from('prescription-templates')
+    .remove([path])
+  if (delErr) throw delErr
+
+  const { error: pErr } = await supabase
+    .from('profiles')
+    .update({ prescription_template_url: null })
+    .eq('id', doctorId)
+    .eq('org_id', orgId)
+  if (pErr) throw pErr
+
+  await logAuditEvent({
+    orgId,
+    action: 'profile.prescription_template.delete',
+    entityType: 'profile',
+    entityId: doctorId,
+  })
+}
+
+export async function getPrescriptionTemplateSignedUrl(path) {
+  if (!path) return null
+  await requireUser()
+  const { data, error } = await supabase.storage
+    .from('prescription-templates')
+    .createSignedUrl(path, 60)
+  if (error) throw error
+  return data?.signedUrl || null
+}
+
+
 // ─── Org Secrets ───────────────────────────────────────────────────────────
 // Operator-only at the RLS layer; this helper additionally refuses to write
 // secrets for test orgs.
