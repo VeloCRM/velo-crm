@@ -24,15 +24,6 @@ const TABS = [
   { id: 'agencyai', icon: Icons.zap, operatorOnly: true },
 ]
 
-const INDUSTRIES = [
-  { id: 'general', icon: '🏢', en: 'General Business', ar: 'أعمال عامة' },
-  { id: 'dental', icon: '🦷', en: 'Dental Clinic', ar: 'عيادة أسنان' },
-  { id: 'real_estate', icon: '🏠', en: 'Real Estate', ar: 'عقارات' },
-  { id: 'beauty', icon: '💅', en: 'Beauty & Spa', ar: 'تجميل وسبا' },
-  { id: 'legal', icon: '⚖️', en: 'Legal Services', ar: 'خدمات قانونية' },
-  { id: 'restaurant', icon: '🍽️', en: 'Restaurant', ar: 'مطعم' },
-]
-
 const CURRENCIES = [
   { id: 'USD', label: 'USD ($)' },
   { id: 'IQD', label: 'IQD (د.ع)' },
@@ -176,48 +167,6 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
               onChange={e => set('name', e.target.value)}
               placeholder={lang === 'ar' ? 'اسم شركتك' : 'Your company name'}
             />
-          </div>
-        </div>
-
-        {/* Industry */}
-        <div className="mb-5">
-          <div className="text-xs font-semibold text-navy-600 mb-2.5">
-            {lang === 'ar' ? 'مجال العمل' : 'Industry'}
-          </div>
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-2">
-            {INDUSTRIES.map(ind => {
-              const active = form.industry === ind.id
-              return (
-                <button
-                  key={ind.id}
-                  type="button"
-                  onClick={() => set('industry', ind.id)}
-                  className={[
-                    'py-3.5 px-2.5 rounded-glass text-center cursor-pointer',
-                    'transition-colors duration-fast font-inter',
-                    active
-                      ? 'border-2 bg-white'
-                      : 'border border-navy-100 bg-white hover:border-navy-200',
-                  ].join(' ')}
-                  style={
-                    active
-                      ? {
-                          borderColor: form.primary_color,
-                          backgroundColor: form.primary_color + '14',
-                        }
-                      : undefined
-                  }
-                >
-                  <div className="text-2xl mb-1">{ind.icon}</div>
-                  <div
-                    className={`text-xs font-semibold ${active ? '' : 'text-navy-700'}`}
-                    style={active ? { color: form.primary_color } : undefined}
-                  >
-                    {lang === 'ar' ? ind.ar : ind.en}
-                  </div>
-                </button>
-              )
-            })}
           </div>
         </div>
 
