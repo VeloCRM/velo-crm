@@ -213,7 +213,7 @@ export async function fetchPrescriptionsForPatient(patientId) {
       id, patient_id, doctor_id, issued_at, general_instructions,
       created_by, created_at, updated_at, updated_by,
       external_id, external_source,
-      doctor:doctor_id(id, full_name),
+      doctor:doctor_id(id, full_name, prescription_template_url),
       prescription_items(id, drug_name, dosage, frequency, duration, instructions, sort_order)
     `)
     .eq('org_id', orgId)

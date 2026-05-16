@@ -41,6 +41,9 @@ const DentalChartWrapper = lazy(() =>
 const DentalTreatments = lazy(() =>
   import('./components/DentalTabs').then(m => ({ default: m.TreatmentPlanTab }))
 )
+const DentalPrescriptions = lazy(() =>
+  import('./components/DentalTabs').then(m => ({ default: m.PrescriptionsTab }))
+)
 import TestAccountBanner from './components/TestAccountBanner'
 import { SkeletonDashboard, SkeletonContacts, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
 import { useToast, ToastContainer } from './components/Toast'
@@ -1582,13 +1585,14 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
     { id: 'medical',      label: isRTL ? 'التاريخ الطبي' : 'Medical History' },
     { id: 'dental_chart', label: isRTL ? 'مخطط الأسنان' : 'Dental Chart' },
     { id: 'treatments',   label: isRTL ? 'خطة العلاج'    : 'Treatment Plan' },
+    { id: 'prescriptions', label: isRTL ? 'الوصفات'       : 'Prescriptions' },
   ]
 
   // Heavy tabs (Payments, Medical, Dental Chart, Treatments) keep their existing
   // implementations for now — Phase 2.2 only redesigns Overview + Appointments
   // and the chrome (header / tab bar). The dental chart visual is tackled in
   // Phase 3 (anatomical SVGs).
-  const heavyTab = profileTab === 'payments' || profileTab === 'medical' || profileTab === 'dental_chart' || profileTab === 'treatments'
+  const heavyTab = profileTab === 'payments' || profileTab === 'medical' || profileTab === 'dental_chart' || profileTab === 'treatments' || profileTab === 'prescriptions'
 
   return (
     <div
@@ -1833,6 +1837,11 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
               {profileTab === 'treatments' && (
                 <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
                   <DentalTreatments patient={patient} lang={lang} dir={dir} toast={toast} />
+                </Suspense>
+              )}
+              {profileTab === 'prescriptions' && (
+                <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+                  <DentalPrescriptions patient={patient} lang={lang} dir={dir} toast={toast} />
                 </Suspense>
               )}
             </div>

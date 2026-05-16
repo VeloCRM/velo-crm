@@ -31,6 +31,15 @@ import {
 } from '../lib/dental'
 import { fetchMyProfile, listDoctorsInOrg } from '../lib/profiles'
 import { formatMoney, toMinor } from '../lib/money'
+import {
+  fetchPrescriptionsForPatient,
+  createPrescription,
+  updatePrescription,
+  deletePrescription,
+  fetchPrescriptionForPrint,
+  logPrescriptionPrint,
+} from '../lib/prescriptions'
+import { getPrescriptionTemplateSignedUrl } from '../lib/database'
 
 // Roles allowed to mutate dental-tab state at the UI layer. RLS policies are
 // the real security boundary; this just hides the buttons for read-only users.
@@ -1031,6 +1040,621 @@ function NewTreatmentPlanModal({ patientId, dir, isRTL, onCancel, onSaved, onErr
             </Button>
           </div>
         </form>
+      </div>
+    </Modal>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PRESCRIPTIONS TAB
+// ═══════════════════════════════════════════════════════════════════════════
+
+export function PrescriptionsTab({ patient, lang, dir, toast }) {
+  const isRTL = lang === 'ar'
+  const role = useMyRole()
+  const canEdit = role && EDIT_ROLES.has(role)
+
+  const [prescriptions, setPrescriptions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null) // null = new; otherwise edit mode
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [printingId, setPrintingId] = useState(null)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await fetchPrescriptionsForPatient(patient.id)
+      setPrescriptions(rows)
+    } catch (err) {
+      console.error('[PrescriptionsTab] load failed:', err)
+      toast?.(isRTL ? 'فشل تحميل الوصفات' : 'Failed to load prescriptions', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [patient.id, toast, isRTL])
+
+  useEffect(() => { reload() }, [reload])
+
+  const openNew = () => { setEditingId(null); setShowForm(true) }
+  const openEdit = (rx) => { setEditingId(rx.id); setShowForm(true) }
+  const editingPrescription = editingId ? prescriptions.find(p => p.id === editingId) : null
+
+  const handleDelete = async (id) => {
+    try {
+      await deletePrescription(id)
+      setPrescriptions(prev => prev.filter(p => p.id !== id))
+      toast?.(isRTL ? 'تم حذف الوصفة' : 'Prescription deleted', 'success')
+    } catch (err) {
+      console.error('[PrescriptionsTab] delete failed:', err)
+      toast?.(isRTL ? 'فشل الحذف' : 'Failed to delete', 'error')
+    } finally {
+      setConfirmDeleteId(null)
+    }
+  }
+
+  return (
+    <div className="ds-root flex flex-col gap-3">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-base font-semibold text-navy-900 m-0">
+          {isRTL ? 'الوصفات الطبية' : 'Prescriptions'}
+        </h3>
+        {canEdit && (
+          <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={openNew}>
+            {isRTL ? 'وصفة جديدة' : 'New Prescription'}
+          </Button>
+        )}
+      </div>
+
+      {loading ? (
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+          {isRTL ? 'جاري التحميل...' : 'Loading...'}
+        </GlassCard>
+      ) : prescriptions.length === 0 ? (
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+          {isRTL ? 'لا توجد وصفات' : 'No prescriptions yet'}
+        </GlassCard>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {prescriptions.map(rx => {
+            const docName = rx.doctor?.full_name || (isRTL ? 'بدون طبيب' : 'No doctor')
+            const issued = rx.issued_at
+              ? new Date(rx.issued_at).toLocaleDateString(
+                  isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US',
+                  { dateStyle: 'medium' }
+                )
+              : ''
+            const items = rx.prescription_items || []
+            const canPrint = Boolean(rx.doctor?.prescription_template_url)
+            const printDisabledTitle = isRTL
+              ? 'لم يقم الطبيب برفع قالب وصفة. الإعدادات → الأطباء → [الطبيب] → قالب الوصفة.'
+              : 'Doctor has not uploaded a prescription template. Settings → Doctors → [Doctor] → Prescription Template.'
+
+            return (
+              <GlassCard key={rx.id} padding="lg" className="flex flex-col gap-2.5">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <div className="text-sm font-semibold text-navy-900">{docName}</div>
+                    <div className="text-[11px] text-navy-500 mt-1 tabular-nums">
+                      {issued} · {items.length} {isRTL ? 'دواء' : (items.length === 1 ? 'item' : 'items')}
+                    </div>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => canPrint && setPrintingId(rx.id)}
+                    disabled={!canPrint}
+                    title={!canPrint ? printDisabledTitle : undefined}
+                  >
+                    {isRTL ? 'طباعة' : 'Print'}
+                  </Button>
+                  {canEdit && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(rx)}
+                        aria-label={isRTL ? 'تعديل' : 'Edit'}
+                        className="text-xs font-semibold text-navy-600 hover:text-accent-cyan-700 px-2 py-1 rounded-md hover:bg-accent-cyan-50/60 transition-colors"
+                      >
+                        {isRTL ? 'تعديل' : 'Edit'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(rx.id)}
+                        aria-label={isRTL ? 'حذف' : 'Delete'}
+                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                      >
+                        {Icons.trash(14)}
+                      </button>
+                    </>
+                  )}
+                </div>
+                {items.length > 0 && (
+                  <ul className="flex flex-col gap-1 m-0 ps-0 list-none">
+                    {items
+                      .slice()
+                      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                      .map((item, idx) => (
+                        <li key={item.id} className="text-xs text-navy-700 flex gap-1.5">
+                          <span className="text-navy-400 tabular-nums w-5 text-end">{idx + 1}.</span>
+                          <span className="flex-1">
+                            <span className="font-semibold">{item.drug_name}</span>
+                            {item.dosage && <span> · {item.dosage}</span>}
+                            {item.frequency && <span> · {item.frequency}</span>}
+                            {item.duration && <span> · {item.duration}</span>}
+                            {item.instructions && <span className="text-navy-500"> — {item.instructions}</span>}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                )}
+                {rx.general_instructions && (
+                  <div className="text-[11px] text-navy-600 italic mt-1 ps-6">
+                    {rx.general_instructions}
+                  </div>
+                )}
+              </GlassCard>
+            )
+          })}
+        </div>
+      )}
+
+      {showForm && (
+        <PrescriptionEntryModal
+          patientId={patient.id}
+          existing={editingPrescription}
+          dir={dir}
+          isRTL={isRTL}
+          onCancel={() => { setShowForm(false); setEditingId(null) }}
+          onSaved={() => {
+            const wasEdit = Boolean(editingPrescription)
+            setShowForm(false)
+            setEditingId(null)
+            reload()
+            toast?.(
+              wasEdit
+                ? (isRTL ? 'تم تحديث الوصفة' : 'Prescription updated')
+                : (isRTL ? 'تم إنشاء الوصفة' : 'Prescription created'),
+              'success'
+            )
+          }}
+          onError={msg => toast?.(msg, 'error')}
+        />
+      )}
+
+      {confirmDeleteId && (
+        <Modal onClose={() => setConfirmDeleteId(null)} dir={dir} width={400}>
+          <h3 className="text-lg font-semibold text-navy-900 m-0 mb-3">
+            {isRTL ? 'حذف الوصفة' : 'Delete Prescription'}
+          </h3>
+          <p className="text-sm text-navy-600 m-0 mb-5">
+            {isRTL
+              ? 'سيتم حذف الوصفة وجميع أدويتها. لا يمكن التراجع.'
+              : 'This will permanently delete the prescription and all its items. This cannot be undone.'}
+          </p>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="destructive" onClick={() => handleDelete(confirmDeleteId)}>{isRTL ? 'حذف' : 'Delete'}</Button>
+          </div>
+        </Modal>
+      )}
+
+      {printingId && (
+        <PrescriptionPrintModal
+          prescriptionId={printingId}
+          dir={dir}
+          isRTL={isRTL}
+          onClose={() => setPrintingId(null)}
+          toast={toast}
+        />
+      )}
+    </div>
+  )
+}
+
+
+// ─── Prescription entry modal — handles both new and edit ─────────────────
+function PrescriptionEntryModal({ patientId, existing, dir, isRTL, onCancel, onSaved, onError }) {
+  // Prefill state from `existing` (edit mode) or use fresh defaults (new mode).
+  const initialItems = existing && Array.isArray(existing.prescription_items) && existing.prescription_items.length > 0
+    ? existing.prescription_items
+        .slice()
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map(it => ({
+          drug_name: it.drug_name || '',
+          dosage: it.dosage || '',
+          frequency: it.frequency || '',
+          duration: it.duration || '',
+          instructions: it.instructions || '',
+        }))
+    : [{ drug_name: '', dosage: '', frequency: '', duration: '', instructions: '' }]
+
+  const initialIssuedAt = existing?.issued_at
+    ? existing.issued_at.slice(0, 10)
+    : new Date().toISOString().slice(0, 10)
+
+  const [doctors, setDoctors] = useState([])
+  const [doctorId, setDoctorId] = useState(existing?.doctor_id || '')
+  const [issuedAt, setIssuedAt] = useState(initialIssuedAt)
+  const [generalInstructions, setGeneralInstructions] = useState(existing?.general_instructions || '')
+  const [items, setItems] = useState(initialItems)
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    listDoctorsInOrg()
+      .then(rows => {
+        if (cancelled) return
+        // listDoctorsInOrg returns BOTH owners AND doctors. The schema trigger
+        // (enforce_prescription_doctor_role) rejects non-doctor doctor_id, so
+        // we filter here to surface only valid prescribers in the dropdown.
+        setDoctors((rows || []).filter(d => d.role === 'doctor'))
+      })
+      .catch(() => { /* leave empty; submit validation will catch missing doctor */ })
+    return () => { cancelled = true }
+  }, [])
+
+  const updateItem = (idx, key, value) => {
+    setItems(prev => prev.map((it, i) => i === idx ? { ...it, [key]: value } : it))
+  }
+  const addItemRow = () => setItems(prev => [
+    ...prev,
+    { drug_name: '', dosage: '', frequency: '', duration: '', instructions: '' },
+  ])
+  const removeItemRow = (idx) => setItems(prev => prev.filter((_, i) => i !== idx))
+
+  const handleSubmit = async () => {
+    if (!doctorId) {
+      onError(isRTL ? 'يرجى اختيار الطبيب' : 'Please select a doctor')
+      return
+    }
+
+    const labeledItems = items.filter(it => (it.drug_name || '').trim())
+    if (labeledItems.length === 0) {
+      onError(isRTL ? 'أضف دواءً واحداً على الأقل' : 'Add at least one medication')
+      return
+    }
+
+    const cleanItems = labeledItems.map((it, idx) => ({
+      drug_name:    it.drug_name.trim(),
+      dosage:       it.dosage.trim()       || null,
+      frequency:    it.frequency.trim()    || null,
+      duration:     it.duration.trim()     || null,
+      instructions: it.instructions.trim() || null,
+      sort_order:   idx,
+    }))
+
+    // Convert yyyy-mm-dd back to ISO timestamptz at noon local (avoids tz
+    // edge cases where a midnight UTC value would land on the wrong day in
+    // Asia/Baghdad).
+    const issuedAtIso = issuedAt
+      ? new Date(`${issuedAt}T12:00:00`).toISOString()
+      : new Date().toISOString()
+
+    setSubmitting(true)
+    try {
+      if (existing) {
+        await updatePrescription(existing.id, {
+          doctor_id: doctorId,
+          issued_at: issuedAtIso,
+          general_instructions: generalInstructions.trim() || null,
+          items: cleanItems,
+        })
+      } else {
+        await createPrescription(patientId, {
+          doctor_id: doctorId,
+          issued_at: issuedAtIso,
+          general_instructions: generalInstructions.trim() || null,
+          items: cleanItems,
+        })
+      }
+      onSaved()
+    } catch (err) {
+      console.error('[PrescriptionEntryModal] save failed:', err)
+      onError(err.message || (isRTL ? 'فشل حفظ الوصفة' : 'Failed to save prescription'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal onClose={() => { if (!submitting) onCancel() }} dir={dir} width={720}>
+      <div className="ds-root">
+        <form onSubmit={e => { e.preventDefault(); handleSubmit() }}>
+          <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
+            {existing
+              ? (isRTL ? 'تعديل الوصفة' : 'Edit Prescription')
+              : (isRTL ? 'وصفة جديدة' : 'New Prescription')}
+          </h3>
+
+          <div className="grid grid-cols-[2fr_1fr] gap-x-4">
+            <FormField label={isRTL ? 'الطبيب' : 'Doctor'} dir={dir}>
+              <select value={doctorId} onChange={e => setDoctorId(e.target.value)} required style={selectStyle(dir)}>
+                <option value="">{isRTL ? '— اختر —' : '— Select —'}</option>
+                {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+              </select>
+            </FormField>
+            <FormField label={isRTL ? 'التاريخ' : 'Date'} dir={dir}>
+              <input
+                type="date"
+                value={issuedAt}
+                onChange={e => setIssuedAt(e.target.value)}
+                style={inputStyle(dir)}
+              />
+            </FormField>
+          </div>
+
+          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-navy-500 mt-2 mb-2">
+            {isRTL ? 'الأدوية' : 'Medications'}
+          </div>
+          <div className="flex flex-col gap-1.5 mb-2">
+            <div className="grid grid-cols-[1.5fr_80px_100px_80px_1fr_32px] gap-2 items-center text-[11px] text-navy-500 font-semibold">
+              <span>{isRTL ? 'الدواء' : 'Drug'}</span>
+              <span>{isRTL ? 'الجرعة' : 'Dosage'}</span>
+              <span>{isRTL ? 'التكرار' : 'Frequency'}</span>
+              <span>{isRTL ? 'المدة' : 'Duration'}</span>
+              <span>{isRTL ? 'تعليمات' : 'Instructions'}</span>
+              <span />
+            </div>
+            {items.map((it, idx) => (
+              <div key={idx} className="grid grid-cols-[1.5fr_80px_100px_80px_1fr_32px] gap-2 items-start">
+                <input
+                  value={it.drug_name}
+                  onChange={e => updateItem(idx, 'drug_name', e.target.value)}
+                  maxLength={200}
+                  placeholder={isRTL ? 'مثال: أموكسيسيلين ٥٠٠ ملغ' : 'e.g. Amoxicillin 500mg'}
+                  style={inputStyle(dir)}
+                />
+                <input
+                  value={it.dosage}
+                  onChange={e => updateItem(idx, 'dosage', e.target.value)}
+                  maxLength={64}
+                  placeholder={isRTL ? '٥٠٠ ملغ' : '500mg'}
+                  style={inputStyle(dir)}
+                />
+                <input
+                  value={it.frequency}
+                  onChange={e => updateItem(idx, 'frequency', e.target.value)}
+                  maxLength={64}
+                  placeholder={isRTL ? '٣ مرات/يوم' : 'TID'}
+                  style={inputStyle(dir)}
+                />
+                <input
+                  value={it.duration}
+                  onChange={e => updateItem(idx, 'duration', e.target.value)}
+                  maxLength={64}
+                  placeholder={isRTL ? '٧ أيام' : '7 days'}
+                  style={inputStyle(dir)}
+                />
+                <input
+                  value={it.instructions}
+                  onChange={e => updateItem(idx, 'instructions', e.target.value)}
+                  placeholder={isRTL ? 'مع الطعام' : 'With food'}
+                  style={inputStyle(dir)}
+                />
+                <button
+                  type="button"
+                  onClick={() => removeItemRow(idx)}
+                  aria-label={isRTL ? 'إزالة الصف' : 'Remove row'}
+                  disabled={items.length === 1}
+                  className={[
+                    'grid place-items-center w-7 h-7 rounded-md transition-colors',
+                    items.length === 1
+                      ? 'text-navy-300 cursor-default'
+                      : 'text-navy-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer',
+                  ].join(' ')}
+                >
+                  {Icons.x(14)}
+                </button>
+              </div>
+            ))}
+          </div>
+          <Button variant="secondary" size="sm" iconStart={Icons.plus} onClick={addItemRow} type="button">
+            {isRTL ? 'إضافة دواء' : 'Add medication'}
+          </Button>
+
+          <FormField label={isRTL ? 'تعليمات عامة' : 'General instructions'} dir={dir}>
+            <textarea
+              value={generalInstructions}
+              onChange={e => setGeneralInstructions(e.target.value)}
+              rows={2}
+              maxLength={1000}
+              placeholder={isRTL
+                ? 'مثال: تجنب الكحول. أكمل العلاج كاملاً.'
+                : 'e.g. Avoid alcohol. Complete the full course.'}
+              style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }}
+            />
+          </FormField>
+
+          <div className="flex gap-2 justify-end mt-2">
+            <Button variant="secondary" disabled={submitting} onClick={onCancel}>
+              {isRTL ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button variant="primary" type="submit" loading={submitting} disabled={submitting}>
+              {submitting
+                ? (isRTL ? 'جاري الحفظ...' : 'Saving...')
+                : existing
+                  ? (isRTL ? 'تحديث' : 'Update')
+                  : (isRTL ? 'حفظ' : 'Save')}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </Modal>
+  )
+}
+
+
+// ─── Prescription print modal — fetch + scaled preview + window.print() ───
+function PrescriptionPrintModal({ prescriptionId, dir, isRTL, onClose, toast }) {
+  const [data, setData] = useState(null)
+  const [signedUrl, setSignedUrl] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [bgLoaded, setBgLoaded] = useState(false)
+  const [templateError, setTemplateError] = useState(false)
+  const [printing, setPrinting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setTemplateError(false)
+    setBgLoaded(false)
+    setSignedUrl(null)
+    setData(null)
+
+    const load = async () => {
+      try {
+        const rx = await fetchPrescriptionForPrint(prescriptionId)
+        if (cancelled) return
+        if (!rx) {
+          toast?.(isRTL ? 'لم يتم العثور على الوصفة' : 'Prescription not found', 'error')
+          onClose()
+          return
+        }
+        setData(rx)
+
+        const path = rx.doctor?.prescription_template_url
+        if (!path) {
+          setTemplateError(true)
+          setLoading(false)
+          return
+        }
+
+        try {
+          const url = await getPrescriptionTemplateSignedUrl(path)
+          if (cancelled) return
+          if (!url) {
+            setTemplateError(true)
+          } else {
+            setSignedUrl(url)
+          }
+        } catch (urlErr) {
+          console.error('[PrescriptionPrintModal] signed URL failed:', urlErr)
+          if (!cancelled) setTemplateError(true)
+        }
+      } catch (err) {
+        console.error('[PrescriptionPrintModal] load failed:', err)
+        if (!cancelled) {
+          toast?.(isRTL ? 'فشل تحميل الوصفة' : 'Failed to load prescription', 'error')
+          onClose()
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    load()
+    return () => { cancelled = true }
+  }, [prescriptionId, toast, isRTL, onClose])
+
+  const handlePrint = async () => {
+    if (!bgLoaded || templateError || !data) return
+    setPrinting(true)
+    try {
+      await logPrescriptionPrint(prescriptionId)
+      window.print()
+    } catch (err) {
+      console.error('[PrescriptionPrintModal] print audit failed:', err)
+      toast?.(isRTL ? 'فشل تسجيل الطباعة' : 'Failed to log print event', 'error')
+    } finally {
+      setPrinting(false)
+    }
+  }
+
+  const issuedDate = data?.issued_at
+    ? new Date(data.issued_at).toLocaleDateString(
+        isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US',
+        { dateStyle: 'medium' }
+      )
+    : ''
+  const items = (data?.prescription_items || [])
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+
+  return (
+    <Modal onClose={() => { if (!printing) onClose() }} dir={dir} width={620}>
+      <div className="ds-root">
+        <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
+          {isRTL ? 'طباعة الوصفة' : 'Print Prescription'}
+        </h3>
+
+        {loading ? (
+          <div className="text-center text-sm text-navy-500 py-10">
+            {isRTL ? 'جاري التحميل...' : 'Loading...'}
+          </div>
+        ) : templateError ? (
+          <div className="rounded-glass bg-amber-50 border border-amber-200 px-4 py-6 text-center">
+            <p className="text-sm font-semibold text-amber-900 m-0 mb-2">
+              {isRTL ? 'قالب الوصفة غير متوفر' : "Doctor's prescription template not available"}
+            </p>
+            <p className="text-xs text-amber-700 m-0">
+              {isRTL
+                ? 'اتصل بالطبيب لرفع قالب الوصفة عبر الإعدادات → الأطباء → [الطبيب] → قالب الوصفة.'
+                : 'Contact the doctor to upload it via Settings → Doctors → [Doctor] → Prescription Template.'}
+            </p>
+          </div>
+        ) : (
+          <div className="rx-print-preview-container">
+            <div className="rx-print">
+              <img
+                className="rx-print__bg"
+                src={signedUrl}
+                alt=""
+                onLoad={() => setBgLoaded(true)}
+              />
+              <div className="rx-print__patient" dir={dir}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11pt' }}>
+                  <span>
+                    <strong>{isRTL ? 'المريض:' : 'Patient:'}</strong> {data?.patient?.full_name || ''}
+                  </span>
+                  <span>
+                    <strong>{isRTL ? 'التاريخ:' : 'Date:'}</strong> {issuedDate}
+                  </span>
+                </div>
+              </div>
+              <div className="rx-print__meds" dir={dir}>
+                <div style={{ fontSize: '24pt', fontWeight: 700, marginBottom: '4mm' }}>Rx</div>
+                <ol style={{ paddingInlineStart: '6mm', margin: 0, fontSize: '11pt', lineHeight: 1.4 }}>
+                  {items.map(item => (
+                    <li key={item.id} style={{ marginBottom: '3mm' }}>
+                      <strong>{item.drug_name}</strong>
+                      {item.dosage ? ` ${item.dosage}` : ''}
+                      {(item.frequency || item.duration || item.instructions) && (
+                        <div style={{ fontSize: '10pt', color: '#475569', marginTop: '1mm' }}>
+                          {item.frequency}
+                          {item.frequency && item.duration ? ' × ' : ''}
+                          {item.duration}
+                          {(item.frequency || item.duration) && item.instructions ? ' · ' : ''}
+                          {item.instructions}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+              {data?.general_instructions && (
+                <div className="rx-print__general" dir={dir}>
+                  <strong>{isRTL ? 'تعليمات عامة:' : 'General:'}</strong> {data.general_instructions}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end mt-4">
+          <Button variant="secondary" onClick={onClose} disabled={printing}>
+            {isRTL ? 'إغلاق' : 'Close'}
+          </Button>
+          <Button
+            variant="primary"
+            onClick={handlePrint}
+            disabled={!bgLoaded || templateError || loading || !data || printing}
+            title={templateError ? (isRTL ? 'قالب الوصفة غير متوفر' : 'Template not available') : undefined}
+          >
+            {printing ? (isRTL ? 'جاري الطباعة...' : 'Printing...') : (isRTL ? 'طباعة' : 'Print')}
+          </Button>
+        </div>
       </div>
     </Modal>
   )
