@@ -41,7 +41,9 @@ This is **PR 1 of the 3-module revival initiative** (Prescriptions → Notes →
 
 | Question | Decision | Why |
 |----------|----------|-----|
-| `doctor_id` role enforcement (CHECK vs trigger vs RLS) | **RLS write-predicate** — owner branch must `EXISTS (SELECT 1 FROM profiles WHERE id = NEW.doctor_id AND role='doctor' AND org_id = NEW.org_id)`. Doctor-self branch already enforces `role='doctor'` on the writer (which equals `doctor_id`). | CHECK constraints cannot cross tables. Triggers add a separate maintenance surface (and are easy to forget when looking at the policy block). RLS keeps the rule co-located with the other write-authority rules. Fail-closed by default. |
+| RLS write authority (parent + items) | **Codebase convention: same-org membership only** (`org_id = public.current_org_id()`), matching `treatment_plans` / `appointments` / `patients` / `payments` precedent. Doctor-role integrity is enforced via a DB trigger (`enforce_prescription_doctor_role`), not RLS. Compensating defense-in-depth: every write goes through `logAuditEvent` in the data layer. | Schema-wide consistency. Verified during commit 1 execution that no per-tenant table in this schema role-tightens via RLS — every table uses the simple `org_id = current_org_id()` predicate + two policy sets (`_own_org` + `_operator`). Trigger fires only when `doctor_id`/`org_id` change, so general_instructions-only UPDATEs aren't penalized. |
+| Why NOT the /plan's original role-tightened RLS? | **Pattern doesn't fit per-tenant tables in this codebase.** | (1) No existing tenant table role-tightens via RLS — `treatment_plans`, `appointments`, `patients`, `payments`, `dental_chart_entries`, `expenses`, `tasks`, `inventory_items`, `forms` all use the same simple `org_id = current_org_id()` shape. (2) PR #17's role-tightening was for `storage.objects` (a system table with no tenant-shaped alternative). (3) Per-tenant tables in this schema rely on UI/data-layer role gates (`EDIT_ROLES` in DentalTabs.jsx) + audit log + trigger-enforced integrity for the same protection envelope. (4) Confirmed during commit 1 execution that `treatment_plan_items` denormalizes `org_id` — `prescription_items` mirrors that, ruling out the /plan's parent-EXISTS items design. |
+| `doctor_id` role enforcement (CHECK vs trigger vs RLS) | **Trigger** — `enforce_prescription_doctor_role()` raises if `NEW.doctor_id` doesn't reference a profile with `role='doctor'` AND `org_id = NEW.org_id`. Fires `BEFORE INSERT OR UPDATE OF doctor_id, org_id` (not every UPDATE). | CHECK constraints cannot cross tables. Trigger co-locates the check with the table, is idempotent (`DO $$ pg_trigger IF NOT EXISTS`), and the column-scoped firing (`UPDATE OF doctor_id, org_id`) avoids overhead on general_instructions/issued_at-only UPDATEs. Defends against direct-API insertion bypassing the data layer + future GHL importers that may skip role checks. |
 | Data-layer file | **NEW `src/lib/prescriptions.js`** mirroring `src/lib/dental.js` structure | `database.js` already houses 7 unrelated concern-blocks (patients, payments, audit, orgs, profiles, test-limits, prescription-templates) and is approaching unwieldy. Prescriptions is a clean discrete module with 5 helpers. Keeps `database.js` from accreting further. |
 | Audit-trail columns on parent | **Add `updated_at timestamptz NULL` (set by data layer on UPDATE) and `updated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL`.** Relaxed from the original `NOT NULL DEFAULT now()` so a NULL value clearly signals "never updated since creation." | Partial audit trail (who modified, when) without full clone-and-supersede version history. Compliance can demand this later without a schema migration backfill. |
 | External-system import columns | **Add `external_id text NULL` and `external_source text NULL` to `prescriptions` only.** Partial unique index on `(external_source, external_id) WHERE external_id IS NOT NULL`. Items do NOT get these in V1. | Cheap to add now (2 nullable columns + 1 partial index), expensive to retrofit once GHL imports start producing rows. Items aren't expected to be referenced individually by external systems in V1 (GHL prescriptions are header-level imports); revisit in V2 if that assumption breaks. |
@@ -77,13 +79,13 @@ This is **PR 1 of the 3-module revival initiative** (Prescriptions → Notes →
 | `formatMoney(amount_minor, currency)` is the money-display convention | `src/components/DentalTabs.jsx:33` import + L713 usage | Prescriptions don't carry money (out of scope), so this is irrelevant for V1, but worth noting if a future "private prescription with fees" feature comes back into scope. |
 | `listDoctorsInOrg()` is the doctor-selector convention but **only selects `id, full_name, role`** (known bug from prior session — `avatar_url`, `locale`, `prescription_template_url` NOT widened) | Memory note from 2026-05-15 | The entry form's doctor dropdown is fine with this minimal SELECT. The print component needs `prescription_template_url` separately via `fetchPrescriptionTemplatePath(doctorId)`. **Do not depend on `listDoctorsInOrg` returning the template URL.** |
 
-### Open knowns to verify during execution
+### Resolved during commit 1 execution (2026-05-16)
 
-| Open item | How to verify | Decision deferred? |
-|-----------|---------------|--------------------|
-| Exact schema-file location: `src/lib/schema.sql` (per PR #17) — confirm the file exists and review the treatment_plan section as a template before appending the prescriptions section | `Read src/lib/schema.sql` during Commit 1 | No — proceed; if file is structured differently than PR #17 left it, adapt during execution |
-| Exact policy-naming convention for table policies (vs storage policies in PR #17): inspect a pre-existing tenant table's policy block | `Grep schema.sql for 'CREATE POLICY.*ON public\.treatment_plans'` | No — adapt to what's there |
-| Whether `treatment_plan_items` denormalizes `org_id` or delegates via FK | `Grep schema.sql for 'CREATE TABLE.*treatment_plan_items'` | No — adapt items design to match the established convention if it differs from the proposal here |
+| Item | Resolution |
+|------|------------|
+| Exact schema-file location | **`src/lib/schema.sql`** confirmed. Appended self-contained `prescriptions / prescription_items` section at L1549–L1820 (after PR #17's storage policies, mirroring the "append complete section at end" pattern PR #17 established). |
+| Policy-naming convention for table policies | **`<table>_<op>_<scope>`** — e.g. `prescriptions_select_own_org`, `prescriptions_select_operator`. Mirrors `treatment_plans_select_own_org` etc. Two policy sets per table (8 each, 16 total). |
+| Whether `treatment_plan_items` denormalizes `org_id` | **Confirmed denormalized org_id** at `schema.sql:250`. `prescription_items` mirrors that pattern — has its own `org_id uuid NOT NULL REFERENCES orgs(id) ON DELETE CASCADE` column and uses the simple `org_id = public.current_org_id()` RLS predicate (NOT the parent-EXISTS pattern from the original /plan draft). |
 
 ## Files touched
 
@@ -99,42 +101,46 @@ This is **PR 1 of the 3-module revival initiative** (Prescriptions → Notes →
 
 ## Migration SQL
 
+> **Updated during commit 1 execution (2026-05-16):** RLS uses codebase convention (helper functions + `_own_org` / `_operator` policy sets), NOT the originally-sketched role-tightened pattern. `prescription_items` denormalizes `org_id` to match `treatment_plan_items` precedent. Doctor-role integrity moves to a dedicated trigger (Part 5).
+
 ### Part 1 — `prescriptions` parent table
 
 ```sql
--- Prescriptions: one row per prescription issued to a patient.
--- Header data (date, instructions, prescriber). Drug-level detail lives in
--- prescription_items (1:N child).
 CREATE TABLE IF NOT EXISTS public.prescriptions (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  org_id                uuid NOT NULL REFERENCES public.orgs(id) ON DELETE CASCADE,
+  org_id                uuid NOT NULL REFERENCES public.orgs(id)     ON DELETE CASCADE,
   patient_id            uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
   doctor_id             uuid NOT NULL REFERENCES public.profiles(id) ON DELETE RESTRICT,
   issued_at             timestamptz NOT NULL DEFAULT now(),
   general_instructions  text,
   created_by            uuid REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at            timestamptz NOT NULL DEFAULT now(),
-  -- Partial audit trail (decision 4): who-last-modified-and-when, nullable so
-  -- "never updated since creation" is unambiguous (NULL vs equal-to-created_at).
+  -- Partial audit trail: NULL = never updated since creation.
   updated_at            timestamptz,
   updated_by            uuid REFERENCES auth.users(id) ON DELETE SET NULL,
-  -- GHL / external-system import idempotency (decision 5). Both NULL for
-  -- native creates; populated for imported rows.
+  -- External-system import idempotency (e.g. GHL). Both NULL for native creates.
   external_id           text,
   external_source       text
 );
 
-CREATE INDEX IF NOT EXISTS prescriptions_org_patient_idx
+CREATE INDEX IF NOT EXISTS idx_prescriptions_created_at
+  ON public.prescriptions (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prescriptions_org_patient_issued
   ON public.prescriptions (org_id, patient_id, issued_at DESC);
-CREATE INDEX IF NOT EXISTS prescriptions_doctor_idx
+CREATE INDEX IF NOT EXISTS idx_prescriptions_doctor
   ON public.prescriptions (doctor_id);
 
--- Partial unique index: enforces (external_source, external_id) uniqueness
--- only when external_id is non-null. Native creates (NULL pair) coexist
--- freely; imported rows are deduplicated.
-CREATE UNIQUE INDEX IF NOT EXISTS prescriptions_external_uidx
+-- Partial unique: enforces (external_source, external_id) uniqueness only
+-- when external_id IS NOT NULL. Native creates (NULL pair) coexist freely.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_prescriptions_external_uniq
   ON public.prescriptions (external_source, external_id)
   WHERE external_id IS NOT NULL;
+
+-- updated_at maintenance — defense-in-depth alongside the data layer.
+DROP TRIGGER IF EXISTS prescriptions_set_updated_at ON public.prescriptions;
+CREATE TRIGGER prescriptions_set_updated_at
+  BEFORE UPDATE ON public.prescriptions
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
 ALTER TABLE public.prescriptions ENABLE ROW LEVEL SECURITY;
 ```
@@ -142,210 +148,147 @@ ALTER TABLE public.prescriptions ENABLE ROW LEVEL SECURITY;
 ### Part 2 — `prescription_items` child table
 
 ```sql
--- Line items for a prescription. Cascade-deleted when parent is deleted.
--- No org_id column — RLS delegates to the parent via FK lookup (matches
--- treatment_plan_items convention; confirm during execution).
+-- Denormalizes org_id (matches treatment_plan_items precedent, confirmed
+-- during commit 1 execution at schema.sql:250). Cascade-deleted when parent
+-- is removed. Item columns per commit-1 spec: dosage/sort_order naming, no
+-- 'route' field (collapsed into 'instructions' free-text).
 CREATE TABLE IF NOT EXISTS public.prescription_items (
   id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id          uuid NOT NULL REFERENCES public.orgs(id) ON DELETE CASCADE,
   prescription_id uuid NOT NULL REFERENCES public.prescriptions(id) ON DELETE CASCADE,
   drug_name       text NOT NULL,
-  dose            text,
+  dosage          text,
   frequency       text,
   duration        text,
-  route           text,
   instructions    text,
-  sequence        integer NOT NULL DEFAULT 0,
+  sort_order      integer NOT NULL DEFAULT 0,
   created_at      timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS prescription_items_parent_idx
-  ON public.prescription_items (prescription_id, sequence);
+CREATE INDEX IF NOT EXISTS idx_prescription_items_created_at
+  ON public.prescription_items (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_prescription_items_prescription
+  ON public.prescription_items (prescription_id, sort_order);
 
 ALTER TABLE public.prescription_items ENABLE ROW LEVEL SECURITY;
 ```
 
-### Part 3 — RLS policies on `prescriptions`
+### Part 3 — RLS policies on `prescriptions` (codebase convention, 8 policies)
+
+Two policy sets per CRUD op: `_own_org` for clinic users + `_operator` for super-admin bypass. Both wrap in idempotent DO blocks against `pg_policies`.
 
 ```sql
--- SELECT: any authenticated same-org member can read.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescriptions_select' AND schemaname = 'public') THEN
-    CREATE POLICY "prescriptions_select" ON public.prescriptions FOR SELECT
-      USING (
-        org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-      );
+                 WHERE policyname = 'prescriptions_select_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY prescriptions_select_own_org ON public.prescriptions
+      FOR SELECT TO authenticated
+      USING (org_id = public.current_org_id());
   END IF;
 END $$;
 
--- INSERT: doctor self-write (role-tightened) OR same-org owner. In either
--- case, doctor_id MUST reference a profile whose role='doctor' in this org.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescriptions_insert' AND schemaname = 'public') THEN
-    CREATE POLICY "prescriptions_insert" ON public.prescriptions FOR INSERT
-      WITH CHECK (
-        org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-        AND EXISTS (
-          SELECT 1 FROM public.profiles
-          WHERE id = doctor_id AND role = 'doctor' AND org_id = prescriptions.org_id
-        )
-        AND (
-          -- doctor self-write
-          (
-            doctor_id = auth.uid()
-            AND EXISTS (
-              SELECT 1 FROM public.profiles
-              WHERE id = auth.uid() AND role = 'doctor'
-            )
-          )
-          OR
-          -- same-org owner
-          EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid() AND role = 'owner' AND org_id = prescriptions.org_id
-          )
-        )
-      );
+                 WHERE policyname = 'prescriptions_insert_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY prescriptions_insert_own_org ON public.prescriptions
+      FOR INSERT TO authenticated
+      WITH CHECK (org_id = public.current_org_id());
   END IF;
 END $$;
 
--- UPDATE: same predicate.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescriptions_update' AND schemaname = 'public') THEN
-    CREATE POLICY "prescriptions_update" ON public.prescriptions FOR UPDATE
-      USING (
-        org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-        AND (
-          (doctor_id = auth.uid() AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'doctor'))
-          OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner' AND org_id = prescriptions.org_id)
-        )
-      )
-      WITH CHECK (
-        org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-        AND EXISTS (
-          SELECT 1 FROM public.profiles
-          WHERE id = doctor_id AND role = 'doctor' AND org_id = prescriptions.org_id
-        )
-        AND (
-          (doctor_id = auth.uid() AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'doctor'))
-          OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner' AND org_id = prescriptions.org_id)
-        )
-      );
+                 WHERE policyname = 'prescriptions_update_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY prescriptions_update_own_org ON public.prescriptions
+      FOR UPDATE TO authenticated
+      USING (org_id = public.current_org_id())
+      WITH CHECK (org_id = public.current_org_id());
   END IF;
 END $$;
 
--- DELETE: same predicate (USING clause only; WITH CHECK not applicable to DELETE).
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescriptions_delete' AND schemaname = 'public') THEN
-    CREATE POLICY "prescriptions_delete" ON public.prescriptions FOR DELETE
-      USING (
-        org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-        AND (
-          (doctor_id = auth.uid() AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'doctor'))
-          OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner' AND org_id = prescriptions.org_id)
-        )
-      );
+                 WHERE policyname = 'prescriptions_delete_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY prescriptions_delete_own_org ON public.prescriptions
+      FOR DELETE TO authenticated
+      USING (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+-- Operator (super-admin) bypass — 4 mirror policies. Predicate is just
+-- public.is_operator() — no org_id constraint, super-admins cross orgs.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'prescriptions_select_operator' AND schemaname = 'public') THEN
+    CREATE POLICY prescriptions_select_operator ON public.prescriptions
+      FOR SELECT TO authenticated USING (public.is_operator());
+  END IF;
+END $$;
+-- (insert_operator / update_operator / delete_operator follow the same shape;
+-- 8 policies total per table.)
+```
+
+### Part 4 — RLS policies on `prescription_items` (codebase convention, 8 policies)
+
+Same pattern — `prescription_items` has its own denormalized `org_id`, so the predicates are identical in shape to the parent's.
+
+```sql
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'prescription_items_select_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY prescription_items_select_own_org ON public.prescription_items
+      FOR SELECT TO authenticated
+      USING (org_id = public.current_org_id());
+  END IF;
+END $$;
+-- (insert_own_org / update_own_org / delete_own_org + 4 operator mirrors
+-- follow the identical shape to the parent; 16 policies total across the
+-- two tables. Full SQL in src/lib/schema.sql L1645-1786 and
+-- scripts/prescriptions-migration.sql.)
+```
+
+### Part 5 — Trigger: `doctor_id` semantic integrity
+
+RLS only enforces tenancy (`org_id = current_org_id()`). The clinical-safety requirement "`doctor_id` must reference a profile whose `role = 'doctor'` in the same org" needs cross-row checks against `profiles`. The codebase pattern (per `enforce_profile_immutable_fields` at `schema.sql:522`) is to use a trigger for cross-table integrity.
+
+```sql
+CREATE OR REPLACE FUNCTION public.enforce_prescription_doctor_role()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM public.profiles
+    WHERE id = NEW.doctor_id
+      AND role = 'doctor'
+      AND org_id = NEW.org_id
+  ) THEN
+    RAISE EXCEPTION 'doctor_id must reference a profile with role=''doctor'' in the same org (got doctor_id=%, org_id=%)', NEW.doctor_id, NEW.org_id;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_trigger
+    WHERE tgname = 'prescriptions_enforce_doctor_role'
+      AND tgrelid = 'public.prescriptions'::regclass
+  ) THEN
+    CREATE TRIGGER prescriptions_enforce_doctor_role
+      BEFORE INSERT OR UPDATE OF doctor_id, org_id ON public.prescriptions
+      FOR EACH ROW EXECUTE FUNCTION public.enforce_prescription_doctor_role();
   END IF;
 END $$;
 ```
 
-### Part 4 — RLS policies on `prescription_items`
+**Why `UPDATE OF doctor_id, org_id` and not plain `UPDATE`:** the trigger only needs to fire when the columns it validates change. Updates to `general_instructions`, `issued_at`, `updated_by`, etc. don't change the doctor reference, so the trigger is skipped — no profiles lookup per update.
 
-All four delegate to the parent. The pattern is "child is accessible iff parent is accessible."
+**Failure mode:** trigger raises a plain `RAISE EXCEPTION`. Supabase surfaces this as an error on the failed insert/update. The data layer (`createPrescription` / `updatePrescription`) should catch and surface a user-friendly toast.
 
-```sql
--- SELECT: visible iff parent prescription is visible to caller.
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescription_items_select' AND schemaname = 'public') THEN
-    CREATE POLICY "prescription_items_select" ON public.prescription_items FOR SELECT
-      USING (
-        EXISTS (
-          SELECT 1 FROM public.prescriptions p
-          WHERE p.id = prescription_id
-            AND p.org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-        )
-      );
-  END IF;
-END $$;
+**Validation gaps still acknowledged:**
 
--- INSERT: parent must be writable by caller.
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescription_items_insert' AND schemaname = 'public') THEN
-    CREATE POLICY "prescription_items_insert" ON public.prescription_items FOR INSERT
-      WITH CHECK (
-        EXISTS (
-          SELECT 1 FROM public.prescriptions p
-          WHERE p.id = prescription_id
-            AND p.org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-            AND (
-              (p.doctor_id = auth.uid() AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'doctor'))
-              OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner' AND org_id = p.org_id)
-            )
-        )
-      );
-  END IF;
-END $$;
-
--- UPDATE: parent must be writable by caller (both old and new).
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescription_items_update' AND schemaname = 'public') THEN
-    CREATE POLICY "prescription_items_update" ON public.prescription_items FOR UPDATE
-      USING (
-        EXISTS (
-          SELECT 1 FROM public.prescriptions p
-          WHERE p.id = prescription_id
-            AND p.org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-            AND (
-              (p.doctor_id = auth.uid() AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'doctor'))
-              OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner' AND org_id = p.org_id)
-            )
-        )
-      )
-      WITH CHECK (
-        EXISTS (
-          SELECT 1 FROM public.prescriptions p
-          WHERE p.id = prescription_id
-            AND p.org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-            AND (
-              (p.doctor_id = auth.uid() AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'doctor'))
-              OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner' AND org_id = p.org_id)
-            )
-        )
-      );
-  END IF;
-END $$;
-
--- DELETE: parent must be writable by caller. (Cascade also handles deletion
--- when parent is removed; this policy gates direct child deletes.)
-DO $$ BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_policies
-                 WHERE policyname = 'prescription_items_delete' AND schemaname = 'public') THEN
-    CREATE POLICY "prescription_items_delete" ON public.prescription_items FOR DELETE
-      USING (
-        EXISTS (
-          SELECT 1 FROM public.prescriptions p
-          WHERE p.id = prescription_id
-            AND p.org_id IN (SELECT org_id FROM public.profiles WHERE id = auth.uid())
-            AND (
-              (p.doctor_id = auth.uid() AND EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'doctor'))
-              OR EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND role = 'owner' AND org_id = p.org_id)
-            )
-        )
-      );
-  END IF;
-END $$;
-```
-
-**Validation gaps RLS cannot close (acknowledged):**
-
-- `created_by` value cannot be RLS-enforced to equal `auth.uid()` from a policy without a trigger; the data layer sets it explicitly. A future trigger could enforce, but for V1 the data layer is the gate (mirrors `payments.recorded_by` pattern).
-- `issued_at` may be backdated by users with write authority. This is intentional — clinics frequently enter old prescriptions retroactively. Audit-log captures the actual write timestamp.
+- `created_by` / `updated_by` cannot be trigger-enforced to equal `auth.uid()` without another trigger. Data layer is the gate (mirrors `payments.recorded_by` pattern).
+- `issued_at` may be backdated by users with write authority. Intentional — clinics enter old prescriptions retroactively. Audit-log captures the actual write timestamp via `created_at` and the audit event's own timestamp.
+- Items have no equivalent trigger — `prescription_items` has no `doctor_id` (the doctor is on the parent). FK + RLS + cascade are sufficient.
 
 ## Data layer signatures
 
