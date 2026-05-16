@@ -1494,6 +1494,7 @@ function PrescriptionPrintModal({ prescriptionId, dir, isRTL, onClose, toast }) 
   const [bgLoaded, setBgLoaded] = useState(false)
   const [templateError, setTemplateError] = useState(false)
   const [printing, setPrinting] = useState(false)
+  const [preprintedMode, setPreprintedMode] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -1549,7 +1550,8 @@ function PrescriptionPrintModal({ prescriptionId, dir, isRTL, onClose, toast }) 
   }, [prescriptionId, toast, isRTL, onClose])
 
   const handlePrint = async () => {
-    if (!bgLoaded || templateError || !data) return
+    if (!data) return
+    if (!preprintedMode && (!signedUrl || !bgLoaded)) return
     setPrinting(true)
     try {
       await logPrescriptionPrint(prescriptionId)
@@ -1583,26 +1585,33 @@ function PrescriptionPrintModal({ prescriptionId, dir, isRTL, onClose, toast }) 
           <div className="text-center text-sm text-navy-500 py-10">
             {isRTL ? 'جاري التحميل...' : 'Loading...'}
           </div>
-        ) : templateError ? (
+        ) : templateError && !preprintedMode ? (
           <div className="rounded-glass bg-amber-50 border border-amber-200 px-4 py-6 text-center">
             <p className="text-sm font-semibold text-amber-900 m-0 mb-2">
               {isRTL ? 'قالب الوصفة غير متوفر' : "Doctor's prescription template not available"}
             </p>
-            <p className="text-xs text-amber-700 m-0">
+            <p className="text-xs text-amber-700 m-0 mb-2">
               {isRTL
                 ? 'اتصل بالطبيب لرفع قالب الوصفة عبر الإعدادات → الأطباء → [الطبيب] → قالب الوصفة.'
                 : 'Contact the doctor to upload it via Settings → Doctors → [Doctor] → Prescription Template.'}
+            </p>
+            <p className="text-xs text-amber-700 m-0">
+              {isRTL
+                ? 'أو إذا كانت وصفاتك مطبوعة مسبقاً، فعّل خيار "طباعة على وصفة مطبوعة مسبقاً" أدناه.'
+                : 'Or, if your prescription pads are pre-printed with letterhead, enable "Print on pre-printed pad" below.'}
             </p>
           </div>
         ) : (
           <div className="rx-print-preview-container">
             <div className="rx-print">
-              <img
-                className="rx-print__bg"
-                src={signedUrl}
-                alt=""
-                onLoad={() => setBgLoaded(true)}
-              />
+              {!preprintedMode && signedUrl && (
+                <img
+                  className="rx-print__bg"
+                  src={signedUrl}
+                  alt=""
+                  onLoad={() => setBgLoaded(true)}
+                />
+              )}
               <div className="rx-print__patient" dir={dir}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11pt' }}>
                   <span>
@@ -1642,18 +1651,29 @@ function PrescriptionPrintModal({ prescriptionId, dir, isRTL, onClose, toast }) 
           </div>
         )}
 
-        <div className="flex gap-2 justify-end mt-4">
-          <Button variant="secondary" onClick={onClose} disabled={printing}>
-            {isRTL ? 'إغلاق' : 'Close'}
-          </Button>
-          <Button
-            variant="primary"
-            onClick={handlePrint}
-            disabled={!bgLoaded || templateError || loading || !data || printing}
-            title={templateError ? (isRTL ? 'قالب الوصفة غير متوفر' : 'Template not available') : undefined}
-          >
-            {printing ? (isRTL ? 'جاري الطباعة...' : 'Printing...') : (isRTL ? 'طباعة' : 'Print')}
-          </Button>
+        <div className="flex items-center justify-between gap-3 mt-4 flex-wrap">
+          <label className="flex items-center gap-2 text-sm text-navy-800 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={preprintedMode}
+              onChange={e => setPreprintedMode(e.target.checked)}
+              className="w-4 h-4 accent-accent-cyan-600"
+            />
+            {isRTL ? 'طباعة على وصفة مطبوعة مسبقاً' : 'Print on pre-printed pad'}
+          </label>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose} disabled={printing}>
+              {isRTL ? 'إغلاق' : 'Close'}
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handlePrint}
+              disabled={printing || loading || !data || (!preprintedMode && (!signedUrl || !bgLoaded))}
+              title={!preprintedMode && templateError ? (isRTL ? 'قالب الوصفة غير متوفر' : 'Template not available') : undefined}
+            >
+              {printing ? (isRTL ? 'جاري الطباعة...' : 'Printing...') : (isRTL ? 'طباعة' : 'Print')}
+            </Button>
+          </div>
         </div>
       </div>
     </Modal>
