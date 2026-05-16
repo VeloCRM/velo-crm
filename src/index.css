@@ -417,11 +417,11 @@ input, textarea, select, button {
   border-radius: 8px;
 }
 .rx-print {
-  width: 210mm;
-  height: 297mm;
+  width: 148mm;
+  height: 210mm;
   position: relative;
   background: white;
-  transform: scale(0.45);
+  transform: scale(0.6);
   transform-origin: top center;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
   flex-shrink: 0;
@@ -433,9 +433,9 @@ input, textarea, select, button {
   height: 100%;
   object-fit: cover;
 }
-.rx-print__patient { position: absolute; top: 24%; left: 16mm; right: 16mm; }
-.rx-print__meds    { position: absolute; top: 30%; left: 16mm; right: 16mm; bottom: 30%; overflow: hidden; }
-.rx-print__general { position: absolute; top: 70%; left: 16mm; right: 16mm; }
+.rx-print__patient { position: absolute; top: 27%; left: 16mm; right: 16mm; }
+.rx-print__meds    { position: absolute; top: 33%; left: 16mm; right: 16mm; bottom: 27%; overflow: hidden; }
+.rx-print__general { position: absolute; top: 73%; left: 16mm; right: 16mm; }
 
 @media print {
   body * { visibility: hidden; }
@@ -452,5 +452,5 @@ input, textarea, select, button {
     height: auto;
     overflow: visible;
   }
-  @page { size: A4 portrait; margin: 0; }
+  @page { size: A5 portrait; margin: 0; }
 }
