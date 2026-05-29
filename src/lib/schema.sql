@@ -1822,3 +1822,148 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+
+-- ============================================================================
+-- documents — PR #4 (Path A)
+-- ============================================================================
+-- Per-patient file attachments (PDFs, images, Office docs, plain text) stored
+-- in the private `patient-documents` Storage bucket. Flat table — one row per
+-- uploaded file; no parent/child shape (unlike prescriptions).
+--
+-- ─── Design notes ──────────────────────────────────────────────────────────
+-- * RLS uses the codebase's helper functions public.current_org_id() and
+--   public.is_operator(). Two policy sets — _own_org + _operator (8 total).
+--   No role-tightening on table writes; the clinic UI gates roles via a
+--   DocumentsTab-local EDIT_ROLES set (owner/doctor/receptionist) and the
+--   Storage-bucket RLS additionally role-gates writes (see
+--   scripts/patient-documents-bucket.sql).
+-- * No trigger — documents carry no cross-table semantic invariant (unlike
+--   prescriptions' doctor-role check). FK + RLS + cascade are sufficient.
+-- * storage_path holds {org_id}/{patient_id}/{document_id}.{ext}; the actual
+--   blob lives in Storage. uploaded_by is nullable (ON DELETE SET NULL) so a
+--   removed uploader account doesn't cascade-delete clinical records.
+-- * external_id + external_source enable GHL / external-system import
+--   idempotency via a partial unique index on the non-null pair.
+-- * Uploads are immutable (replace = delete + re-upload). UPDATE policies are
+--   still defined — cheap, idempotent, forward-compatible if metadata edits
+--   are added later.
+--
+-- All policies wrapped in idempotent DO blocks; safe to re-run via
+-- scripts/documents-migration.sql. The Storage-bucket RLS is a SEPARATE script
+-- (scripts/patient-documents-bucket.sql) run after the bucket is created.
+-- ============================================================================
+
+-- ─── Table ─────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.documents (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id          uuid NOT NULL REFERENCES public.orgs(id)     ON DELETE CASCADE,
+  patient_id      uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
+  file_name       text NOT NULL,
+  storage_path    text NOT NULL,
+  mime_type       text,
+  file_size       bigint,
+  uploaded_by     uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at      timestamptz NOT NULL DEFAULT now(),
+  -- External-system import idempotency (e.g. GHL). Both NULL for native uploads.
+  external_id     text,
+  external_source text
+);
+
+
+-- ─── Indexes ───────────────────────────────────────────────────────────────
+
+CREATE INDEX IF NOT EXISTS documents_patient_idx ON public.documents (patient_id);
+CREATE INDEX IF NOT EXISTS documents_org_idx     ON public.documents (org_id);
+
+-- Partial unique: enforces (external_source, external_id) uniqueness only when
+-- external_id IS NOT NULL. Native uploads (NULL pair) coexist freely.
+CREATE UNIQUE INDEX IF NOT EXISTS documents_external_uidx
+  ON public.documents (external_source, external_id)
+  WHERE external_id IS NOT NULL;
+
+
+-- ─── Enable RLS ────────────────────────────────────────────────────────────
+
+ALTER TABLE public.documents ENABLE ROW LEVEL SECURITY;
+
+
+-- ─── Policies — documents ──────────────────────────────────────────────────
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_select_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY documents_select_own_org ON public.documents
+      FOR SELECT TO authenticated
+      USING (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_insert_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY documents_insert_own_org ON public.documents
+      FOR INSERT TO authenticated
+      WITH CHECK (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_update_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY documents_update_own_org ON public.documents
+      FOR UPDATE TO authenticated
+      USING (org_id = public.current_org_id())
+      WITH CHECK (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_delete_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY documents_delete_own_org ON public.documents
+      FOR DELETE TO authenticated
+      USING (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_select_operator' AND schemaname = 'public') THEN
+    CREATE POLICY documents_select_operator ON public.documents
+      FOR SELECT TO authenticated USING (public.is_operator());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_insert_operator' AND schemaname = 'public') THEN
+    CREATE POLICY documents_insert_operator ON public.documents
+      FOR INSERT TO authenticated WITH CHECK (public.is_operator());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_update_operator' AND schemaname = 'public') THEN
+    CREATE POLICY documents_update_operator ON public.documents
+      FOR UPDATE TO authenticated USING (public.is_operator()) WITH CHECK (public.is_operator());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'documents_delete_operator' AND schemaname = 'public') THEN
+    CREATE POLICY documents_delete_operator ON public.documents
+      FOR DELETE TO authenticated USING (public.is_operator());
+  END IF;
+END $$;
+
+
+-- ─── Storage bucket RLS ────────────────────────────────────────────────────
+-- The `patient-documents` bucket policies on storage.objects live in
+-- scripts/patient-documents-bucket.sql (run after the bucket is created via
+-- the Supabase dashboard). They are kept out of this file because bucket
+-- creation itself (size/MIME limits) is a manual dashboard step, mirroring the
+-- prescription-templates convention above.
+
