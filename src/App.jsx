@@ -66,6 +66,7 @@ import * as db from './lib/database'
 import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
+import { listDoctorsInOrg } from './lib/profiles'
 import { formatMoney, toMinor } from './lib/money'
 import { avatarGradient, avatarInitials } from './lib/avatarGradient'
 import { GlassCard, Button, Badge, Input, EmptyState as UIEmptyState } from './components/ui'
@@ -201,6 +202,10 @@ export default function App() {
   const [patients, setPatients] = useState([])
   const [patientsTotal, setPatientsTotal] = useState(0)
   const [patientsLoadingMore, setPatientsLoadingMore] = useState(false)
+  // "My patients" filter (PR #6): null = all, otherwise a doctor id. PatientsPage
+  // owns the toggle UI / role-default / localStorage and lifts the id up here;
+  // the list fetch (which lives in this component) applies it server-side.
+  const [patientFilterDoctorId, setPatientFilterDoctorId] = useState(null)
   const [allPayments, setAllPayments] = useState([])
   const [teamMembers, setTeamMembers] = useState([])
   // Sample data is null until ?demo=1 is detected and the module is imported.
@@ -451,7 +456,7 @@ export default function App() {
       const offset = patients.length
       const page = impersonation
         ? await db.fetchPatientsForOrg(impersonation.orgId, offset)
-        : await db.fetchPatients(offset)
+        : await db.fetchPatients(offset, undefined, { primaryDoctorId: patientFilterDoctorId || undefined })
       setPatients([...patients, ...page.rows])
       setPatientsTotal(page.total)
     } catch (err) {
@@ -460,7 +465,35 @@ export default function App() {
     } finally {
       setPatientsLoadingMore(false)
     }
-  }, [useDB, patientsLoadingMore, patients, patientsTotal, impersonation, addToast, isRTL])
+  }, [useDB, patientsLoadingMore, patients, patientsTotal, impersonation, patientFilterDoctorId, addToast, isRTL])
+
+  // Re-fetch page 1 when the "My patients" filter changes (PR #6). First-run
+  // guarded so the initial mount doesn't duplicate loadAllData's unfiltered
+  // load. Scoped to the normal (non-impersonation) path — operators don't have
+  // a doctor caseload. Reads the filter from `patientFilterDoctorId`.
+  const patientFilterFirstRun = useRef(true)
+  useEffect(() => {
+    if (patientFilterFirstRun.current) { patientFilterFirstRun.current = false; return }
+    if (!useDB || impersonation) return
+    let cancelled = false
+    ;(async () => {
+      setPatientsLoadingMore(true)
+      try {
+        const page = await db.fetchPatients(0, undefined, { primaryDoctorId: patientFilterDoctorId || undefined })
+        if (cancelled) return
+        setPatients(page.rows)
+        setPatientsTotal(page.total)
+      } catch (err) {
+        if (cancelled) return
+        console.error('Patient filter reload error:', err)
+        addToast(isRTL ? 'فشل تطبيق عامل التصفية' : 'Failed to apply filter', 'error')
+      } finally {
+        if (!cancelled) setPatientsLoadingMore(false)
+      }
+    })()
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientFilterDoctorId])
 
   // Initial data load on sign-in (or impersonation switch).
   // Skip when a pending invite exists — the invite-apply effect will
@@ -655,6 +688,7 @@ export default function App() {
       gender: raw.gender || null,
       medicalHistory: raw.medicalHistory || raw.medical_history || {},
       allergies: raw.allergies || [],
+      primaryDoctorId: raw.primary_doctor_id ?? raw.primaryDoctorId ?? null,
       createdAt: new Date().toISOString(),
     }
     setPatients(prev => [optimistic, ...prev])
@@ -1020,7 +1054,7 @@ export default function App() {
                 ? <SkeletonDashboard />
                 : <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} patients={patients} setPage={setPage} /></Suspense>
               )}
-              {page === 'patients' && <PatientsPage t={t} lang={lang} dir={dir} isRTL={isRTL} patients={patients} patientsTotal={patientsTotal} loadMorePatients={loadMorePatients} patientsLoadingMore={patientsLoadingMore} addPatient={addPatient} updatePatient={updatePatient} deletePatient={deletePatient} setPage={setPage} toast={addToast} showConfirm={showConfirm} urlPatientId={pageSubId} navigate={navigate} isOperator={isOperator} impersonation={impersonation} orgId={dentalOrgId} />}
+              {page === 'patients' && <PatientsPage t={t} lang={lang} dir={dir} isRTL={isRTL} patients={patients} patientsTotal={patientsTotal} loadMorePatients={loadMorePatients} patientsLoadingMore={patientsLoadingMore} addPatient={addPatient} updatePatient={updatePatient} deletePatient={deletePatient} setPage={setPage} toast={addToast} showConfirm={showConfirm} urlPatientId={pageSubId} navigate={navigate} isOperator={isOperator} impersonation={impersonation} orgId={dentalOrgId} currentUserId={user?.id} currentUserRole={effectiveRole} patientFilterDoctorId={patientFilterDoctorId} setPatientFilterDoctorId={setPatientFilterDoctorId} />}
               {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} setPage={setPage} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isOperator={isOperator} impersonation={impersonation} orgId={dentalOrgId} demoMode={demoMode} sampleData={sampleData} />}
               {page === 'calendar' && <Suspense fallback={<SkeletonGeneric />}><AppointmentsPage t={t} lang={lang} dir={dir} isRTL={isRTL} patients={patients} toast={addToast} setPage={setPage} /></Suspense>}
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
@@ -1187,12 +1221,51 @@ export default function App() {
 // Deals, lead-scoring, and notes-timeline are gone. Documents/prescriptions/
 // x-rays were dropped from the dental schema.
 
-function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMorePatients, patientsLoadingMore = false, addPatient, updatePatient, deletePatient, setPage, toast, showConfirm, urlPatientId, navigate, isOperator, impersonation, orgId }) {
+function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMorePatients, patientsLoadingMore = false, addPatient, updatePatient, deletePatient, setPage, toast, showConfirm, urlPatientId, navigate, isOperator, impersonation, orgId, currentUserId, currentUserRole, patientFilterDoctorId, setPatientFilterDoctorId }) {
   void t
   void lang
   void toast
   void orgId
   const [search, setSearch] = useState('')
+
+  // ── "My patients" filter (PR #6) ──────────────────────────────────────────
+  // Binary toggle: all / mine. Role-defaulted (doctor ON, others OFF), then
+  // remembered per-user in localStorage. The actual list fetch + filter live in
+  // App.jsx; here we own the UI and lift the doctor id up via the setter.
+  const myFilterKey = currentUserId ? `velo:patients:my_filter:${currentUserId}` : null
+  const [myFilterOn, setMyFilterOn] = useState(false)
+  const [myCount, setMyCount] = useState(null)
+
+  // Resolve the initial toggle state once we know who the user is: stored
+  // preference wins, else role default (doctor → ON). Push it up to App.jsx.
+  useEffect(() => {
+    if (!currentUserId) return
+    let initial
+    const stored = myFilterKey ? localStorage.getItem(myFilterKey) : null
+    if (stored === '1') initial = true
+    else if (stored === '0') initial = false
+    else initial = currentUserRole === 'doctor'
+    setMyFilterOn(initial)
+    setPatientFilterDoctorId?.(initial ? currentUserId : null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserId, currentUserRole])
+
+  const toggleMyFilter = () => {
+    const next = !myFilterOn
+    setMyFilterOn(next)
+    if (myFilterKey) localStorage.setItem(myFilterKey, next ? '1' : '0')
+    setPatientFilterDoctorId?.(next && currentUserId ? currentUserId : null)
+  }
+
+  // Refresh the badge count whenever the filter turns on (or the user changes).
+  useEffect(() => {
+    let cancelled = false
+    if (!myFilterOn || !currentUserId) { setMyCount(null); return }
+    db.getMyPatientsCount(currentUserId)
+      .then(n => { if (!cancelled) setMyCount(n) })
+      .catch(() => { if (!cancelled) setMyCount(null) })
+    return () => { cancelled = true }
+  }, [myFilterOn, currentUserId])
   const [showForm, setShowForm] = useState(false)
   const [editingPatient, setEditingPatient] = useState(null)
   const [_selectedPatientId, _setSelectedPatientId] = useState(urlPatientId || null)
@@ -1289,15 +1362,40 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
           </Button>
         </header>
 
-        {/* ── Search ───────────────────────────────────────────────── */}
-        <Input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          maxLength={LIMITS.search}
-          iconStart={Icons.search}
-          placeholder={isRTL ? 'بحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
-          aria-label={isRTL ? 'بحث' : 'Search'}
-        />
+        {/* ── Search + My-patients filter ──────────────────────────── */}
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex-1 min-w-[220px]">
+            <Input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              maxLength={LIMITS.search}
+              iconStart={Icons.search}
+              placeholder={isRTL ? 'بحث بالاسم أو رقم الهاتف...' : 'Search by name or phone...'}
+              aria-label={isRTL ? 'بحث' : 'Search'}
+            />
+          </div>
+          {!impersonation && (
+            <button
+              type="button"
+              onClick={toggleMyFilter}
+              aria-pressed={myFilterOn}
+              className={[
+                'inline-flex items-center gap-2 px-3.5 h-10 rounded-glass text-sm font-semibold border transition-colors shrink-0',
+                myFilterOn
+                  ? 'bg-accent-cyan-600 text-white border-accent-cyan-600 hover:bg-accent-cyan-700'
+                  : 'bg-white/70 text-navy-600 border-navy-200 hover:bg-navy-50',
+              ].join(' ')}
+            >
+              {Icons.user ? Icons.user(15) : null}
+              <span>{isRTL ? 'مرضاي' : 'My patients'}</span>
+              {myFilterOn && myCount != null && (
+                <span className="tabular-nums rounded-full bg-white/25 px-1.5 py-0.5 text-[11px] leading-none">
+                  {myCount}
+                </span>
+              )}
+            </button>
+          )}
+        </div>
 
         {/* ── Patient list ─────────────────────────────────────────── */}
         {filtered.length === 0 ? (
@@ -1406,6 +1504,8 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
         <PatientFormModal
           t={t} dir={dir} isRTL={isRTL}
           patient={editingPatient}
+          currentUserId={currentUserId}
+          currentUserRole={currentUserRole}
           onSave={(data) => {
             if (editingPatient) updatePatient(editingPatient.id, data)
             else addPatient(data)
@@ -1444,8 +1544,12 @@ const GENDER_OPTIONS = [
   { id: 'prefer_not_to_say', en: 'Prefer not to say', ar: 'أفضّل عدم القول' },
 ]
 
-function PatientFormModal({ t, dir, isRTL, patient, onSave, onClose }) {
+function PatientFormModal({ t, dir, isRTL, patient, currentUserId, currentUserRole, onSave, onClose }) {
   void t
+  // Default the primary doctor to the existing value, else the current user if
+  // they're a doctor (the common "I'm adding my own patient" case), else blank.
+  const initialPrimaryDoctor = patient?.primary_doctor_id ?? patient?.primaryDoctorId
+    ?? (currentUserRole === 'doctor' ? (currentUserId || '') : '')
   const [form, setForm] = useState({
     full_name: patient?.full_name || patient?.fullName || '',
     phone: patient?.phone || '',
@@ -1453,8 +1557,19 @@ function PatientFormModal({ t, dir, isRTL, patient, onSave, onClose }) {
     dob: patient?.dob || '',
     gender: patient?.gender || '',
     allergies: Array.isArray(patient?.allergies) ? patient.allergies.join(', ') : '',
+    primary_doctor_id: initialPrimaryDoctor || '',
   })
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
+
+  // Doctor options for the Primary Doctor selector (role === 'doctor' only).
+  const [doctors, setDoctors] = useState([])
+  useEffect(() => {
+    let cancelled = false
+    listDoctorsInOrg()
+      .then(rows => { if (!cancelled) setDoctors((rows || []).filter(d => d.role === 'doctor')) })
+      .catch(() => { /* leave empty; selector falls back to Unassigned */ })
+    return () => { cancelled = true }
+  }, [])
 
   const handleSubmit = () => {
     if (!form.full_name.trim()) return
@@ -1468,6 +1583,7 @@ function PatientFormModal({ t, dir, isRTL, patient, onSave, onClose }) {
       allergies: form.allergies
         ? form.allergies.split(',').map(s => s.trim()).filter(Boolean)
         : [],
+      primary_doctor_id: form.primary_doctor_id || null,
     })
   }
 
@@ -1508,6 +1624,12 @@ function PatientFormModal({ t, dir, isRTL, patient, onSave, onClose }) {
           </FormField>
           <FormField label={isRTL ? 'الحساسيات (مفصولة بفواصل)' : 'Allergies (comma separated)'} dir={dir}>
             <input value={form.allergies} onChange={e=>set('allergies', e.target.value)} maxLength={500} style={inputStyle(dir)} placeholder={isRTL ? 'مثال: بنسلين، لاتكس' : 'e.g. penicillin, latex'} />
+          </FormField>
+          <FormField label={isRTL ? 'الطبيب المسؤول' : 'Primary Doctor'} dir={dir}>
+            <select value={form.primary_doctor_id} onChange={e=>set('primary_doctor_id', e.target.value)} style={selectStyle(dir)}>
+              <option value="">{isRTL ? '— غير محدد —' : '— Unassigned —'}</option>
+              {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name}</option>)}
+            </select>
           </FormField>
         </div>
         <div className="flex gap-2 justify-end mt-2">

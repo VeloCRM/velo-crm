@@ -48,6 +48,7 @@ function mapPatient(row) {
     gender: row.gender || null,
     medicalHistory: row.medical_history || {},
     allergies: row.allergies || [],
+    primaryDoctorId: row.primary_doctor_id || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }
@@ -62,22 +63,43 @@ function sanitizePatient(p) {
     gender: p.gender ? sanitizeText(p.gender, 32) : null,
     medical_history: p.medical_history || p.medicalHistory || {},
     allergies: p.allergies || [],
+    // Optional primary-doctor assignment (PR #6). Pass-through UUID from the
+    // in-app dropdown; null = unassigned.
+    primary_doctor_id: p.primary_doctor_id ?? p.primaryDoctorId ?? null,
   }
 }
 
-export async function fetchPatients(offset = 0, limit = PATIENTS_PAGE_SIZE) {
+export async function fetchPatients(offset = 0, limit = PATIENTS_PAGE_SIZE, { primaryDoctorId } = {}) {
   await requireUser()
   const orgId = await getCurrentOrgId()
-  const { data, error, count } = await supabase
+  let query = supabase
     .from('patients')
     .select('*', { count: 'exact' })
     .eq('org_id', orgId)
+  // "My patients" filter (PR #6) — convenience only, not a security boundary.
+  if (primaryDoctorId) query = query.eq('primary_doctor_id', primaryDoctorId)
+  const { data, error, count } = await query
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
   if (error) throw error
   const rows = (data || []).map(mapPatient)
   const total = count ?? rows.length
   return { rows, total, hasMore: offset + rows.length < total }
+}
+
+// Count of patients whose primary doctor is `doctorId`, in the caller's org.
+// Powers the "My patients" toggle badge. Org-scoped via RLS + explicit eq.
+export async function getMyPatientsCount(doctorId) {
+  if (!doctorId) return 0
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  const { count, error } = await supabase
+    .from('patients')
+    .select('id', { count: 'exact', head: true })
+    .eq('org_id', orgId)
+    .eq('primary_doctor_id', doctorId)
+  if (error) throw error
+  return count ?? 0
 }
 
 export async function insertPatient(patient, orgId) {
@@ -103,6 +125,9 @@ export async function insertPatient(patient, orgId) {
     action: 'patient.create',
     entityType: 'patient',
     entityId: data?.id || null,
+    payload: sanitized.primary_doctor_id
+      ? { primary_doctor_id: sanitized.primary_doctor_id }
+      : null,
   })
 
   return mapPatient(data)
@@ -124,6 +149,9 @@ export async function patchPatient(id, updates) {
   if (updates.medical_history !== undefined) patch.medical_history = updates.medical_history
   if (updates.medicalHistory !== undefined) patch.medical_history = updates.medicalHistory
   if (updates.allergies !== undefined) patch.allergies = updates.allergies
+  if (updates.primary_doctor_id !== undefined || updates.primaryDoctorId !== undefined) {
+    patch.primary_doctor_id = updates.primary_doctor_id ?? updates.primaryDoctorId ?? null
+  }
 
   const { data, error } = await supabase
     .from('patients')

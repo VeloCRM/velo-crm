@@ -204,10 +204,18 @@ CREATE TABLE patients (
   gender            patient_gender,
   medical_history   jsonb NOT NULL DEFAULT '{}'::jsonb,
   allergies         jsonb NOT NULL DEFAULT '[]'::jsonb,
+  -- Optional primary doctor (PR #6). Nullable = unassigned. FILTER ONLY, not a
+  -- security boundary — reads stay org-scoped via RLS. ON DELETE SET NULL so a
+  -- removed doctor profile doesn't cascade-delete live patient rows.
+  primary_doctor_id uuid REFERENCES profiles(id) ON DELETE SET NULL,
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now(),
   UNIQUE (org_id, phone)
 );
+
+-- Supports the "My patients" filtered list query (PR #6).
+CREATE INDEX IF NOT EXISTS patients_primary_doctor_idx
+  ON patients (org_id, primary_doctor_id);
 
 -- ----------------------------------------------------------------------------
 -- appointments
