@@ -1521,6 +1521,62 @@ DO $$ BEGIN
 END $$;
 
 
+-- ─── set_prescription_template_url RPC (fix/prescription-template-upload) ──
+-- SECURITY DEFINER write path for profiles.prescription_template_url. Needed
+-- because profiles UPDATE RLS only allows self-updates (profiles_update_self)
+-- or operators — so an owner setting another doctor's template would otherwise
+-- match 0 rows and silently no-op. Enforces authz itself: operator, OR same-org
+-- owner (any doctor), OR the doctor themselves. Touches only the one column, so
+-- the profiles_enforce_immutable trigger (role/org_id/id) is unaffected. NULL
+-- p_path clears the template. Standalone: scripts/prescription-template-url-rpc.sql
+
+CREATE OR REPLACE FUNCTION public.set_prescription_template_url(
+  p_doctor_id uuid,
+  p_path      text
+)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_caller_role text;
+  v_caller_org  uuid;
+  v_target_org  uuid;
+BEGIN
+  IF p_doctor_id IS NULL THEN
+    RAISE EXCEPTION 'set_prescription_template_url: doctor_id is required';
+  END IF;
+
+  SELECT role, org_id INTO v_caller_role, v_caller_org
+  FROM public.profiles WHERE id = auth.uid();
+
+  SELECT org_id INTO v_target_org
+  FROM public.profiles WHERE id = p_doctor_id;
+
+  IF v_target_org IS NULL THEN
+    RAISE EXCEPTION 'set_prescription_template_url: target doctor profile not found';
+  END IF;
+
+  IF public.is_operator()
+     OR (
+       v_caller_org IS NOT NULL
+       AND v_caller_org = v_target_org
+       AND (v_caller_role = 'owner' OR auth.uid() = p_doctor_id)
+     ) THEN
+    UPDATE public.profiles
+      SET prescription_template_url = p_path
+      WHERE id = p_doctor_id;
+  ELSE
+    RAISE EXCEPTION 'set_prescription_template_url: not authorized to set the prescription template for this doctor';
+  END IF;
+END;
+$$;
+
+REVOKE ALL    ON FUNCTION public.set_prescription_template_url(uuid, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.set_prescription_template_url(uuid, text) TO authenticated;
+
+
 -- ============================================================================
 -- prescriptions / prescription_items — PR #2 (Path A)
 -- ============================================================================
