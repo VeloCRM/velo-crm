@@ -599,12 +599,19 @@ export async function uploadPrescriptionTemplate(doctorId, file) {
     .upload(path, file, { upsert: true, contentType: file.type })
   if (upErr) throw upErr
 
-  const { error: pErr } = await supabase
-    .from('profiles')
-    .update({ prescription_template_url: path })
-    .eq('id', doctorId)
-    .eq('org_id', orgId)
-  if (pErr) throw pErr
+  // Persist the path via the SECURITY DEFINER RPC. A plain
+  // profiles.update() here would silently no-op when an owner uploads for a
+  // different doctor — profiles UPDATE RLS only permits self-updates, so the
+  // 0-row write returns no error and the column never changes.
+  const { error: pErr } = await supabase.rpc('set_prescription_template_url', {
+    p_doctor_id: doctorId,
+    p_path: path,
+  })
+  if (pErr) {
+    // Best-effort cleanup so a failed persist doesn't leave a ghost template.
+    await supabase.storage.from('prescription-templates').remove([path]).catch(() => {})
+    throw pErr
+  }
 
   await logAuditEvent({
     orgId,
@@ -637,11 +644,13 @@ export async function deletePrescriptionTemplate(doctorId) {
     .remove([path])
   if (delErr) throw delErr
 
-  const { error: pErr } = await supabase
-    .from('profiles')
-    .update({ prescription_template_url: null })
-    .eq('id', doctorId)
-    .eq('org_id', orgId)
+  // Clear the column via the RPC (NULL path). Same RLS reason as the upload
+  // path: a plain profiles.update() would silently no-op for an owner clearing
+  // another doctor's template.
+  const { error: pErr } = await supabase.rpc('set_prescription_template_url', {
+    p_doctor_id: doctorId,
+    p_path: null,
+  })
   if (pErr) throw pErr
 
   await logAuditEvent({
