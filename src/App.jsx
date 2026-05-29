@@ -44,6 +44,9 @@ const DentalTreatments = lazy(() =>
 const DentalPrescriptions = lazy(() =>
   import('./components/DentalTabs').then(m => ({ default: m.PrescriptionsTab }))
 )
+const DentalNotes = lazy(() =>
+  import('./components/DentalTabs').then(m => ({ default: m.NotesTab }))
+)
 const DentalDocuments = lazy(() =>
   import('./components/DentalTabs').then(m => ({ default: m.DocumentsTab }))
 )
@@ -1589,6 +1592,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
     { id: 'dental_chart', label: isRTL ? 'مخطط الأسنان' : 'Dental Chart' },
     { id: 'treatments',   label: isRTL ? 'خطة العلاج'    : 'Treatment Plan' },
     { id: 'prescriptions', label: isRTL ? 'الوصفات'       : 'Prescriptions' },
+    { id: 'notes',        label: isRTL ? 'الملاحظات'     : 'Notes' },
     { id: 'documents',    label: isRTL ? 'الوثائق'       : 'Documents' },
   ]
 
@@ -1596,7 +1600,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   // implementations for now — Phase 2.2 only redesigns Overview + Appointments
   // and the chrome (header / tab bar). The dental chart visual is tackled in
   // Phase 3 (anatomical SVGs).
-  const heavyTab = profileTab === 'payments' || profileTab === 'medical' || profileTab === 'dental_chart' || profileTab === 'treatments' || profileTab === 'prescriptions' || profileTab === 'documents'
+  const heavyTab = profileTab === 'payments' || profileTab === 'medical' || profileTab === 'dental_chart' || profileTab === 'treatments' || profileTab === 'prescriptions' || profileTab === 'notes' || profileTab === 'documents'
 
   return (
     <div
@@ -1846,6 +1850,11 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
               {profileTab === 'prescriptions' && (
                 <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
                   <DentalPrescriptions patient={patient} lang={lang} dir={dir} toast={toast} />
+                </Suspense>
+              )}
+              {profileTab === 'notes' && (
+                <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
+                  <DentalNotes patient={patient} lang={lang} dir={dir} toast={toast} />
                 </Suspense>
               )}
               {profileTab === 'documents' && (

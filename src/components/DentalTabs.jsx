@@ -46,6 +46,12 @@ import {
   getDocumentSignedUrl,
   deleteDocument,
 } from '../lib/documents'
+import {
+  fetchNotesForPatient,
+  createNote,
+  updateNote,
+  deleteNote,
+} from '../lib/notes'
 
 // Roles allowed to mutate dental-tab state at the UI layer. RLS policies are
 // the real security boundary; this just hides the buttons for read-only users.
@@ -1998,5 +2004,308 @@ export function DocumentsTab({ patient, lang, dir, toast }) {
         </Modal>
       )}
     </div>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NOTES TAB
+// ═══════════════════════════════════════════════════════════════════════════
+// Per-patient clinical notes. Doctor-scoped writes (uses the file-level
+// EDIT_ROLES = owner/doctor — narrower than Documents).
+
+// Inline pin glyph (shared.jsx has no pin/star icon). Filled when pinned.
+function pinIcon(filled, s = 14) {
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'} stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <line x1="12" y1="17" x2="12" y2="22" />
+      <path d="M5 17h14l-1.6-2.7a2 2 0 0 1-.4-1.2V7a2 2 0 0 1 2-2V3H6v2a2 2 0 0 1 2 2v6.1a2 2 0 0 1-.4 1.2L6 17z" />
+    </svg>
+  )
+}
+
+export function NotesTab({ patient, lang, dir, toast }) {
+  const isRTL = lang === 'ar'
+  const role = useMyRole()
+  const canEdit = role && EDIT_ROLES.has(role)
+
+  const [notes, setNotes] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [pinBusyId, setPinBusyId] = useState(null)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await fetchNotesForPatient(patient.id)
+      setNotes(rows)
+    } catch (err) {
+      console.error('[NotesTab] load failed:', err)
+      toast?.(isRTL ? 'فشل تحميل الملاحظات' : 'Failed to load notes', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [patient.id, toast, isRTL])
+
+  useEffect(() => { reload() }, [reload])
+
+  const openNew = () => { setEditingId(null); setShowForm(true) }
+  const openEdit = (note) => { setEditingId(note.id); setShowForm(true) }
+  const editingNote = editingId ? notes.find(n => n.id === editingId) : null
+
+  const togglePin = async (note) => {
+    setPinBusyId(note.id)
+    try {
+      await updateNote(note.id, { pinned: !note.pinned })
+      await reload()
+    } catch (err) {
+      console.error('[NotesTab] pin toggle failed:', err)
+      toast?.(isRTL ? 'فشل التثبيت' : 'Failed to update pin', 'error')
+    } finally {
+      setPinBusyId(null)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteNote(id)
+      setNotes(prev => prev.filter(n => n.id !== id))
+      toast?.(isRTL ? 'تم حذف الملاحظة' : 'Note deleted', 'success')
+    } catch (err) {
+      console.error('[NotesTab] delete failed:', err)
+      toast?.(isRTL ? 'فشل الحذف' : 'Failed to delete', 'error')
+    } finally {
+      setConfirmDeleteId(null)
+    }
+  }
+
+  return (
+    <div className="ds-root flex flex-col gap-3">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-base font-semibold text-navy-900 m-0">
+          {isRTL ? 'الملاحظات' : 'Notes'}
+        </h3>
+        {canEdit && (
+          <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={openNew}>
+            {isRTL ? 'ملاحظة جديدة' : 'New Note'}
+          </Button>
+        )}
+      </div>
+
+      {loading ? (
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+          {isRTL ? 'جاري التحميل...' : 'Loading...'}
+        </GlassCard>
+      ) : notes.length === 0 ? (
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+          {isRTL ? 'لا توجد ملاحظات' : 'No notes yet'}
+        </GlassCard>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {notes.map(note => {
+            const created = note.created_at
+              ? new Date(note.created_at).toLocaleDateString(
+                  isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US',
+                  { dateStyle: 'medium' }
+                )
+              : ''
+            return (
+              <GlassCard key={note.id} padding="lg" className="flex flex-col gap-2">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {note.title && (
+                        <span className="text-sm font-semibold text-navy-900">{note.title}</span>
+                      )}
+                      {note.pinned && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-accent-cyan-700 bg-accent-cyan-50 rounded px-1.5 py-0.5">
+                          {pinIcon(true, 10)}
+                          {isRTL ? 'مثبتة' : 'Pinned'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {canEdit && (
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => togglePin(note)}
+                        disabled={pinBusyId === note.id}
+                        aria-label={note.pinned ? (isRTL ? 'إلغاء التثبيت' : 'Unpin') : (isRTL ? 'تثبيت' : 'Pin')}
+                        title={note.pinned ? (isRTL ? 'إلغاء التثبيت' : 'Unpin') : (isRTL ? 'تثبيت' : 'Pin')}
+                        className={[
+                          'grid place-items-center w-7 h-7 rounded-md transition-colors',
+                          note.pinned
+                            ? 'text-accent-cyan-700 hover:bg-accent-cyan-50'
+                            : 'text-navy-500 hover:text-accent-cyan-700 hover:bg-accent-cyan-50/60',
+                        ].join(' ')}
+                      >
+                        {pinIcon(note.pinned)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEdit(note)}
+                        aria-label={isRTL ? 'تعديل' : 'Edit'}
+                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-accent-cyan-700 hover:bg-accent-cyan-50/60 transition-colors"
+                      >
+                        {Icons.edit(14)}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(note.id)}
+                        aria-label={isRTL ? 'حذف' : 'Delete'}
+                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                      >
+                        {Icons.trash(14)}
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <div className="text-sm text-navy-700 whitespace-pre-wrap break-words">{note.body}</div>
+                <div className="text-[11px] text-navy-500 tabular-nums">
+                  {created}
+                </div>
+              </GlassCard>
+            )
+          })}
+        </div>
+      )}
+
+      {showForm && (
+        <NoteEntryModal
+          patientId={patient.id}
+          existing={editingNote}
+          dir={dir}
+          isRTL={isRTL}
+          onCancel={() => { setShowForm(false); setEditingId(null) }}
+          onSaved={() => {
+            const wasEdit = Boolean(editingNote)
+            setShowForm(false)
+            setEditingId(null)
+            reload()
+            toast?.(
+              wasEdit
+                ? (isRTL ? 'تم تحديث الملاحظة' : 'Note updated')
+                : (isRTL ? 'تم إنشاء الملاحظة' : 'Note created'),
+              'success'
+            )
+          }}
+          onError={msg => toast?.(msg, 'error')}
+        />
+      )}
+
+      {confirmDeleteId && (
+        <Modal onClose={() => setConfirmDeleteId(null)} dir={dir} width={400}>
+          <h3 className="text-lg font-semibold text-navy-900 m-0 mb-3">
+            {isRTL ? 'حذف الملاحظة' : 'Delete Note'}
+          </h3>
+          <p className="text-sm text-navy-600 m-0 mb-5">
+            {isRTL
+              ? 'سيتم حذف الملاحظة نهائياً. لا يمكن التراجع.'
+              : 'This will permanently delete the note. This cannot be undone.'}
+          </p>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="destructive" onClick={() => handleDelete(confirmDeleteId)}>{isRTL ? 'حذف' : 'Delete'}</Button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  )
+}
+
+
+// ─── Note entry modal — handles both new and edit ─────────────────────────
+function NoteEntryModal({ patientId, existing, dir, isRTL, onCancel, onSaved, onError }) {
+  const [title, setTitle] = useState(existing?.title || '')
+  const [body, setBody] = useState(existing?.body || '')
+  const [pinned, setPinned] = useState(Boolean(existing?.pinned))
+  const [submitting, setSubmitting] = useState(false)
+
+  const handleSubmit = async () => {
+    if (!body.trim()) {
+      onError(isRTL ? 'نص الملاحظة مطلوب' : 'Note body is required')
+      return
+    }
+    setSubmitting(true)
+    try {
+      if (existing) {
+        await updateNote(existing.id, {
+          title: title.trim() || null,
+          body: body.trim(),
+          pinned,
+        })
+      } else {
+        await createNote(patientId, {
+          title: title.trim() || null,
+          body: body.trim(),
+          pinned,
+        })
+      }
+      onSaved()
+    } catch (err) {
+      console.error('[NoteEntryModal] save failed:', err)
+      onError(err.message || (isRTL ? 'فشل حفظ الملاحظة' : 'Failed to save note'))
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Modal onClose={() => { if (!submitting) onCancel() }} dir={dir} width={560}>
+      <div className="ds-root">
+        <form onSubmit={e => { e.preventDefault(); handleSubmit() }}>
+          <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
+            {existing
+              ? (isRTL ? 'تعديل الملاحظة' : 'Edit Note')
+              : (isRTL ? 'ملاحظة جديدة' : 'New Note')}
+          </h3>
+
+          <FormField label={isRTL ? 'العنوان (اختياري)' : 'Title (optional)'} dir={dir}>
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              maxLength={200}
+              placeholder={isRTL ? 'مثال: متابعة' : 'e.g. Follow-up'}
+              style={inputStyle(dir)}
+            />
+          </FormField>
+
+          <FormField label={isRTL ? 'النص' : 'Note'} dir={dir}>
+            <textarea
+              value={body}
+              onChange={e => setBody(e.target.value)}
+              rows={6}
+              maxLength={5000}
+              autoFocus
+              placeholder={isRTL ? 'اكتب الملاحظة هنا...' : 'Write the note here...'}
+              style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }}
+            />
+          </FormField>
+
+          <label className="flex items-center gap-2 text-sm text-navy-700 mt-1 mb-2 cursor-pointer">
+            <input type="checkbox" checked={pinned} onChange={e => setPinned(e.target.checked)} />
+            {isRTL ? 'تثبيت في الأعلى' : 'Pin to top'}
+          </label>
+
+          <div className="flex gap-2 justify-end mt-2">
+            <Button variant="secondary" disabled={submitting} onClick={onCancel}>
+              {isRTL ? 'إلغاء' : 'Cancel'}
+            </Button>
+            <Button variant="primary" type="submit" loading={submitting} disabled={submitting}>
+              {submitting
+                ? (isRTL ? 'جاري الحفظ...' : 'Saving...')
+                : existing
+                  ? (isRTL ? 'تحديث' : 'Update')
+                  : (isRTL ? 'حفظ' : 'Save')}
+            </Button>
+          </div>
+        </form>
+      </div>
+    </Modal>
   )
 }
