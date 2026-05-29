@@ -1967,3 +1967,143 @@ END $$;
 -- creation itself (size/MIME limits) is a manual dashboard step, mirroring the
 -- prescription-templates convention above.
 
+
+-- ============================================================================
+-- notes — PR #5 (Path A)
+-- ============================================================================
+-- Per-patient clinical notes — short free-text entries (optional title,
+-- pinnable). Flat table — one row per note; no parent/child, no Storage.
+--
+-- ─── Design notes ──────────────────────────────────────────────────────────
+-- * RLS uses the codebase's helper functions public.current_org_id() and
+--   public.is_operator(). Two policy sets — _own_org + _operator (8 total).
+--   No role-tightening on writes; the clinic UI gates roles (owner/doctor)
+--   via EDIT_ROLES in DentalTabs.jsx.
+-- * No trigger — notes carry no cross-table semantic invariant. updated_at is
+--   set explicitly by the data layer, so a NULL value cleanly signals "never
+--   edited since creation" (matches the prescriptions partial-audit pattern).
+-- * pinned is a plain boolean column; the list query sorts pinned DESC,
+--   created_at DESC, backed by notes_pinned_idx.
+-- * external_id + external_source enable GHL / external-system import
+--   idempotency via a partial unique index on the non-null pair.
+-- * external_user_id preserves the GHL note author. GHL users don't exist in
+--   our auth.users, so it's a bare text column (no FK), for traceability only.
+--
+-- All policies wrapped in idempotent DO blocks; safe to re-run via
+-- scripts/notes-migration.sql.
+-- ============================================================================
+
+-- ─── Table ─────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.notes (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id           uuid NOT NULL REFERENCES public.orgs(id)     ON DELETE CASCADE,
+  patient_id       uuid NOT NULL REFERENCES public.patients(id) ON DELETE CASCADE,
+  body             text NOT NULL,
+  title            text,
+  pinned           boolean NOT NULL DEFAULT false,
+  created_by       uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  created_at       timestamptz NOT NULL DEFAULT now(),
+  -- Partial audit trail: NULL = never edited since creation.
+  updated_at       timestamptz,
+  updated_by       uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  -- External-system import idempotency (e.g. GHL). Both NULL for native notes.
+  external_id      text,
+  external_source  text,
+  -- Preserves the GHL note author (no FK — GHL users aren't in our auth.users).
+  external_user_id text
+);
+
+
+-- ─── Indexes ───────────────────────────────────────────────────────────────
+
+CREATE INDEX IF NOT EXISTS notes_patient_idx ON public.notes (patient_id);
+CREATE INDEX IF NOT EXISTS notes_org_idx     ON public.notes (org_id);
+
+-- Backs the list query: pinned notes first, newest-first within each group.
+CREATE INDEX IF NOT EXISTS notes_pinned_idx
+  ON public.notes (patient_id, pinned DESC, created_at DESC);
+
+-- Partial unique: enforces (external_source, external_id) uniqueness only when
+-- external_id IS NOT NULL. Native notes (NULL pair) coexist freely.
+CREATE UNIQUE INDEX IF NOT EXISTS notes_external_uidx
+  ON public.notes (external_source, external_id)
+  WHERE external_id IS NOT NULL;
+
+
+-- ─── Enable RLS ────────────────────────────────────────────────────────────
+
+ALTER TABLE public.notes ENABLE ROW LEVEL SECURITY;
+
+
+-- ─── Policies — notes ──────────────────────────────────────────────────────
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_select_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY notes_select_own_org ON public.notes
+      FOR SELECT TO authenticated
+      USING (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_insert_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY notes_insert_own_org ON public.notes
+      FOR INSERT TO authenticated
+      WITH CHECK (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_update_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY notes_update_own_org ON public.notes
+      FOR UPDATE TO authenticated
+      USING (org_id = public.current_org_id())
+      WITH CHECK (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_delete_own_org' AND schemaname = 'public') THEN
+    CREATE POLICY notes_delete_own_org ON public.notes
+      FOR DELETE TO authenticated
+      USING (org_id = public.current_org_id());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_select_operator' AND schemaname = 'public') THEN
+    CREATE POLICY notes_select_operator ON public.notes
+      FOR SELECT TO authenticated USING (public.is_operator());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_insert_operator' AND schemaname = 'public') THEN
+    CREATE POLICY notes_insert_operator ON public.notes
+      FOR INSERT TO authenticated WITH CHECK (public.is_operator());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_update_operator' AND schemaname = 'public') THEN
+    CREATE POLICY notes_update_operator ON public.notes
+      FOR UPDATE TO authenticated USING (public.is_operator()) WITH CHECK (public.is_operator());
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies
+                 WHERE policyname = 'notes_delete_operator' AND schemaname = 'public') THEN
+    CREATE POLICY notes_delete_operator ON public.notes
+      FOR DELETE TO authenticated USING (public.is_operator());
+  END IF;
+END $$;
+
