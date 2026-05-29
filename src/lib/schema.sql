@@ -1455,33 +1455,26 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- INSERT: doctor uploading their own template (role-tightened), OR same-org owner.
+-- Hybrid write model (updated by fix/prescription-template-upload — see
+-- scripts/prescription-templates-rls-fix.sql): same-org owner can manage ANY
+-- doctor's template; a doctor can manage ONLY their own (segment 2 = auth.uid);
+-- receptionists/assistants are blocked. Consolidated into a single EXISTS.
+
+-- INSERT: same-org owner, OR same-org doctor uploading their OWN folder.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies
                  WHERE policyname = 'prescription_templates_insert' AND schemaname = 'storage') THEN
     CREATE POLICY "prescription_templates_insert" ON storage.objects FOR INSERT
       WITH CHECK (
         bucket_id = 'prescription-templates'
-        AND (storage.foldername(name))[1]::uuid IN (
-          SELECT org_id FROM public.profiles WHERE id = auth.uid()
-        )
-        AND (
-          -- self-upload branch: doctor uploading to their own folder, role-tightened
-          (
-            (storage.foldername(name))[2]::uuid = auth.uid()
-            AND EXISTS (
-              SELECT 1 FROM public.profiles
-              WHERE id = auth.uid() AND role = 'doctor'
+        AND EXISTS (
+          SELECT 1 FROM public.profiles
+          WHERE id = auth.uid()
+            AND org_id = (storage.foldername(name))[1]::uuid
+            AND (
+              role = 'owner'
+              OR (role = 'doctor' AND (storage.foldername(name))[2]::uuid = auth.uid())
             )
-          )
-          OR
-          -- admin branch: same-org clinic owner (explicit org_id binding)
-          EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid()
-              AND role = 'owner'
-              AND org_id = (storage.foldername(name))[1]::uuid
-          )
         )
       );
   END IF;
@@ -1494,23 +1487,14 @@ DO $$ BEGIN
     CREATE POLICY "prescription_templates_update" ON storage.objects FOR UPDATE
       USING (
         bucket_id = 'prescription-templates'
-        AND (storage.foldername(name))[1]::uuid IN (
-          SELECT org_id FROM public.profiles WHERE id = auth.uid()
-        )
-        AND (
-          (
-            (storage.foldername(name))[2]::uuid = auth.uid()
-            AND EXISTS (
-              SELECT 1 FROM public.profiles
-              WHERE id = auth.uid() AND role = 'doctor'
+        AND EXISTS (
+          SELECT 1 FROM public.profiles
+          WHERE id = auth.uid()
+            AND org_id = (storage.foldername(name))[1]::uuid
+            AND (
+              role = 'owner'
+              OR (role = 'doctor' AND (storage.foldername(name))[2]::uuid = auth.uid())
             )
-          )
-          OR EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid()
-              AND role = 'owner'
-              AND org_id = (storage.foldername(name))[1]::uuid
-          )
         )
       );
   END IF;
@@ -1523,23 +1507,14 @@ DO $$ BEGIN
     CREATE POLICY "prescription_templates_delete" ON storage.objects FOR DELETE
       USING (
         bucket_id = 'prescription-templates'
-        AND (storage.foldername(name))[1]::uuid IN (
-          SELECT org_id FROM public.profiles WHERE id = auth.uid()
-        )
-        AND (
-          (
-            (storage.foldername(name))[2]::uuid = auth.uid()
-            AND EXISTS (
-              SELECT 1 FROM public.profiles
-              WHERE id = auth.uid() AND role = 'doctor'
+        AND EXISTS (
+          SELECT 1 FROM public.profiles
+          WHERE id = auth.uid()
+            AND org_id = (storage.foldername(name))[1]::uuid
+            AND (
+              role = 'owner'
+              OR (role = 'doctor' AND (storage.foldername(name))[2]::uuid = auth.uid())
             )
-          )
-          OR EXISTS (
-            SELECT 1 FROM public.profiles
-            WHERE id = auth.uid()
-              AND role = 'owner'
-              AND org_id = (storage.foldername(name))[1]::uuid
-          )
         )
       );
   END IF;
