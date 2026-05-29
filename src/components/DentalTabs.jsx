@@ -11,7 +11,7 @@
  * assistant are read-only at the UI layer (RLS is the real boundary).
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import { GlassCard, Button } from './ui'
 import {
@@ -40,6 +40,12 @@ import {
   logPrescriptionPrint,
 } from '../lib/prescriptions'
 import { getPrescriptionTemplateSignedUrl } from '../lib/database'
+import {
+  fetchDocumentsForPatient,
+  uploadDocument,
+  getDocumentSignedUrl,
+  deleteDocument,
+} from '../lib/documents'
 
 // Roles allowed to mutate dental-tab state at the UI layer. RLS policies are
 // the real security boundary; this just hides the buttons for read-only users.
@@ -1677,5 +1683,320 @@ function PrescriptionPrintModal({ prescriptionId, dir, isRTL, onClose, toast }) 
         </div>
       </div>
     </Modal>
+  )
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+// DOCUMENTS TAB
+// ═══════════════════════════════════════════════════════════════════════════
+// Per-patient file attachments. Wider edit gate than the other dental tabs —
+// receptionists routinely handle paperwork (scans, ID/insurance copies).
+
+const DOCUMENTS_EDIT_ROLES = new Set(['owner', 'doctor', 'receptionist'])
+
+// Mirror of the data-layer + bucket MIME whitelist, for the file picker's
+// `accept` attribute. The data layer + bucket are the real gate.
+const DOCUMENT_ACCEPT = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+].join(',')
+
+function formatFileSize(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${kb.toFixed(kb < 10 ? 1 : 0)} KB`
+  const mb = kb / 1024
+  return `${mb.toFixed(mb < 10 ? 1 : 0)} MB`
+}
+
+// Small inline file glyph for non-image mime types (shared.jsx has no generic
+// "file" icon). Images reuse Icons.image.
+function docIcon(mime) {
+  if (typeof mime === 'string' && mime.startsWith('image/')) return Icons.image(18)
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  )
+}
+
+export function DocumentsTab({ patient, lang, dir, toast }) {
+  const isRTL = lang === 'ar'
+  const role = useMyRole()
+  const canEdit = role && DOCUMENTS_EDIT_ROLES.has(role)
+
+  const [documents, setDocuments] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [dragging, setDragging] = useState(false)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+  const [busyId, setBusyId] = useState(null)
+  const fileInputRef = useRef(null)
+
+  const reload = useCallback(async () => {
+    setLoading(true)
+    try {
+      const rows = await fetchDocumentsForPatient(patient.id)
+      setDocuments(rows)
+    } catch (err) {
+      console.error('[DocumentsTab] load failed:', err)
+      toast?.(isRTL ? 'فشل تحميل الوثائق' : 'Failed to load documents', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }, [patient.id, toast, isRTL])
+
+  useEffect(() => { reload() }, [reload])
+
+  // Upload one or more files sequentially, then reload once.
+  const handleFiles = useCallback(async (fileList) => {
+    const files = Array.from(fileList || [])
+    if (files.length === 0) return
+    setUploading(true)
+    let ok = 0
+    let firstError = null
+    for (const file of files) {
+      try {
+        await uploadDocument(patient.id, file)
+        ok += 1
+      } catch (err) {
+        console.error('[DocumentsTab] upload failed:', err)
+        if (!firstError) firstError = err
+      }
+    }
+    setUploading(false)
+    if (ok > 0) {
+      await reload()
+      toast?.(
+        isRTL ? `تم رفع ${ok} ${ok === 1 ? 'وثيقة' : 'وثائق'}` : `Uploaded ${ok} ${ok === 1 ? 'file' : 'files'}`,
+        'success'
+      )
+    }
+    if (firstError) {
+      toast?.(firstError.message || (isRTL ? 'فشل الرفع' : 'Upload failed'), 'error')
+    }
+  }, [patient.id, reload, toast, isRTL])
+
+  const onPick = (e) => {
+    const files = e.target.files
+    handleFiles(files)
+    e.target.value = '' // allow re-picking the same file
+  }
+
+  const onDrop = (e) => {
+    e.preventDefault()
+    setDragging(false)
+    if (!canEdit || uploading) return
+    handleFiles(e.dataTransfer?.files)
+  }
+
+  const openSigned = async (id, { download } = {}) => {
+    setBusyId(id)
+    try {
+      const { url, fileName } = await getDocumentSignedUrl(id)
+      if (!url) throw new Error(isRTL ? 'تعذر إنشاء الرابط' : 'Could not generate link')
+      if (download) {
+        // Supabase signed URLs honor a `download` query param → forces
+        // Content-Disposition: attachment even across origins.
+        const dlUrl = url + (url.includes('?') ? '&' : '?') + 'download=' + encodeURIComponent(fileName || '')
+        const a = document.createElement('a')
+        a.href = dlUrl
+        a.rel = 'noopener'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      } else {
+        window.open(url, '_blank', 'noopener,noreferrer')
+      }
+    } catch (err) {
+      console.error('[DocumentsTab] signed-url failed:', err)
+      toast?.(isRTL ? 'فشل فتح الوثيقة' : 'Failed to open document', 'error')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleDelete = async (id) => {
+    try {
+      await deleteDocument(id)
+      setDocuments(prev => prev.filter(d => d.id !== id))
+      toast?.(isRTL ? 'تم حذف الوثيقة' : 'Document deleted', 'success')
+    } catch (err) {
+      console.error('[DocumentsTab] delete failed:', err)
+      toast?.(isRTL ? 'فشل الحذف' : 'Failed to delete', 'error')
+    } finally {
+      setConfirmDeleteId(null)
+    }
+  }
+
+  const dropHandlers = canEdit ? {
+    onDragOver: (e) => { e.preventDefault(); if (!dragging) setDragging(true) },
+    onDragLeave: () => setDragging(false),
+    onDrop,
+  } : {}
+
+  const dropZone = (full) => (
+    <div
+      {...dropHandlers}
+      onClick={() => canEdit && !uploading && fileInputRef.current?.click()}
+      role={canEdit ? 'button' : undefined}
+      tabIndex={canEdit ? 0 : undefined}
+      onKeyDown={(e) => { if (canEdit && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); fileInputRef.current?.click() } }}
+      className={[
+        'rounded-xl border-2 border-dashed transition-colors text-center',
+        full ? 'py-12 px-6' : 'py-3 px-4',
+        dragging ? 'border-accent-cyan-500 bg-accent-cyan-50/60' : 'border-navy-200',
+        canEdit && !uploading ? 'cursor-pointer hover:border-accent-cyan-400 hover:bg-accent-cyan-50/30' : 'cursor-default',
+      ].join(' ')}
+    >
+      <div className="flex items-center justify-center gap-2 text-navy-500">
+        {Icons.upload(full ? 22 : 16)}
+        <span className={full ? 'text-sm font-medium' : 'text-xs font-medium'}>
+          {uploading
+            ? (isRTL ? 'جاري الرفع...' : 'Uploading...')
+            : (isRTL ? 'اسحب الملفات هنا أو انقر للرفع' : 'Drag files here or click to upload')}
+        </span>
+      </div>
+      {full && (
+        <div className="text-[11px] text-navy-400 mt-2">
+          {isRTL
+            ? 'PDF أو صور أو Word أو Excel أو نص — بحد أقصى ٢٥ ميغابايت'
+            : 'PDF, images, Word, Excel, or text — up to 25 MB'}
+        </div>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="ds-root flex flex-col gap-3">
+      <div className="flex items-center justify-between mb-1">
+        <h3 className="text-base font-semibold text-navy-900 m-0">
+          {isRTL ? 'الوثائق' : 'Documents'}
+        </h3>
+        {canEdit && (
+          <Button
+            variant="primary"
+            size="sm"
+            iconStart={Icons.upload}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            {isRTL ? 'رفع' : 'Upload'}
+          </Button>
+        )}
+      </div>
+
+      {canEdit && (
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={DOCUMENT_ACCEPT}
+          multiple
+          onChange={onPick}
+          className="hidden"
+        />
+      )}
+
+      {loading ? (
+        <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+          {isRTL ? 'جاري التحميل...' : 'Loading...'}
+        </GlassCard>
+      ) : documents.length === 0 ? (
+        canEdit
+          ? dropZone(true)
+          : (
+            <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+              {isRTL ? 'لا توجد وثائق' : 'No documents yet'}
+            </GlassCard>
+          )
+      ) : (
+        <div className="flex flex-col gap-3">
+          {canEdit && dropZone(false)}
+          <div className="flex flex-col gap-2">
+            {documents.map(doc => {
+              const uploaded = doc.created_at
+                ? new Date(doc.created_at).toLocaleDateString(
+                    isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US',
+                    { dateStyle: 'medium' }
+                  )
+                : ''
+              const size = formatFileSize(doc.file_size)
+              const uploaderName = doc.uploader?.full_name || ''
+              const rowBusy = busyId === doc.id
+              return (
+                <GlassCard key={doc.id} padding="md" className="flex items-center gap-3 flex-wrap">
+                  <span className="grid place-items-center w-9 h-9 rounded-lg bg-navy-50 text-navy-500 shrink-0">
+                    {docIcon(doc.mime_type)}
+                  </span>
+                  <div className="flex-1 min-w-[180px]">
+                    <div className="text-sm font-semibold text-navy-900 break-all">{doc.file_name}</div>
+                    <div className="text-[11px] text-navy-500 mt-0.5 tabular-nums">
+                      {[size, uploaded, uploaderName].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconStart={Icons.eye}
+                      onClick={() => openSigned(doc.id)}
+                      disabled={rowBusy}
+                    >
+                      {isRTL ? 'عرض' : 'View'}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      iconStart={Icons.download}
+                      onClick={() => openSigned(doc.id, { download: true })}
+                      disabled={rowBusy}
+                    >
+                      {isRTL ? 'تنزيل' : 'Download'}
+                    </Button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmDeleteId(doc.id)}
+                        aria-label={isRTL ? 'حذف' : 'Delete'}
+                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                      >
+                        {Icons.trash(14)}
+                      </button>
+                    )}
+                  </div>
+                </GlassCard>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {confirmDeleteId && (
+        <Modal onClose={() => setConfirmDeleteId(null)} dir={dir} width={400}>
+          <h3 className="text-lg font-semibold text-navy-900 m-0 mb-3">
+            {isRTL ? 'حذف الوثيقة' : 'Delete Document'}
+          </h3>
+          <p className="text-sm text-navy-600 m-0 mb-5">
+            {isRTL
+              ? 'سيتم حذف الملف نهائياً. لا يمكن التراجع.'
+              : 'This will permanently delete the file. This cannot be undone.'}
+          </p>
+          <div className="flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => setConfirmDeleteId(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+            <Button variant="destructive" onClick={() => handleDelete(confirmDeleteId)}>{isRTL ? 'حذف' : 'Delete'}</Button>
+          </div>
+        </Modal>
+      )}
+    </div>
   )
 }
