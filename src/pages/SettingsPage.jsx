@@ -117,7 +117,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} toast={toast} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
-          {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} />}
+          {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} toast={toast} />}
           {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
@@ -605,13 +605,28 @@ function TeamTab({ t, lang, dir, isRTL, toast }) {
   )
 }
 
-function NotificationsTab({ t, lang }) {
-  const [notifs, setNotifs] = useState({
-    emailNotif: true, whatsappNotif: false, browserNotif: true,
-    dealUpdates: true, contactActivity: true, ticketUpdates: true,
-    weeklyDigest: true, systemAlerts: true, smsAlerts: false,
+const NOTIF_PREFS_KEY = 'velo_notification_prefs'
+const NOTIF_DEFAULTS = {
+  emailNotif: true, whatsappNotif: false, browserNotif: true,
+  dealUpdates: true, contactActivity: true, ticketUpdates: true,
+  weeklyDigest: true, systemAlerts: true, smsAlerts: false,
+}
+
+function NotificationsTab({ t, lang, toast }) {
+  // Per-device preferences — no server column exists yet, so persist to
+  // localStorage (matches the precedent set by velo_clinic_hours / velo_kb_files).
+  const [notifs, setNotifs] = useState(() => {
+    try { return { ...NOTIF_DEFAULTS, ...JSON.parse(localStorage.getItem(NOTIF_PREFS_KEY) || '{}') } }
+    catch { return NOTIF_DEFAULTS }
   })
+  const [saved, setSaved] = useState(false)
   const toggle = (k) => setNotifs(p => ({ ...p, [k]: !p[k] }))
+
+  const handleSave = () => {
+    try { localStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(notifs)) } catch { /* storage unavailable */ }
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+    toast?.(lang === 'ar' ? 'تم حفظ تفضيلات الإشعارات' : 'Notification preferences saved', 'success')
+  }
 
   const sections = [
     { title: lang === 'ar' ? 'قنوات الإشعارات' : 'Notification Channels', items: [
@@ -648,7 +663,9 @@ function NotificationsTab({ t, lang }) {
         </div>
       ))}
       <div className="flex justify-end mt-6">
-        <Button variant="primary">{t.saveChanges}</Button>
+        <Button variant="primary" onClick={handleSave} iconStart={saved ? Icons.check : undefined}>
+          {saved ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!') : t.saveChanges}
+        </Button>
       </div>
     </GlassCard>
   )
