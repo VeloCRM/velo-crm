@@ -1066,6 +1066,9 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 
   return (
     <div className="space-y-5">
+      <div className="bg-navy-50 border border-navy-100 rounded-glass px-4 py-3 text-[13px] text-navy-600">
+        {lang === 'ar' ? 'أدر عمليات الدمج من صفحة عمليات الدمج.' : 'Manage integrations from the Integrations page.'}
+      </div>
       {/* WhatsApp — Step by step */}
       <Section title="WhatsApp Cloud API" icon="💬">
         <WaStep num={1} title={lang === 'ar' ? 'إنشاء حساب Meta Business' : 'Create Meta Business Account'} active={waStep === 1}>
@@ -1202,23 +1205,6 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
             placeholder="EAAx..."
           />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary">
-            {/* Brand-correctness: Facebook blue stroke kept inline by design */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1877F2" strokeWidth="2" aria-hidden="true">
-              <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-            </svg>
-            {lang === 'ar' ? 'ربط فيسبوك' : 'Connect Facebook'}
-          </Button>
-          <Button variant="secondary">
-            {/* Brand-correctness: Instagram pink stroke kept inline by design */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E4405F" strokeWidth="2" aria-hidden="true">
-              <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-            </svg>
-            {lang === 'ar' ? 'ربط إنستغرام' : 'Connect Instagram'}
-          </Button>
-        </div>
       </Section>
 
       {/* Gmail */}
@@ -1231,9 +1217,6 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
             placeholder="your@gmail.com"
           />
         </div>
-        <Button variant="secondary" iconStart={Icons.externalLink}>
-          {lang === 'ar' ? 'ربط حساب Google' : 'Connect Google Account'}
-        </Button>
       </Section>
 
       <div className="flex justify-end">
