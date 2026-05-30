@@ -116,6 +116,26 @@
   outline-offset: -2px;
 }
 
+/* Inbox inputs (search + reply textarea) sit OUTSIDE .ds-root, so the unscoped
+   `input, textarea, select { background: var(--bg-secondary) !important }` rule
+   in theme.css would force them to the legacy dark fill regardless of inline
+   styles. Re-light them with a higher-specificity scoped override so they show
+   the surrounding --velo surface and follow the active theme. */
+.velo-inbox :is(input, textarea) {
+  background: transparent !important;
+  color: rgb(var(--velo-text-primary)) !important;
+  border-color: transparent !important;
+}
+.velo-inbox :is(input, textarea)::placeholder {
+  color: rgb(var(--velo-text-tertiary)) !important;
+  opacity: 1;
+}
+.velo-inbox :is(input, textarea):focus {
+  border-color: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
 /* ─── Sprint 1: Liquid Glass design system ─────────────────────────────
    Custom properties + utility classes for the iOS-style frosted-glass
    surfaces introduced in Phase 1.1. Lives alongside the warm/mint vars

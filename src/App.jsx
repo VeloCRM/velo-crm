@@ -820,32 +820,32 @@ export default function App() {
         className="desktop-sidebar relative z-raised flex flex-col bg-navy-50 border-e border-navy-100 overflow-hidden transition-[width,min-width] duration-base ease-standard"
         style={{ width: sidebarCollapsed ? 56 : 228, minWidth: sidebarCollapsed ? 56 : 228 }}
       >
-        <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[60px] py-4 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
+        <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[72px] py-3.5 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
           {isAgencyMode ? (
             <>
-              <div className="w-9 h-9 rounded-[10px] bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan-600"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
+              <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
+                <svg width={sidebarCollapsed ? 18 : 24} height={sidebarCollapsed ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan-600"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
               </div>
               {!sidebarCollapsed && (
                 <div className="overflow-hidden">
-                  <div className="flex items-center gap-2 font-display text-[17px] font-extrabold tracking-[-0.03em] text-navy-900">
+                  <div className="flex items-center gap-2 font-display text-[19px] font-extrabold tracking-[-0.03em] text-navy-900 leading-tight">
                     {isRTL ? 'وكالة Velo' : 'Velo Agency'}
                     <span className="text-[9px] font-bold leading-[14px] tracking-[0.05em] uppercase rounded px-1.5 py-0.5 bg-accent-cyan-50 text-accent-cyan-700 ring-1 ring-accent-cyan-100">PRO</span>
                   </div>
-                  <div className="text-[11px] mt-0.5 font-sans text-navy-500">{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
+                  <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500">{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
                 </div>
               )}
             </>
           ) : (
             <>
-              {/* Logo mark — 36x36 rounded 10, tooth glyph in cyan */}
-              <div className="w-9 h-9 rounded-[10px] bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan-600"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+              {/* Logo mark — 48x48 (36 when collapsed), tooth glyph in cyan */}
+              <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
+                <svg width={sidebarCollapsed ? 18 : 24} height={sidebarCollapsed ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan-600"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
               </div>
               {!sidebarCollapsed && (
                 <div className="overflow-hidden">
-                  <div className="font-display text-[17px] font-extrabold tracking-[-0.03em] text-navy-900">{orgSettings.name || t.appName}</div>
-                  <div className="text-[11px] mt-0.5 font-sans text-navy-500">{orgSettings.name ? t.appName : t.appTagline}</div>
+                  <div className="font-display text-[19px] font-extrabold tracking-[-0.03em] text-navy-900 leading-tight truncate">{orgSettings.name || t.appName}</div>
+                  <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500 truncate">{orgSettings.name ? t.appName : t.appTagline}</div>
                 </div>
               )}
             </>
@@ -931,8 +931,8 @@ export default function App() {
           {/* Mobile: Logo + company name in header */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-              <div style={{ width:28, height:28, borderRadius:7, background:'rgba(0,255,178,0.1)', border:'1px solid rgba(0,255,178,0.25)', display:'flex', alignItems:'center', justifyContent:'center', color:'#00FFB2', fontWeight:700, fontSize:12 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
-              <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:"'Syne',sans-serif" }}>{orgSettings.name || 'Velo'}</span>
+              <div style={{ width:34, height:34, borderRadius:9, background:'#ECFEFF', border:'1px solid #CFFAFE', display:'flex', alignItems:'center', justifyContent:'center', color:'#0891B2', fontWeight:800, fontSize:15, fontFamily:"'Syne',sans-serif" }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
+              <span style={{ fontSize:16, fontWeight:800, color:'#0A2540', fontFamily:"'Syne',sans-serif", letterSpacing:'-0.03em' }}>{orgSettings.name || 'Velo'}</span>
             </div>
           )}
           {/* Search → opens Command Palette */}
@@ -2191,6 +2191,24 @@ const FILTER_TABS = [
   { id: 'sms', key: 'sms' },
 ]
 
+// Theme-aware token aliases for the Inbox. The legacy `C` palette in design.js
+// is a fixed dark theme; resolving against the --velo-* CSS variables (index.css)
+// makes the Inbox follow the app's light/dark theme instead of bleeding dark.
+const VT = {
+  canvas:       'rgb(var(--velo-surface-canvas))',
+  raised:       'rgb(var(--velo-surface-raised))',
+  sunken:       'rgb(var(--velo-surface-sunken))',
+  text:         'rgb(var(--velo-text-primary))',
+  textSec:      'rgb(var(--velo-text-secondary))',
+  textMuted:    'rgb(var(--velo-text-tertiary))',
+  border:       'rgb(var(--velo-border-subtle))',
+  accent:       'rgb(var(--velo-accent-solid))',
+  accentFg:     'rgb(var(--velo-accent-fg))',
+  accentSubtle: 'rgb(var(--velo-accent-subtle))',
+  onAccent:     'rgb(var(--velo-text-on-accent))',
+  danger:       'rgb(var(--velo-status-danger-fg))',
+}
+
 function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate, teamMembers, isOperator, impersonation, orgId, demoMode, toast, sampleData }) {
   void teamMembers
   // Demo conversations land via sampleData prop once the dynamic import
@@ -2320,19 +2338,19 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
   if (isOperator && !impersonation) return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
 
   return (
-    <div style={{ display:'flex', height:'calc(100vh - 108px)', margin:-24, marginTop:-24, direction:dir }}>
+    <div className="velo-inbox" style={{ display:'flex', height:'calc(100vh - 108px)', margin:-24, marginTop:-24, direction:dir }}>
       {/* ── LEFT PANEL: Conversation List ────────────────────────────── */}
       <div style={{
-        width: 360, minWidth: 360, borderRight: isRTL ? 'none' : `1px solid ${C.border}`,
-        borderLeft: isRTL ? `1px solid ${C.border}` : 'none',
-        display: 'flex', flexDirection: 'column', background: C.white,
+        width: 360, minWidth: 360, borderRight: isRTL ? 'none' : `1px solid ${VT.border}`,
+        borderLeft: isRTL ? `1px solid ${VT.border}` : 'none',
+        display: 'flex', flexDirection: 'column', background: VT.raised,
       }}>
         {/* Header */}
-        <div style={{ padding: '16px 18px 12px', borderBottom: `1px solid ${C.border}` }}>
+        <div style={{ padding: '16px 18px 12px', borderBottom: `1px solid ${VT.border}` }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-            <h2 style={{ fontSize: 18, fontWeight: 700, color: C.text, margin: 0 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, color: VT.text, margin: 0 }}>
               {t.inbox}
-              {totalUnread > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: C.white, background: C.danger, padding: '2px 7px', borderRadius: 10, marginLeft: 8, marginRight: 8 }}>{totalUnread}</span>}
+              {totalUnread > 0 && <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', background: VT.danger, padding: '2px 7px', borderRadius: 10, marginLeft: 8, marginRight: 8 }}>{totalUnread}</span>}
             </h2>
             <button className="velo-btn-primary" style={makeBtn('primary', { padding: '6px 12px', fontSize: 12, gap: 5 })}>
               {Icons.plus(14)} {t.compose}
@@ -2340,10 +2358,10 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
           </div>
 
           {/* Search */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: C.bg, borderRadius: 8, padding: '7px 12px', border: `1px solid ${C.border}`, marginBottom: 12 }}>
-            <span style={{ color: C.textMuted, display: 'flex' }}>{Icons.search(14)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: VT.sunken, borderRadius: 8, padding: '7px 12px', border: `1px solid ${VT.border}`, marginBottom: 12 }}>
+            <span style={{ color: VT.textMuted, display: 'flex' }}>{Icons.search(14)}</span>
             <input value={searchQ} onChange={e => setSearchQ(e.target.value)} placeholder={t.searchConversations}
-              style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: C.text, flex: 1, fontFamily: 'inherit', direction: dir }} />
+              style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: 12, color: VT.text, flex: 1, fontFamily: 'inherit', direction: dir }} />
           </div>
 
           {/* Channel Filter Tabs */}
@@ -2357,7 +2375,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                 <button key={tab.id} onClick={() => setFilter(tab.id)}
                   style={{
                     padding: '5px 12px', borderRadius: 6, border: 'none', fontSize: 11, fontWeight: 600,
-                    background: isActive ? C.primary : C.bg, color: isActive ? '#fff' : C.textSec,
+                    background: isActive ? VT.accent : VT.sunken, color: isActive ? VT.onAccent : VT.textSec,
                     cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap', transition: 'all .15s',
                     display: 'flex', alignItems: 'center', gap: 5,
                   }}>
@@ -2380,13 +2398,13 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
               <div key={conv.id} onClick={() => setActiveConvId(conv.id)}
                 style={{
                   padding: '14px 18px', display: 'flex', gap: 12, cursor: 'pointer',
-                  background: isActive ? C.primaryBg : 'transparent',
-                  borderBottom: `1px solid ${C.border}`,
-                  borderLeft: isActive && !isRTL ? `3px solid ${C.primary}` : '3px solid transparent',
-                  borderRight: isActive && isRTL ? `3px solid ${C.primary}` : '3px solid transparent',
+                  background: isActive ? VT.accentSubtle : 'transparent',
+                  borderBottom: `1px solid ${VT.border}`,
+                  borderLeft: isActive && !isRTL ? `3px solid ${VT.accent}` : '3px solid transparent',
+                  borderRight: isActive && isRTL ? `3px solid ${VT.accent}` : '3px solid transparent',
                   transition: 'all .1s',
                 }}
-                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = C.bg }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = VT.sunken }}
                 onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent' }}>
                 {/* Avatar with channel indicator */}
                 <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -2400,9 +2418,9 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                   </div>
                   <div style={{
                     position: 'absolute', bottom: -1, right: -1,
-                    width: 18, height: 18, borderRadius: '50%', background: C.white,
+                    width: 18, height: 18, borderRadius: '50%', background: VT.raised,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: `1.5px solid ${C.border}`,
+                    border: `1.5px solid ${VT.border}`,
                   }}>
                     <ChannelIcon channel={conv.channel} size={10} />
                   </div>
@@ -2414,13 +2432,13 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                 {/* Content */}
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
-                    <span style={{ fontSize: 13, fontWeight: conv.unread > 0 ? 700 : 600, color: C.text }}>{conv.contactName}</span>
-                    <span style={{ fontSize: 11, color: conv.unread > 0 ? C.primary : C.textMuted, fontWeight: conv.unread > 0 ? 600 : 400 }}>{conv.lastTime}</span>
+                    <span style={{ fontSize: 13, fontWeight: conv.unread > 0 ? 700 : 600, color: VT.text }}>{conv.contactName}</span>
+                    <span style={{ fontSize: 11, color: conv.unread > 0 ? VT.accentFg : VT.textMuted, fontWeight: conv.unread > 0 ? 600 : 400 }}>{conv.lastTime}</span>
                   </div>
-                  <div style={{ fontSize: 11, color: C.textMuted, marginBottom: 4 }}>{conv.company}</div>
+                  <div style={{ fontSize: 11, color: VT.textMuted, marginBottom: 4 }}>{conv.company}</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
                     <span style={{
-                      fontSize: 12, color: conv.unread > 0 ? C.text : C.textMuted,
+                      fontSize: 12, color: conv.unread > 0 ? VT.text : VT.textMuted,
                       fontWeight: conv.unread > 0 ? 600 : 400,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1,
                     }}>
@@ -2428,7 +2446,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                     </span>
                     {conv.unread > 0 && (
                       <span style={{
-                        background: C.primary, color: '#fff', fontSize: 10, fontWeight: 700,
+                        background: VT.accent, color: VT.onAccent, fontSize: 10, fontWeight: 700,
                         padding: '2px 7px', borderRadius: 10, minWidth: 20, textAlign: 'center', flexShrink: 0,
                       }}>
                         {conv.unread}
@@ -2443,21 +2461,21 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
       </div>
 
       {/* ── RIGHT PANEL: Chat View ──────────────────────────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: C.bg }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: VT.canvas }}>
         {!activeConv ? (
           /* Empty state */
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-            <div style={{ width: 72, height: 72, borderRadius: 16, background: C.primaryBg, color: C.primary, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ width: 72, height: 72, borderRadius: 16, background: VT.accentSubtle, color: VT.accentFg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {Icons.inbox(36)}
             </div>
-            <h3 style={{ fontSize: 18, fontWeight: 600, color: C.text, margin: 0 }}>{t.inbox}</h3>
-            <p style={{ fontSize: 13, color: C.textMuted }}>{t.noConversation}</p>
+            <h3 style={{ fontSize: 18, fontWeight: 600, color: VT.text, margin: 0 }}>{t.inbox}</h3>
+            <p style={{ fontSize: 13, color: VT.textSec }}>{t.noConversation}</p>
           </div>
         ) : (
           <>
             {/* ── Chat Header / Top Bar ────────────────────────────── */}
             <div style={{
-              padding: '12px 20px', background: C.white, borderBottom: `1px solid ${C.border}`,
+              padding: '12px 20px', background: VT.raised, borderBottom: `1px solid ${VT.border}`,
               display: 'flex', alignItems: 'center', gap: 14,
             }}>
               <div style={{ position: 'relative' }}>
@@ -2475,12 +2493,12 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                 )}
               </div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{activeConv.contactName}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: C.textMuted }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: VT.text }}>{activeConv.contactName}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: VT.textMuted }}>
                   <ChannelIcon channel={activeConv.channel} size={12} />
                   <span>{CHANNEL_META[activeConv.channel].label}</span>
-                  <span style={{ width: 3, height: 3, borderRadius: '50%', background: C.textMuted }} />
-                  <span style={{ color: activeConv.status === 'online' ? '#25D366' : C.textMuted, fontWeight: 500 }}>
+                  <span style={{ width: 3, height: 3, borderRadius: '50%', background: VT.textMuted }} />
+                  <span style={{ color: activeConv.status === 'online' ? '#25D366' : VT.textMuted, fontWeight: 500 }}>
                     {activeConv.status === 'online' ? t.online : t.offline}
                   </span>
                 </div>
@@ -2512,13 +2530,13 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                       {showDate && (
                         <div style={{ textAlign: 'center', margin: '12px 0', position: 'relative' }}>
                           <span style={{
-                            fontSize: 11, color: C.textMuted, background: C.bg,
+                            fontSize: 11, color: VT.textMuted, background: VT.canvas,
                             padding: '2px 12px', position: 'relative', zIndex: 1,
                             fontWeight: 500,
                           }}>
                             {new Date(msg.date).toLocaleDateString(lang === 'ar' ? 'ar-SA' : 'en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                           </span>
-                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: C.border, zIndex: 0 }} />
+                          <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: 1, background: VT.border, zIndex: 0 }} />
                         </div>
                       )}
                       {/* Bubble */}
@@ -2531,15 +2549,15 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                           borderTopRightRadius: isMe && !isRTL ? 4 : 14,
                           borderTopLeftRadius: isMe && isRTL ? 4 : (!isMe && !isRTL ? 4 : 14),
                           borderBottomLeftRadius: !isMe && isRTL ? 4 : 14,
-                          background: isMe ? C.primary : C.white,
-                          color: isMe ? '#fff' : C.text,
-                          border: isMe ? 'none' : `1px solid ${C.border}`,
+                          background: isMe ? VT.accent : VT.raised,
+                          color: isMe ? VT.onAccent : VT.text,
+                          border: isMe ? 'none' : `1px solid ${VT.border}`,
                           boxShadow: '0 1px 2px rgba(0,0,0,.05)',
                         }}>
                           <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{msg.text}</div>
                           <div style={{
                             fontSize: 10, marginTop: 4,
-                            color: isMe ? 'rgba(255,255,255,.7)' : C.textMuted,
+                            color: isMe ? 'rgba(0,0,0,.5)' : VT.textMuted,
                             textAlign: isMe ? (isRTL ? 'left' : 'right') : (isRTL ? 'right' : 'left'),
                             display: 'flex', alignItems: 'center', gap: 4,
                             justifyContent: isMe ? 'flex-end' : 'flex-start',
@@ -2563,27 +2581,27 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
             {/* ── AI Suggestion Popup ──────────────────────────────── */}
             {showAiSuggestion && (
               <div style={{
-                margin: '0 24px', padding: 14, background: C.white, borderRadius: 12,
-                border: `1px solid ${C.primary}33`, boxShadow: '0 4px 12px rgba(0,0,0,.08)',
+                margin: '0 24px', padding: 14, background: VT.raised, borderRadius: 12,
+                border: '1px solid rgb(var(--velo-border-brand) / 0.35)', boxShadow: '0 4px 12px rgba(0,0,0,.08)',
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10 }}>
                   <div style={{ width: 22, height: 22, borderRadius: 6, background: `linear-gradient(135deg, ${C.primary}, #A78BFA)`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: C.primary }}>{t.aiSuggestion}</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: VT.accentFg }}>{t.aiSuggestion}</span>
                   <div style={{ flex: 1 }} />
-                  <button onClick={() => setShowAiSuggestion(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: C.textMuted, display: 'flex' }}>{Icons.x(14)}</button>
+                  <button onClick={() => setShowAiSuggestion(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: VT.textMuted, display: 'flex' }}>{Icons.x(14)}</button>
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                   {aiSuggestions.map((s, i) => (
                     <button key={i} onClick={() => applyAiSuggestion(s)}
                       style={{
-                        padding: '8px 12px', borderRadius: 8, border: `1px solid ${C.border}`,
-                        background: C.bg, color: C.text, fontSize: 12, textAlign: isRTL ? 'right' : 'left',
+                        padding: '8px 12px', borderRadius: 8, border: `1px solid ${VT.border}`,
+                        background: VT.sunken, color: VT.text, fontSize: 12, textAlign: isRTL ? 'right' : 'left',
                         cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s', lineHeight: 1.4,
                       }}
-                      onMouseEnter={e => { e.currentTarget.style.background = C.primaryBg; e.currentTarget.style.borderColor = C.primary }}
-                      onMouseLeave={e => { e.currentTarget.style.background = C.bg; e.currentTarget.style.borderColor = C.border }}>
+                      onMouseEnter={e => { e.currentTarget.style.background = VT.accentSubtle; e.currentTarget.style.borderColor = VT.accent }}
+                      onMouseLeave={e => { e.currentTarget.style.background = VT.sunken; e.currentTarget.style.borderColor = VT.border }}>
                       {s}
                     </button>
                   ))}
@@ -2593,7 +2611,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
 
             {/* ── Message Input ────────────────────────────────────── */}
             <div style={{
-              padding: '14px 20px', background: C.white, borderTop: `1px solid ${C.border}`,
+              padding: '14px 20px', background: VT.raised, borderTop: `1px solid ${VT.border}`,
               display: 'flex', alignItems: 'flex-end', gap: 10,
             }}>
               {/* Attach */}
@@ -2601,18 +2619,18 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
               <button onClick={() => fileInputRef.current?.click()}
                 title={t.attachFile}
                 style={{
-                  width: 36, height: 36, borderRadius: 8, border: `1px solid ${C.border}`,
-                  background: C.white, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: C.textSec, flexShrink: 0,
+                  width: 36, height: 36, borderRadius: 8, border: `1px solid ${VT.border}`,
+                  background: VT.raised, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  color: VT.textSec, flexShrink: 0,
                 }}>
                 {Icons.upload(16)}
               </button>
 
               {/* Emoji placeholder */}
               <button style={{
-                width: 36, height: 36, borderRadius: 8, border: `1px solid ${C.border}`,
-                background: C.white, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: C.textSec, flexShrink: 0, fontSize: 18,
+                width: 36, height: 36, borderRadius: 8, border: `1px solid ${VT.border}`,
+                background: VT.raised, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: VT.textSec, flexShrink: 0, fontSize: 18,
               }}>
                 😊
               </button>
@@ -2620,7 +2638,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
               {/* Text input */}
               <div style={{
                 flex: 1, display: 'flex', alignItems: 'flex-end', gap: 0,
-                background: C.bg, borderRadius: 10, border: `1px solid ${C.border}`,
+                background: VT.sunken, borderRadius: 10, border: `1px solid ${VT.border}`,
                 padding: '0 4px 0 14px', minHeight: 40,
               }}>
                 <textarea
@@ -2631,7 +2649,7 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                   rows={1}
                   style={{
                     flex: 1, border: 'none', background: 'transparent', outline: 'none',
-                    fontSize: 13, color: C.text, fontFamily: 'inherit', padding: '9px 0',
+                    fontSize: 13, color: VT.text, fontFamily: 'inherit', padding: '9px 0',
                     resize: 'none', direction: dir, lineHeight: 1.4, maxHeight: 100,
                   }}
                 />
@@ -2642,10 +2660,10 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
                 title={t.aiReply}
                 style={{
                   width: 36, height: 36, borderRadius: 8,
-                  background: showAiSuggestion ? `linear-gradient(135deg, ${C.primary}, #A78BFA)` : C.white,
-                  border: showAiSuggestion ? 'none' : `1px solid ${C.border}`,
+                  background: showAiSuggestion ? `linear-gradient(135deg, ${C.primary}, #A78BFA)` : VT.raised,
+                  border: showAiSuggestion ? 'none' : `1px solid ${VT.border}`,
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: showAiSuggestion ? '#fff' : C.textSec, flexShrink: 0,
+                  color: showAiSuggestion ? '#fff' : VT.textSec, flexShrink: 0,
                 }}>
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
               </button>
@@ -2654,10 +2672,10 @@ function InboxPage({ t, lang, dir, isRTL, contacts, setPage, urlConvId, navigate
               <button onClick={sendMessage}
                 style={{
                   width: 40, height: 40, borderRadius: 10, border: 'none',
-                  background: msgInput.trim() ? C.primary : C.border,
+                  background: msgInput.trim() ? VT.accent : VT.border,
                   cursor: msgInput.trim() ? 'pointer' : 'default',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  color: '#fff', flexShrink: 0, transition: 'background .15s',
+                  color: msgInput.trim() ? VT.onAccent : VT.textMuted, flexShrink: 0, transition: 'background .15s',
                 }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   {isRTL
