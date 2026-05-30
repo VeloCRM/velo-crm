@@ -79,20 +79,24 @@ body {
   letter-spacing: -0.02em;
 }
 
-/* ─── Input / Select overrides ────────────────────────────────────── */
+/* ─── Input / Select overrides ──────────────────────────────────────
+   Repointed to --velo-* tokens so inputs render on the light shell instead
+   of the legacy dark fill (AUDIT-PR27.md). Keeps !important to win the
+   cascade-layer fight against Tailwind utilities; the more-specific
+   .ds-root / .velo-inbox scoped rescues still override these where present. */
 input, textarea, select {
-  background: var(--bg-secondary) !important;
-  color: var(--text-primary) !important;
-  border-color: var(--border-default) !important;
+  background: rgb(var(--velo-surface-raised)) !important;
+  color: rgb(var(--velo-text-primary)) !important;
+  border-color: rgb(var(--velo-border-default)) !important;
 }
 
 input::placeholder, textarea::placeholder {
-  color: var(--text-muted) !important;
+  color: rgb(var(--velo-text-tertiary)) !important;
 }
 
 input:focus, textarea:focus, select:focus {
-  border-color: rgba(0,255,178,0.5) !important;
-  box-shadow: 0 0 0 3px rgba(0,255,178,0.08) !important;
+  border-color: rgb(var(--velo-border-brand)) !important;
+  box-shadow: 0 0 0 3px rgb(var(--velo-accent-solid) / 0.18) !important;
   outline: none;
 }
 
