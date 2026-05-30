@@ -672,90 +672,31 @@ function NotificationsTab({ t, lang, toast }) {
 }
 
 function BillingTab({ t, lang, dir }) {
+  void t
   void dir
-  const invoices = [
-    { id: 'inv1', date: 'Apr 1, 2026', amount: '$49.00', status: 'Paid' },
-    { id: 'inv2', date: 'Mar 1, 2026', amount: '$49.00', status: 'Paid' },
-    { id: 'inv3', date: 'Feb 1, 2026', amount: '$49.00', status: 'Paid' },
-  ]
-
-  const meters = [
-    { label: t.contacts_used, used: 248, total: 1000 },
-    { label: t.appointments_used || (lang === 'ar' ? 'المواعيد' : 'Appointments'), used: 34, total: 100 },
-    { label: t.storage_used, used: 1.2, total: 5, unit: 'GB' },
-  ]
-
+  const isAr = lang === 'ar'
+  // Billing is operator-managed in the agency model — there is no self-serve
+  // plan/invoice surface (no Stripe integration). Show an honest notice rather
+  // than fabricated plan/usage/invoice data.
   return (
-    <div className="space-y-5">
-      {/* Current plan — cyan-tinted glass card */}
-      <GlassCard padding="lg" className="bg-accent-cyan-50/40 ring-1 ring-accent-cyan-100">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-              <Badge tone="cyan">{t.proPlanBadge || 'Pro Plan'}</Badge>
-              <span className="text-xs text-navy-500">{t.currentPlan}</span>
-            </div>
-            <div className="text-[32px] font-extrabold text-navy-900 tabular-nums lining-nums leading-none">
-              $49<span className="text-sm font-medium text-navy-500 ms-1">{t.perMonth}</span>
-            </div>
-          </div>
-          <Button variant="primary" iconStart={Icons.trendUp}>{t.upgradeNow}</Button>
+    <GlassCard padding="lg">
+      <div className="flex items-start gap-4">
+        <div className="grid place-items-center w-11 h-11 rounded-glass bg-accent-cyan-50 ring-1 ring-accent-cyan-100 text-accent-cyan-600 shrink-0">
+          {Icons.creditCard(20)}
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-          {meters.map((u, i) => {
-            const pct = Math.min(100, Math.max(0, (u.used / u.total) * 100))
-            return (
-              <div key={i}>
-                <div className="flex justify-between text-xs text-navy-600 mb-1.5">
-                  <span>{u.label}</span>
-                  <span className="tabular-nums lining-nums">
-                    {u.unit ? `${u.used}${u.unit}` : u.used} / {u.unit ? `${u.total}${u.unit}` : u.total}
-                  </span>
-                </div>
-                <div
-                  className="h-1.5 rounded-full bg-accent-cyan-100/60 overflow-hidden"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={u.total}
-                  aria-valuenow={u.used}
-                  aria-label={u.label}
-                >
-                  <div
-                    className="h-full rounded-full bg-accent-cyan-600 transition-[width] duration-base ease-standard"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-navy-800 m-0 mb-1.5">
+            {isAr ? 'الفوترة' : 'Billing'}
+          </h2>
+          <p className="text-[13px] text-navy-600 leading-relaxed m-0">
+            {isAr ? 'تتم إدارة الفوترة بواسطة وكالتك.' : 'Billing is managed by your agency.'}
+          </p>
+          <p className="text-[13px] text-navy-600 leading-relaxed m-0 mt-1">
+            {isAr ? 'تواصل مع SupCod3 لتغيير الخطة أو الفواتير.' : 'Contact SupCod3 for plan changes or invoices.'}
+          </p>
         </div>
-      </GlassCard>
-
-      {/* Invoice history */}
-      <GlassCard padding="none">
-        <div className="border-b border-navy-100 px-5 py-3.5">
-          <h3 className="text-sm font-semibold text-navy-800 m-0">{lang === 'ar' ? 'سجل الفواتير' : 'Invoice History'}</h3>
-        </div>
-        {invoices.map((inv, idx) => {
-          const isLast = idx === invoices.length - 1
-          return (
-            <div key={inv.id} className={`flex items-center gap-4 px-5 py-3 ${isLast ? '' : 'border-b border-navy-100'}`}>
-              <span className="text-sm text-navy-600 flex-1 tabular-nums lining-nums">{inv.date}</span>
-              <span className="text-sm font-semibold text-navy-900 tabular-nums lining-nums">{inv.amount}</span>
-              <Badge tone="success">{inv.status}</Badge>
-              <button
-                type="button"
-                aria-label={lang === 'ar' ? 'تنزيل الفاتورة' : 'Download invoice'}
-                className="grid place-items-center w-8 h-8 rounded-glass text-navy-500 hover:text-navy-700 hover:bg-navy-50 transition-colors duration-fast"
-              >
-                {Icons.download(14)}
-              </button>
-            </div>
-          )
-        })}
-      </GlassCard>
-    </div>
+      </div>
+    </GlassCard>
   )
 }
 
