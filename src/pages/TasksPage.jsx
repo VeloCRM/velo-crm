@@ -13,18 +13,21 @@ const STATUS_LABELS = {
   done:        { en: 'Done',         ar: 'مكتمل' },
 }
 
+// Per-column wash, --velo tokens (light shell). in_review maps to status-info
+// (blue) because no --velo purple token exists; blue aligns with the
+// "in-progress/active" semantic STATUS_BADGE already uses.
 const COLUMN_BG = {
-  todo:        'rgba(255,255,255,0.02)',
-  in_progress: 'rgba(0,255,178,0.04)',
-  in_review:   'rgba(124,58,237,0.04)',
-  done:        'rgba(0,255,136,0.04)',
+  todo:        'rgb(var(--velo-surface-sunken))',
+  in_progress: 'rgb(var(--velo-accent-subtle))',
+  in_review:   'rgb(var(--velo-status-info-bg))',
+  done:        'rgb(var(--velo-status-success-bg))',
 }
 
 const PRIORITY_COLORS = {
   urgent: { color: '#ef4444', bg: 'rgba(239,68,68,0.1)' },
   high:   { color: '#f59e0b', bg: 'rgba(245,158,11,0.1)' },
   medium: { color: '#00FFB2', bg: 'rgba(0,255,178,0.1)' },
-  low:    { color: '#64748b', bg: 'rgba(255,255,255,0.04)' },
+  low:    { color: '#64748b', bg: 'rgb(var(--velo-surface-sunken))' },
 }
 
 const PRIORITY_LABELS = {
@@ -383,7 +386,7 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, user, toast, 
                       key={task.id}
                       onClick={() => setDetailTask(task)}
                       style={{ borderBottom: `1px solid ${C.borderLight}`, cursor: 'pointer', transition: 'background 150ms ease' }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.02)'}
+                      onMouseEnter={e => e.currentTarget.style.background = 'rgb(var(--velo-surface-sunken))'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
                       <td style={{ padding: '10px 12px', fontWeight: 500, color: C.text, maxWidth: 260 }}>
