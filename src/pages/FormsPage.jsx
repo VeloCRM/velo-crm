@@ -267,7 +267,7 @@ function FormPreview({ form, lang, dir, isRTL, onBack }) {
                 )}
               </div>
             ))}
-            <button type="submit" style={{ width:'100%', padding:'12px', borderRadius:6, border:'none', background:C.primary, color:'#fff', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'inherit', marginTop:8, transition:'all 150ms ease' }}>
+            <button type="submit" style={{ width:'100%', padding:'12px', borderRadius:6, border:'none', background:C.primary, color:'rgb(var(--velo-text-on-accent))', fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:'inherit', marginTop:8, transition:'all 150ms ease' }}>
               {isRTL?'إرسال':'Submit'}
             </button>
           </form>
@@ -298,8 +298,8 @@ function SubmissionsView({ form, lang, dir, isRTL, onBack }) {
           <div style={{ overflowX:'auto' }}>
             <table style={{ width:'100%', borderCollapse:'collapse', fontSize:13 }}>
               <thead><tr style={{ background:C.bg, borderBottom:`1px solid ${C.border}` }}>
-                <th style={{ padding:'8px 12px', textAlign:isRTL?'right':'left', fontWeight:500, color:'#374151', whiteSpace:'nowrap', fontSize:12, textTransform:'uppercase', letterSpacing:'0.05em' }}>{isRTL?'التاريخ':'Date'}</th>
-                {fieldLabels.map((l,i)=><th key={i} style={{ padding:'8px 12px', textAlign:isRTL?'right':'left', fontWeight:500, color:'#374151', whiteSpace:'nowrap', fontSize:12, textTransform:'uppercase', letterSpacing:'0.05em' }}>{l}</th>)}
+                <th style={{ padding:'8px 12px', textAlign:isRTL?'right':'left', fontWeight:500, color:'rgb(var(--velo-text-secondary))', whiteSpace:'nowrap', fontSize:12, textTransform:'uppercase', letterSpacing:'0.05em' }}>{isRTL?'التاريخ':'Date'}</th>
+                {fieldLabels.map((l,i)=><th key={i} style={{ padding:'8px 12px', textAlign:isRTL?'right':'left', fontWeight:500, color:'rgb(var(--velo-text-secondary))', whiteSpace:'nowrap', fontSize:12, textTransform:'uppercase', letterSpacing:'0.05em' }}>{l}</th>)}
               </tr></thead>
               <tbody>{submissions.map((sub,si)=>(
                 <tr key={si} style={{ borderBottom:`1px solid ${C.border}`, transition:'all 150ms ease' }}>
