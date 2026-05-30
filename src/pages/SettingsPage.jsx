@@ -115,7 +115,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
         <div className="flex-1 min-w-0 fade-in" key={tab}>
           {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
-          {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} />}
+          {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} toast={toast} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
           {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} />}
           {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
@@ -247,19 +247,42 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
   )
 }
 
-function ProfileTab({ t, lang, dir, isRTL, user }) {
+function ProfileTab({ t, lang, dir, isRTL, user, toast }) {
   void dir
   void isRTL
   const [form, setForm] = useState({
-    fullName: user?.user_metadata?.full_name || 'Admin User',
-    email: user?.email || 'admin@velo.app',
-    phone: '+1 (555) 000-0000',
-    jobTitle: lang === 'ar' ? 'مدير المبيعات' : 'Sales Manager',
+    fullName: user?.user_metadata?.full_name || '',
+    email: user?.email || '',
     language: lang,
-    timezone: 'America/New_York',
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
-  const fileRef = useRef(null)
+  const [saving, setSaving] = useState(false)
+
+  // Hydrate name/language from the canonical profiles row (not user_metadata),
+  // so a saved change survives reopening the tab.
+  useEffect(() => {
+    let cancelled = false
+    fetchMyProfile()
+      .then(p => {
+        if (cancelled || !p) return
+        setForm(f => ({ ...f, fullName: p.full_name || f.fullName, language: p.locale || f.language }))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const handleSave = async () => {
+    if (!user?.id) { toast?.(lang === 'ar' ? 'لا يوجد سياق مستخدم' : 'No user context', 'error'); return }
+    setSaving(true)
+    try {
+      await updateProfile(user.id, { full_name: form.fullName, locale: form.language })
+      toast?.(lang === 'ar' ? 'تم حفظ الملف الشخصي' : 'Profile saved', 'success')
+    } catch (e) {
+      toast?.(e.message || (lang === 'ar' ? 'فشل الحفظ' : 'Save failed'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <GlassCard padding="lg">
@@ -273,16 +296,17 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
           {avatarInitials(form.fullName)}
         </div>
         <div>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" />
-          <Button
-            variant="secondary"
-            size="sm"
-            iconStart={Icons.upload}
-            onClick={() => fileRef.current?.click()}
+          <span
+            title={lang === 'ar' ? 'رفع الصورة قريباً' : 'Photo upload coming soon'}
+            className="inline-block"
           >
-            {t.changePhoto}
-          </Button>
-          <p className="text-[11px] text-navy-500 mt-1.5 m-0">JPG, PNG. Max 2MB</p>
+            <Button variant="secondary" size="sm" iconStart={Icons.upload} disabled>
+              {t.changePhoto}
+            </Button>
+          </span>
+          <p className="text-[11px] text-navy-500 mt-1.5 m-0">
+            {lang === 'ar' ? 'رفع الصورة قريباً' : 'Photo upload coming soon'}
+          </p>
         </div>
       </div>
 
@@ -296,17 +320,7 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
           label={t.emailAddress}
           type="email"
           value={form.email}
-          onChange={e => set('email', e.target.value)}
-        />
-        <Input
-          label={t.phoneNumber}
-          value={form.phone}
-          onChange={e => set('phone', e.target.value)}
-        />
-        <Input
-          label={t.jobTitle}
-          value={form.jobTitle}
-          onChange={e => set('jobTitle', e.target.value)}
+          readOnly
         />
         <Select
           label={t.language}
@@ -317,24 +331,12 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
             { value: 'ar', label: 'العربية' },
           ]}
         />
-        <Select
-          label={t.timezone}
-          value={form.timezone}
-          onChange={e => set('timezone', e.target.value)}
-          options={[
-            { value: 'America/New_York',    label: 'Eastern Time (ET)' },
-            { value: 'America/Chicago',     label: 'Central Time (CT)' },
-            { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
-            { value: 'Europe/London',       label: 'London (GMT)' },
-            { value: 'Asia/Dubai',          label: 'Dubai (GST)' },
-            { value: 'Asia/Riyadh',         label: 'Riyadh (AST)' },
-            { value: 'Asia/Seoul',          label: 'Seoul (KST)' },
-          ]}
-        />
       </div>
 
       <div className="flex justify-end mt-6">
-        <Button variant="primary">{t.saveChanges}</Button>
+        <Button variant="primary" onClick={handleSave} disabled={saving}>
+          {saving ? (lang === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : t.saveChanges}
+        </Button>
       </div>
     </GlassCard>
   )
