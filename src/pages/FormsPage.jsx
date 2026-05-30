@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { C, makeBtn, card } from '../design'
 import { Icons, FormField, inputStyle, selectStyle } from '../components/shared'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 const FIELD_TYPES = [
   { id:'short_text', icon:'Aa', label:'Short Text', ar:'نص قصير' },
@@ -20,11 +21,12 @@ const FIELD_TYPES = [
 function loadForms() { try { return JSON.parse(localStorage.getItem('velo_forms') || '[]') } catch { return [] } }
 function saveForms(f) { localStorage.setItem('velo_forms', JSON.stringify(f)) }
 
-export default function FormsPage({ t, lang, dir, isRTL, urlFormId, navigate }) {
+export default function FormsPage({ t, lang, dir, isRTL, urlFormId, navigate, toast }) {
   const [forms, setForms] = useState(loadForms)
   const [editingForm, setEditingForm] = useState(urlFormId || null)
   const [previewForm, setPreviewForm] = useState(null)
   const [viewSubmissions, setViewSubmissions] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
 
   const persist = (next) => { setForms(next); saveForms(next) }
   const deleteForm = (id) => persist(forms.filter(f => f.id !== id))
@@ -81,13 +83,27 @@ export default function FormsPage({ t, lang, dir, isRTL, urlFormId, navigate }) 
                 <button type="button" onClick={() => navToForm(f.id)} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.edit(12)} {isRTL?'تعديل':'Edit'}</button>
                 <button type="button" onClick={() => setPreviewForm(f.id)} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.eye(12)} {isRTL?'معاينة':'Preview'}</button>
                 <button type="button" onClick={() => setViewSubmissions(f.id)} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{isRTL?'الإرسالات':'Submissions'}</button>
-                <button type="button" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/form/${f.id}`) }} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.link(12)} {isRTL?'نسخ الرابط':'Copy Link'}</button>
-                <button type="button" onClick={() => deleteForm(f.id)} style={{border:'none',background:'transparent',cursor:'pointer',color:C.textMuted,display:'flex',padding:4,transition:'all 150ms ease'}}>{Icons.trash(14)}</button>
+                <button type="button" onClick={() => { navigator.clipboard?.writeText(`${window.location.origin}/form/${f.id}`); toast?.(isRTL ? 'تم نسخ الرابط' : 'Link copied to clipboard', 'success') }} style={makeBtn('secondary',{fontSize:12,padding:'4px 12px',gap:4})}>{Icons.link(12)} {isRTL?'نسخ الرابط':'Copy Link'}</button>
+                <button type="button" onClick={() => setConfirmDeleteId(f.id)} style={{border:'none',background:'transparent',cursor:'pointer',color:C.textMuted,display:'flex',padding:4,transition:'all 150ms ease'}}>{Icons.trash(14)}</button>
               </div>
             </div>
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDeleteId !== null}
+        dir={dir}
+        variant="danger"
+        title={isRTL ? 'حذف النموذج؟' : 'Delete form?'}
+        message={isRTL
+          ? 'لا يمكن التراجع عن هذا الإجراء. سيتم حذف النموذج وأي إرسالات محفوظة نهائياً.'
+          : 'This action cannot be undone. The form and any saved submissions will be permanently deleted.'}
+        confirmLabel={isRTL ? 'حذف' : 'Delete'}
+        cancelLabel={isRTL ? 'إلغاء' : 'Cancel'}
+        onConfirm={() => { deleteForm(confirmDeleteId); setConfirmDeleteId(null) }}
+        onCancel={() => setConfirmDeleteId(null)}
+      />
     </div>
   )
 }

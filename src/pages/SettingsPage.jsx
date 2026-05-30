@@ -115,9 +115,9 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
         <div className="flex-1 min-w-0 fade-in" key={tab}>
           {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
-          {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} />}
+          {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} toast={toast} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
-          {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} />}
+          {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} toast={toast} />}
           {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
@@ -247,19 +247,42 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
   )
 }
 
-function ProfileTab({ t, lang, dir, isRTL, user }) {
+function ProfileTab({ t, lang, dir, isRTL, user, toast }) {
   void dir
   void isRTL
   const [form, setForm] = useState({
-    fullName: user?.user_metadata?.full_name || 'Admin User',
-    email: user?.email || 'admin@velo.app',
-    phone: '+1 (555) 000-0000',
-    jobTitle: lang === 'ar' ? 'مدير المبيعات' : 'Sales Manager',
+    fullName: user?.user_metadata?.full_name || '',
+    email: user?.email || '',
     language: lang,
-    timezone: 'America/New_York',
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
-  const fileRef = useRef(null)
+  const [saving, setSaving] = useState(false)
+
+  // Hydrate name/language from the canonical profiles row (not user_metadata),
+  // so a saved change survives reopening the tab.
+  useEffect(() => {
+    let cancelled = false
+    fetchMyProfile()
+      .then(p => {
+        if (cancelled || !p) return
+        setForm(f => ({ ...f, fullName: p.full_name || f.fullName, language: p.locale || f.language }))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  const handleSave = async () => {
+    if (!user?.id) { toast?.(lang === 'ar' ? 'لا يوجد سياق مستخدم' : 'No user context', 'error'); return }
+    setSaving(true)
+    try {
+      await updateProfile(user.id, { full_name: form.fullName, locale: form.language })
+      toast?.(lang === 'ar' ? 'تم حفظ الملف الشخصي' : 'Profile saved', 'success')
+    } catch (e) {
+      toast?.(e.message || (lang === 'ar' ? 'فشل الحفظ' : 'Save failed'), 'error')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
     <GlassCard padding="lg">
@@ -273,16 +296,17 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
           {avatarInitials(form.fullName)}
         </div>
         <div>
-          <input ref={fileRef} type="file" accept="image/*" className="hidden" />
-          <Button
-            variant="secondary"
-            size="sm"
-            iconStart={Icons.upload}
-            onClick={() => fileRef.current?.click()}
+          <span
+            title={lang === 'ar' ? 'رفع الصورة قريباً' : 'Photo upload coming soon'}
+            className="inline-block"
           >
-            {t.changePhoto}
-          </Button>
-          <p className="text-[11px] text-navy-500 mt-1.5 m-0">JPG, PNG. Max 2MB</p>
+            <Button variant="secondary" size="sm" iconStart={Icons.upload} disabled>
+              {t.changePhoto}
+            </Button>
+          </span>
+          <p className="text-[11px] text-navy-500 mt-1.5 m-0">
+            {lang === 'ar' ? 'رفع الصورة قريباً' : 'Photo upload coming soon'}
+          </p>
         </div>
       </div>
 
@@ -296,17 +320,7 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
           label={t.emailAddress}
           type="email"
           value={form.email}
-          onChange={e => set('email', e.target.value)}
-        />
-        <Input
-          label={t.phoneNumber}
-          value={form.phone}
-          onChange={e => set('phone', e.target.value)}
-        />
-        <Input
-          label={t.jobTitle}
-          value={form.jobTitle}
-          onChange={e => set('jobTitle', e.target.value)}
+          readOnly
         />
         <Select
           label={t.language}
@@ -317,24 +331,12 @@ function ProfileTab({ t, lang, dir, isRTL, user }) {
             { value: 'ar', label: 'العربية' },
           ]}
         />
-        <Select
-          label={t.timezone}
-          value={form.timezone}
-          onChange={e => set('timezone', e.target.value)}
-          options={[
-            { value: 'America/New_York',    label: 'Eastern Time (ET)' },
-            { value: 'America/Chicago',     label: 'Central Time (CT)' },
-            { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' },
-            { value: 'Europe/London',       label: 'London (GMT)' },
-            { value: 'Asia/Dubai',          label: 'Dubai (GST)' },
-            { value: 'Asia/Riyadh',         label: 'Riyadh (AST)' },
-            { value: 'Asia/Seoul',          label: 'Seoul (KST)' },
-          ]}
-        />
       </div>
 
       <div className="flex justify-end mt-6">
-        <Button variant="primary">{t.saveChanges}</Button>
+        <Button variant="primary" onClick={handleSave} disabled={saving}>
+          {saving ? (lang === 'ar' ? 'جارٍ الحفظ…' : 'Saving…') : t.saveChanges}
+        </Button>
       </div>
     </GlassCard>
   )
@@ -603,13 +605,28 @@ function TeamTab({ t, lang, dir, isRTL, toast }) {
   )
 }
 
-function NotificationsTab({ t, lang }) {
-  const [notifs, setNotifs] = useState({
-    emailNotif: true, whatsappNotif: false, browserNotif: true,
-    dealUpdates: true, contactActivity: true, ticketUpdates: true,
-    weeklyDigest: true, systemAlerts: true, smsAlerts: false,
+const NOTIF_PREFS_KEY = 'velo_notification_prefs'
+const NOTIF_DEFAULTS = {
+  emailNotif: true, whatsappNotif: false, browserNotif: true,
+  dealUpdates: true, contactActivity: true, ticketUpdates: true,
+  weeklyDigest: true, systemAlerts: true, smsAlerts: false,
+}
+
+function NotificationsTab({ t, lang, toast }) {
+  // Per-device preferences — no server column exists yet, so persist to
+  // localStorage (matches the precedent set by velo_clinic_hours / velo_kb_files).
+  const [notifs, setNotifs] = useState(() => {
+    try { return { ...NOTIF_DEFAULTS, ...JSON.parse(localStorage.getItem(NOTIF_PREFS_KEY) || '{}') } }
+    catch { return NOTIF_DEFAULTS }
   })
+  const [saved, setSaved] = useState(false)
   const toggle = (k) => setNotifs(p => ({ ...p, [k]: !p[k] }))
+
+  const handleSave = () => {
+    try { localStorage.setItem(NOTIF_PREFS_KEY, JSON.stringify(notifs)) } catch { /* storage unavailable */ }
+    setSaved(true); setTimeout(() => setSaved(false), 2000)
+    toast?.(lang === 'ar' ? 'تم حفظ تفضيلات الإشعارات' : 'Notification preferences saved', 'success')
+  }
 
   const sections = [
     { title: lang === 'ar' ? 'قنوات الإشعارات' : 'Notification Channels', items: [
@@ -646,97 +663,40 @@ function NotificationsTab({ t, lang }) {
         </div>
       ))}
       <div className="flex justify-end mt-6">
-        <Button variant="primary">{t.saveChanges}</Button>
+        <Button variant="primary" onClick={handleSave} iconStart={saved ? Icons.check : undefined}>
+          {saved ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!') : t.saveChanges}
+        </Button>
       </div>
     </GlassCard>
   )
 }
 
 function BillingTab({ t, lang, dir }) {
+  void t
   void dir
-  const invoices = [
-    { id: 'inv1', date: 'Apr 1, 2026', amount: '$49.00', status: 'Paid' },
-    { id: 'inv2', date: 'Mar 1, 2026', amount: '$49.00', status: 'Paid' },
-    { id: 'inv3', date: 'Feb 1, 2026', amount: '$49.00', status: 'Paid' },
-  ]
-
-  const meters = [
-    { label: t.contacts_used, used: 248, total: 1000 },
-    { label: t.appointments_used || (lang === 'ar' ? 'المواعيد' : 'Appointments'), used: 34, total: 100 },
-    { label: t.storage_used, used: 1.2, total: 5, unit: 'GB' },
-  ]
-
+  const isAr = lang === 'ar'
+  // Billing is operator-managed in the agency model — there is no self-serve
+  // plan/invoice surface (no Stripe integration). Show an honest notice rather
+  // than fabricated plan/usage/invoice data.
   return (
-    <div className="space-y-5">
-      {/* Current plan — cyan-tinted glass card */}
-      <GlassCard padding="lg" className="bg-accent-cyan-50/40 ring-1 ring-accent-cyan-100">
-        <div className="flex items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
-              <Badge tone="cyan">{t.proPlanBadge || 'Pro Plan'}</Badge>
-              <span className="text-xs text-navy-500">{t.currentPlan}</span>
-            </div>
-            <div className="text-[32px] font-extrabold text-navy-900 tabular-nums lining-nums leading-none">
-              $49<span className="text-sm font-medium text-navy-500 ms-1">{t.perMonth}</span>
-            </div>
-          </div>
-          <Button variant="primary" iconStart={Icons.trendUp}>{t.upgradeNow}</Button>
+    <GlassCard padding="lg">
+      <div className="flex items-start gap-4">
+        <div className="grid place-items-center w-11 h-11 rounded-glass bg-accent-cyan-50 ring-1 ring-accent-cyan-100 text-accent-cyan-600 shrink-0">
+          {Icons.creditCard(20)}
         </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-5">
-          {meters.map((u, i) => {
-            const pct = Math.min(100, Math.max(0, (u.used / u.total) * 100))
-            return (
-              <div key={i}>
-                <div className="flex justify-between text-xs text-navy-600 mb-1.5">
-                  <span>{u.label}</span>
-                  <span className="tabular-nums lining-nums">
-                    {u.unit ? `${u.used}${u.unit}` : u.used} / {u.unit ? `${u.total}${u.unit}` : u.total}
-                  </span>
-                </div>
-                <div
-                  className="h-1.5 rounded-full bg-accent-cyan-100/60 overflow-hidden"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={u.total}
-                  aria-valuenow={u.used}
-                  aria-label={u.label}
-                >
-                  <div
-                    className="h-full rounded-full bg-accent-cyan-600 transition-[width] duration-base ease-standard"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-              </div>
-            )
-          })}
+        <div className="min-w-0">
+          <h2 className="text-lg font-semibold text-navy-800 m-0 mb-1.5">
+            {isAr ? 'الفوترة' : 'Billing'}
+          </h2>
+          <p className="text-[13px] text-navy-600 leading-relaxed m-0">
+            {isAr ? 'تتم إدارة الفوترة بواسطة وكالتك.' : 'Billing is managed by your agency.'}
+          </p>
+          <p className="text-[13px] text-navy-600 leading-relaxed m-0 mt-1">
+            {isAr ? 'تواصل مع SupCod3 لتغيير الخطة أو الفواتير.' : 'Contact SupCod3 for plan changes or invoices.'}
+          </p>
         </div>
-      </GlassCard>
-
-      {/* Invoice history */}
-      <GlassCard padding="none">
-        <div className="border-b border-navy-100 px-5 py-3.5">
-          <h3 className="text-sm font-semibold text-navy-800 m-0">{lang === 'ar' ? 'سجل الفواتير' : 'Invoice History'}</h3>
-        </div>
-        {invoices.map((inv, idx) => {
-          const isLast = idx === invoices.length - 1
-          return (
-            <div key={inv.id} className={`flex items-center gap-4 px-5 py-3 ${isLast ? '' : 'border-b border-navy-100'}`}>
-              <span className="text-sm text-navy-600 flex-1 tabular-nums lining-nums">{inv.date}</span>
-              <span className="text-sm font-semibold text-navy-900 tabular-nums lining-nums">{inv.amount}</span>
-              <Badge tone="success">{inv.status}</Badge>
-              <button
-                type="button"
-                aria-label={lang === 'ar' ? 'تنزيل الفاتورة' : 'Download invoice'}
-                className="grid place-items-center w-8 h-8 rounded-glass text-navy-500 hover:text-navy-700 hover:bg-navy-50 transition-colors duration-fast"
-              >
-                {Icons.download(14)}
-              </button>
-            </div>
-          )
-        })}
-      </GlassCard>
-    </div>
+      </div>
+    </GlassCard>
   )
 }
 
@@ -1106,6 +1066,9 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 
   return (
     <div className="space-y-5">
+      <div className="bg-navy-50 border border-navy-100 rounded-glass px-4 py-3 text-[13px] text-navy-600">
+        {lang === 'ar' ? 'أدر عمليات الدمج من صفحة عمليات الدمج.' : 'Manage integrations from the Integrations page.'}
+      </div>
       {/* WhatsApp — Step by step */}
       <Section title="WhatsApp Cloud API" icon="💬">
         <WaStep num={1} title={lang === 'ar' ? 'إنشاء حساب Meta Business' : 'Create Meta Business Account'} active={waStep === 1}>
@@ -1242,23 +1205,6 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
             placeholder="EAAx..."
           />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Button variant="secondary">
-            {/* Brand-correctness: Facebook blue stroke kept inline by design */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1877F2" strokeWidth="2" aria-hidden="true">
-              <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
-            </svg>
-            {lang === 'ar' ? 'ربط فيسبوك' : 'Connect Facebook'}
-          </Button>
-          <Button variant="secondary">
-            {/* Brand-correctness: Instagram pink stroke kept inline by design */}
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#E4405F" strokeWidth="2" aria-hidden="true">
-              <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
-              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
-            </svg>
-            {lang === 'ar' ? 'ربط إنستغرام' : 'Connect Instagram'}
-          </Button>
-        </div>
       </Section>
 
       {/* Gmail */}
@@ -1271,9 +1217,6 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
             placeholder="your@gmail.com"
           />
         </div>
-        <Button variant="secondary" iconStart={Icons.externalLink}>
-          {lang === 'ar' ? 'ربط حساب Google' : 'Connect Google Account'}
-        </Button>
       </Section>
 
       <div className="flex justify-end">
