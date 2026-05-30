@@ -11,23 +11,23 @@ export const C = {
   sidebarActive: '#00FFB2',
   sidebarActiveBg: 'rgba(0,255,178,0.08)',
 
-  // Content
-  bg: '#07080E',
-  bgSec: '#0C0E1A',
-  white: '#101422',
+  // Content — migrated to --velo-* tokens (light-only app; resolve to :root)
+  bg: 'rgb(var(--velo-surface-canvas))',
+  bgSec: 'rgb(var(--velo-surface-sunken))',
+  white: 'rgb(var(--velo-surface-raised))',
   whiteHover: '#141828',
-  border: 'rgba(255,255,255,0.07)',
+  border: 'rgb(var(--velo-border-subtle))',
   borderHover: 'rgba(255,255,255,0.14)',
-  borderLight: 'rgba(255,255,255,0.03)',
-  text: '#E8EAF5',
-  textSec: '#7B7F9E',
-  textMuted: '#3A3D55',
-  textLabel: '#7B7F9E',
+  borderLight: 'rgb(var(--velo-border-subtle))',
+  text: 'rgb(var(--velo-text-primary))',
+  textSec: 'rgb(var(--velo-text-secondary))',
+  textMuted: 'rgb(var(--velo-text-tertiary))',
+  textLabel: 'rgb(var(--velo-text-tertiary))',
 
   // Brand
-  primary: '#00FFB2',
+  primary: 'rgb(var(--velo-accent-solid))',
   primaryHov: '#00E8A0',
-  primaryBg: 'rgba(0,255,178,0.09)',
+  primaryBg: 'rgb(var(--velo-accent-subtle))',
   primaryBorder: 'rgba(0,255,178,0.25)',
   primaryRing: 'rgba(0,255,178,0.3)',
 
@@ -42,15 +42,15 @@ export const C = {
   coralBg: 'rgba(255,107,107,0.09)',
 
   // Semantic (aliases of the accent palette)
-  success: '#00FFB2',
-  successBg: 'rgba(0,255,178,0.09)',
+  success: 'rgb(var(--velo-accent-fg))',
+  successBg: 'rgb(var(--velo-accent-subtle))',
   successBorder: 'rgba(0,255,178,0.2)',
-  warning: '#FFB347',
-  warningBg: 'rgba(255,179,71,0.09)',
+  warning: 'rgb(var(--velo-status-warning-fg))',
+  warningBg: 'rgb(var(--velo-status-warning-bg))',
   warningBorder: 'rgba(255,179,71,0.2)',
   warningText: '#FFB347',
-  danger: '#FF6B6B',
-  dangerBg: 'rgba(255,107,107,0.09)',
+  danger: 'rgb(var(--velo-status-danger-fg))',
+  dangerBg: 'rgb(var(--velo-status-danger-bg))',
   dangerBorder: 'rgba(255,107,107,0.2)',
   purple: '#A78BFA',
   purpleBg: 'rgba(167,139,250,0.09)',
@@ -98,14 +98,14 @@ export const STAGE_COLORS = {
 // an appointment / payment / ticket status. Consumers can spread the returned
 // object into an inline style.
 export const STATUS_BADGE = {
-  pending:   { background: 'rgba(255,255,255,0.06)', color: '#7B7F9E' },
-  confirmed: { background: 'rgba(77,166,255,0.12)',  color: '#4DA6FF' },
-  active:    { background: 'rgba(77,166,255,0.12)',  color: '#4DA6FF' },
-  completed: { background: 'rgba(0,255,178,0.1)',    color: '#00FFB2' },
-  paid:      { background: 'rgba(0,255,178,0.1)',    color: '#00FFB2' },
-  cancelled: { background: 'rgba(255,107,107,0.1)',  color: '#FF6B6B' },
-  overdue:   { background: 'rgba(255,107,107,0.1)',  color: '#FF6B6B' },
-  draft:     { background: 'rgba(255,179,71,0.1)',   color: '#FFB347' },
+  pending:   { background: 'rgb(var(--velo-surface-sunken))',    color: 'rgb(var(--velo-text-tertiary))' },
+  confirmed: { background: 'rgb(var(--velo-status-info-bg))',    color: 'rgb(var(--velo-status-info-fg))' },
+  active:    { background: 'rgb(var(--velo-status-info-bg))',    color: 'rgb(var(--velo-status-info-fg))' },
+  completed: { background: 'rgb(var(--velo-status-success-bg))', color: 'rgb(var(--velo-status-success-fg))' },
+  paid:      { background: 'rgb(var(--velo-status-success-bg))', color: 'rgb(var(--velo-status-success-fg))' },
+  cancelled: { background: 'rgb(var(--velo-status-danger-bg))',  color: 'rgb(var(--velo-status-danger-fg))' },
+  overdue:   { background: 'rgb(var(--velo-status-danger-bg))',  color: 'rgb(var(--velo-status-danger-fg))' },
+  draft:     { background: 'rgb(var(--velo-status-warning-bg))', color: 'rgb(var(--velo-status-warning-fg))' },
 }
 export function statusBadgeStyle(status) {
   const base = STATUS_BADGE[status] || STATUS_BADGE.pending
@@ -143,20 +143,20 @@ export function makeBtn(variant = 'primary', extra = {}) {
     // because :hover can't be expressed in inline style objects. Callers that
     // want the glow should add className='velo-btn-primary' in addition to the
     // style this returns.
-    primary:   { background: '#00FFB2', color: '#07080E', fontWeight: 600 },
-    success:   { background: '#00FFB2', color: '#07080E', fontWeight: 600 },
-    danger:    { background: 'rgba(255,107,107,0.1)', color: '#FF6B6B', border: '1px solid rgba(255,107,107,0.25)' },
-    secondary: { background: 'rgba(0,255,178,0.09)', color: '#00FFB2', border: '1px solid rgba(0,255,178,0.25)' },
-    ghost:     { background: 'transparent', color: '#7B7F9E', border: '1px solid rgba(255,255,255,0.07)' },
+    primary:   { background: 'rgb(var(--velo-accent-solid))', color: 'rgb(var(--velo-text-on-accent))', fontWeight: 600 },
+    success:   { background: 'rgb(var(--velo-accent-solid))', color: 'rgb(var(--velo-text-on-accent))', fontWeight: 600 },
+    danger:    { background: 'rgb(var(--velo-status-danger-bg))', color: 'rgb(var(--velo-status-danger-fg))', border: '1px solid rgb(var(--velo-status-danger-border))' },
+    secondary: { background: 'rgb(var(--velo-accent-subtle))', color: 'rgb(var(--velo-accent-fg))', border: '1px solid rgb(var(--velo-border-brand) / 0.4)' },
+    ghost:     { background: 'transparent', color: 'rgb(var(--velo-text-tertiary))', border: '1px solid rgb(var(--velo-border-subtle))' },
   }
   return { ...base, ...(variants[variant] || variants.primary), ...extra }
 }
 
 export const card = {
-  background: '#101422',
+  background: 'rgb(var(--velo-surface-raised))',
   borderRadius: 14,
-  border: '1px solid rgba(255,255,255,0.07)',
+  border: '1px solid rgb(var(--velo-border-subtle))',
   boxShadow: 'none',
-  color: '#E8EAF5',
+  color: 'rgb(var(--velo-text-primary))',
   transition: 'all 0.18s ease',
 }
