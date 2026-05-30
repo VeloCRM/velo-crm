@@ -820,32 +820,32 @@ export default function App() {
         className="desktop-sidebar relative z-raised flex flex-col bg-navy-50 border-e border-navy-100 overflow-hidden transition-[width,min-width] duration-base ease-standard"
         style={{ width: sidebarCollapsed ? 56 : 228, minWidth: sidebarCollapsed ? 56 : 228 }}
       >
-        <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[60px] py-4 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
+        <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[72px] py-3.5 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
           {isAgencyMode ? (
             <>
-              <div className="w-9 h-9 rounded-[10px] bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan-600"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
+              <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
+                <svg width={sidebarCollapsed ? 18 : 24} height={sidebarCollapsed ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-accent-cyan-600"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M9 22v-4h6v4"/><line x1="8" y1="6" x2="8" y2="6.01"/><line x1="16" y1="6" x2="16" y2="6.01"/><line x1="12" y1="6" x2="12" y2="6.01"/><line x1="8" y1="10" x2="8" y2="10.01"/><line x1="16" y1="10" x2="16" y2="10.01"/><line x1="12" y1="10" x2="12" y2="10.01"/><line x1="8" y1="14" x2="8" y2="14.01"/><line x1="16" y1="14" x2="16" y2="14.01"/><line x1="12" y1="14" x2="12" y2="14.01"/></svg>
               </div>
               {!sidebarCollapsed && (
                 <div className="overflow-hidden">
-                  <div className="flex items-center gap-2 font-display text-[17px] font-extrabold tracking-[-0.03em] text-navy-900">
+                  <div className="flex items-center gap-2 font-display text-[19px] font-extrabold tracking-[-0.03em] text-navy-900 leading-tight">
                     {isRTL ? 'وكالة Velo' : 'Velo Agency'}
                     <span className="text-[9px] font-bold leading-[14px] tracking-[0.05em] uppercase rounded px-1.5 py-0.5 bg-accent-cyan-50 text-accent-cyan-700 ring-1 ring-accent-cyan-100">PRO</span>
                   </div>
-                  <div className="text-[11px] mt-0.5 font-sans text-navy-500">{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
+                  <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500">{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
                 </div>
               )}
             </>
           ) : (
             <>
-              {/* Logo mark — 36x36 rounded 10, tooth glyph in cyan */}
-              <div className="w-9 h-9 rounded-[10px] bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan-600"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
+              {/* Logo mark — 48x48 (36 when collapsed), tooth glyph in cyan */}
+              <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
+                <svg width={sidebarCollapsed ? 18 : 24} height={sidebarCollapsed ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan-600"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
               </div>
               {!sidebarCollapsed && (
                 <div className="overflow-hidden">
-                  <div className="font-display text-[17px] font-extrabold tracking-[-0.03em] text-navy-900">{orgSettings.name || t.appName}</div>
-                  <div className="text-[11px] mt-0.5 font-sans text-navy-500">{orgSettings.name ? t.appName : t.appTagline}</div>
+                  <div className="font-display text-[19px] font-extrabold tracking-[-0.03em] text-navy-900 leading-tight truncate">{orgSettings.name || t.appName}</div>
+                  <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500 truncate">{orgSettings.name ? t.appName : t.appTagline}</div>
                 </div>
               )}
             </>
@@ -931,8 +931,8 @@ export default function App() {
           {/* Mobile: Logo + company name in header */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-              <div style={{ width:28, height:28, borderRadius:7, background:'rgba(0,255,178,0.1)', border:'1px solid rgba(0,255,178,0.25)', display:'flex', alignItems:'center', justifyContent:'center', color:'#00FFB2', fontWeight:700, fontSize:12 }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
-              <span style={{ fontSize:14, fontWeight:700, color:C.text, fontFamily:"'Syne',sans-serif" }}>{orgSettings.name || 'Velo'}</span>
+              <div style={{ width:34, height:34, borderRadius:9, background:'#ECFEFF', border:'1px solid #CFFAFE', display:'flex', alignItems:'center', justifyContent:'center', color:'#0891B2', fontWeight:800, fontSize:15, fontFamily:"'Syne',sans-serif" }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
+              <span style={{ fontSize:16, fontWeight:800, color:'#0A2540', fontFamily:"'Syne',sans-serif", letterSpacing:'-0.03em' }}>{orgSettings.name || 'Velo'}</span>
             </div>
           )}
           {/* Search → opens Command Palette */}
