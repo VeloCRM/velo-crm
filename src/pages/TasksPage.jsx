@@ -268,10 +268,10 @@ export default function TasksPage({ t, lang, dir, isRTL, contacts, user, toast, 
                       width: 8, height: 8, borderRadius: '50%',
                       background: status === 'todo' ? C.textMuted : status === 'in_progress' ? C.primary : status === 'in_review' ? C.purple : C.success,
                     }} />
-                    <span style={{ fontSize: 13, fontWeight: 600, color: C.text }}>{statusLabel(status)}</span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: 'rgb(var(--velo-text-primary))' }}>{statusLabel(status)}</span>
                     <span style={{
-                      fontSize: 11, fontWeight: 600, color: C.textMuted, background: C.white,
-                      borderRadius: 10, padding: '1px 7px', border: `1px solid ${C.border}`,
+                      fontSize: 11, fontWeight: 600, color: 'rgb(var(--velo-text-secondary))', background: 'rgb(var(--velo-surface-raised))',
+                      borderRadius: 10, padding: '1px 7px', border: '1px solid rgb(var(--velo-border-subtle))',
                     }}>
                       {colTasks.length}
                     </span>
