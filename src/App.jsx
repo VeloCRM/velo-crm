@@ -510,7 +510,11 @@ export default function App() {
     } else if (isOperator) {
       // Operator-no-impersonation: nothing to load. Clear the loading
       // skeleton so the OperatorConsole render path takes over cleanly.
+      // Also clear any stale data error from a pre-resolution loadAllData
+      // call (defense in depth — the OperatorContext loading flag should
+      // prevent this race in normal flow, but be safe).
       setDataLoading(false)
+      setDataError(null)
     } else {
       loadAllData()
     }
