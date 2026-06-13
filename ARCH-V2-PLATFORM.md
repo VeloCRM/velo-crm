@@ -2,10 +2,46 @@
 
 # Velo Dental V2 — Doctor-Centric Platform Architecture
 
-**Date:** 2026-06-13
+**Date:** 2026-06-13 (Phase 0); realigned 2026-06-13 (Phase 1A.5)
 **Author:** Ali Al-Jobori + Claude
-**Status:** Phase 0 — Planning (no code yet)
+**Status:** Phase 1A complete (draft migration, PR #31). This doc realigned to live schema reality in Phase 1A.5.
 **Estimated execution:** 4–8 weeks across 6 phases
+
+---
+
+## Reality vs original plan (read this first)
+
+This document was originally authored in Phase 0 **before the live production
+schema had been fully explored**. The Phase 0 Entity Model was a clean
+first-principles sketch. **Phase 1A (the draft migration, PR #31) then read the
+actual schema** (`src/lib/schema.sql`, 27 tables) and found material divergences
+between the sketch and reality.
+
+This Phase 1A.5 revision corrects the doc so it matches what the migration SQL
+in PR #31 actually does. Where Phase 0 and reality disagreed, **reality wins and
+is documented here**; the 8 strategic Decisions Taken are unchanged. The Phase 1A
+investigation produced **9 judgment calls** — see `scripts/v2-platform-migration-plan.md`
+(the delta report) for the full table. The headline corrections:
+
+- Operators are a **separate `operators` table** + `is_operator()` helper — not a
+  `profiles.role` value.
+- There is **no `treatments` table** — it's `treatment_plans` +
+  `treatment_plan_items` + `dental_chart_entries`.
+- `patients` already has `primary_doctor_id` (a filter field from an earlier PR),
+  **not** `doctor_id` — V2 *adds* `doctor_id` as the ownership boundary.
+- **17 org-scoped tables** the Phase 0 plan never mentioned exist and need a
+  V2 fate (wiped, or operator-only holding pattern).
+- `current_org_id()` is the linchpin of ~80 V1 RLS policies; retiring it is the
+  central act of the migration.
+
+**Canonical Phase 1A artifacts:** PR #31 — `scripts/v2-platform-migration.sql` +
+`scripts/v2-platform-migration-plan.md`.
+
+> **Stale reference warning:** `CLAUDE.md` still says the app has "3,000+ real
+> patient records." **That is stale** — it refers to a now-decommissioned
+> Supabase instance. Current production is **test-data scale** (Le Royal only,
+> a handful of smoke-test patients). The migration's pre-flight guard aborts if
+> it sees more than 50 patients, precisely to catch a wrong-instance mistake.
 
 ---
 
@@ -75,30 +111,55 @@ V2 matches this reality. V1 didn't.
 
 ## Entity Model
 
-### `profiles` (revised — auth-backed, every user)
+### `profiles` (revised — auth-backed, clinic users)
 
-Every person on the platform — doctor, receptionist, admin, operator — is a row in `profiles` (existing table, restructured).
+Every **clinic** user — doctor, receptionist — is a row in `profiles` (existing
+table, restructured). **Operators are NOT in `profiles`** — they are a separate
+`operators` table (see below). The live `profile_role` enum is
+`('owner', 'doctor', 'receptionist', 'assistant')`; V2 uses `doctor` and
+`receptionist`. (`owner`/`assistant` are V1 leftovers; clinic-group ownership is
+modeled in `clinic_memberships.role`, not the profile role. The enum is left
+intact — Postgres can't easily drop enum values — but V2 only assigns
+`doctor`/`receptionist`.)
 
 ```sql
 profiles (
   id uuid PRIMARY KEY REFERENCES auth.users(id),
-  role enum('doctor', 'receptionist', 'admin', 'operator') NOT NULL,
+  role profile_role NOT NULL,           -- enum: owner|doctor|receptionist|assistant (V2 uses doctor|receptionist)
   full_name text,
-  email text (sourced from auth, read-only in UI),
-  locale enum('en', 'ar', 'ku') DEFAULT 'en',
+  -- NB: no `email` column in V1 profiles; email lives in auth.users (read-only in UI)
+  locale locale_code DEFAULT 'en',      -- enum gains 'ku' in V2 (was 'en'|'ar')
   avatar_url text,
   tooth_notation enum('fdi', 'palmer') DEFAULT 'fdi',  -- NEW V2
   subscription_status enum('active', 'past_due', 'canceled', 'trial') DEFAULT 'trial',  -- NEW V2
   plan_tier enum('free', 'pro', 'clinic') DEFAULT 'free',  -- NEW V2
-  -- REMOVED v1: org_id (no longer org-scoped)
-  created_at, updated_at
+  org_id_v1 uuid,                       -- V1 org_id RENAMED (NOT dropped) — rollback safety; FK + NOT NULL dropped
+  created_at  -- (no updated_at column in V1 profiles)
 )
 ```
 
 Key changes vs V1:
-- `org_id` is removed
+- `org_id` is **renamed to `org_id_v1`** (kept for rollback, FK + `NOT NULL`
+  dropped), not removed outright. The doctor-centric model ignores it.
 - `tooth_notation` added (per-doctor preference)
 - Subscription state added for per-doctor billing
+- `locale_code` enum gains `'ku'` (Kurdish)
+
+### `operators` (existing — platform super-admins, separate from profiles)
+
+Operators (e.g. the agency/support account) are **not** clinic users and have
+**no `profiles` row**. They live in their own table and are detected by the
+`is_operator()` SECURITY DEFINER helper, which every super-admin RLS branch
+calls. V2 keeps this unchanged (Decision #9).
+
+```sql
+operators (
+  user_id uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  notes text,
+  created_at timestamptz
+)
+-- is_operator() RETURNS boolean — true when auth.uid() is a row in operators.
+```
 
 ### `clinic_groups` (new — replaces `orgs`)
 
@@ -117,7 +178,9 @@ clinic_groups (
 )
 ```
 
-Replaces V1 `orgs`. Different semantic role (optional association, not the unit of ownership).
+Replaces V1 `orgs` semantically. Different role (optional association, not the
+unit of ownership). The V1 `orgs` table itself is **renamed to `orgs_v1`** in the
+migration (kept for rollback, not dropped); `clinic_groups` is a brand-new table.
 
 ### `clinic_memberships` (new)
 
@@ -181,27 +244,40 @@ Defaults match what was specified: receptionist can manage appointments + add pa
 ```sql
 patients (
   id uuid PRIMARY KEY,
-  doctor_id uuid REFERENCES profiles(id) NOT NULL,  -- V2: doctor owns
+  -- ── V1 columns (real) ────────────────────────────────────────────────
+  org_id_v1 uuid,                       -- V1 org_id RENAMED (kept for rollback; FK + NOT NULL dropped)
   full_name text NOT NULL,
-  phone text,
+  phone text,                           -- V1 was NOT NULL; V2 RELAXES to nullable
   email text,
-  date_of_birth date,
-  gender enum('male', 'female', 'other'),
-  primary_doctor_id uuid REFERENCES profiles(id),  -- carried from V1 (now == doctor_id by default)
-  family_group_id uuid NULL,  -- schema ready for family grouping
-  external_id text,  -- GHL import key
-  external_source text,
-  clinic_visible boolean DEFAULT false,  -- "this patient available to clinic group"
-  created_by uuid REFERENCES profiles(id),
-  created_at, updated_at
-  -- REMOVED v1: org_id
+  dob date,                             -- NB: column is `dob`, NOT `date_of_birth`
+  gender patient_gender,                -- enum: male|female|other|prefer_not_to_say (4 values)
+  medical_history jsonb DEFAULT '{}',   -- existing V1 column (kept)
+  allergies jsonb DEFAULT '[]',         -- existing V1 column (kept)
+  primary_doctor_id uuid REFERENCES profiles(id) ON DELETE SET NULL,  -- V1 (PR #26): a FILTER field, NOT ownership
+  created_at, updated_at,
+  -- ── V2 additions ─────────────────────────────────────────────────────
+  doctor_id uuid REFERENCES profiles(id) ON DELETE RESTRICT NOT NULL,  -- NEW V2: the ownership boundary
+  clinic_visible boolean DEFAULT false,  -- NEW V2: "this patient available to clinic group"
+  family_group_id uuid NULL             -- NEW V2: schema-ready; family-grouping UI deferred to V2.1
 )
+-- V1 UNIQUE(org_id, phone) is dropped; V2 uses partial UNIQUE(doctor_id, phone) WHERE phone IS NOT NULL
 ```
 
 Key changes:
-- `org_id` removed, `doctor_id` required
-- `clinic_visible` flag for patient-level clinic group opt-in
-- `family_group_id` for family grouping (UI deferred but schema ready)
+- `org_id` → `org_id_v1` (renamed, kept for rollback); **`doctor_id` is ADDED**
+  as the required ownership boundary.
+- ⚠️ **`doctor_id` did NOT already exist** (Phase 0 assumed it did). PR #26
+  added `primary_doctor_id` — a nullable *filter* field, not a security boundary.
+  Both columns coexist in V2: `doctor_id` owns, `primary_doctor_id` drives the
+  existing "My patients" filter UI.
+- `phone` relaxed to nullable; the `UNIQUE(org_id, phone)` constraint is replaced
+  by a partial `UNIQUE(doctor_id, phone)` (non-null phones).
+- `clinic_visible` flag for patient-level clinic-group opt-in.
+- `family_group_id` for family grouping (UI deferred, schema ready).
+- ⚠️ **No `external_id`/`external_source`/`created_by` on `patients`** (Phase 0
+  sketched them; they don't exist). GHL patient-import idempotency keys are a
+  **Phase 2** addition if needed — those columns exist on `prescriptions`,
+  `documents`, `notes` today, but not `patients`.
 
 ### `patient_shares` (new)
 
@@ -224,21 +300,59 @@ patient_shares (
 
 ### Clinical tables (revised)
 
-All clinical tables get `org_id` removed and `doctor_id` added (NOT NULL, cascading from patient ownership):
+⚠️ **There is no `treatments` table.** Phase 0 assumed one; the live schema splits
+clinical treatment data across three tables. The full clinical set that gets
+`org_id`→`org_id_v1` and a `doctor_id` ownership column is:
 
-- `appointments`
-- `treatments`
-- `prescriptions`, `prescription_items`
-- `notes`
-- `documents`
-- `payments`
+| Table | `doctor_id` status going in | Action |
+|-------|-----------------------------|--------|
+| `appointments` | exists, nullable, `ON DELETE SET NULL` | tighten → `NOT NULL` + `RESTRICT` |
+| `treatment_plans` | exists, nullable, `ON DELETE SET NULL` | tighten → `NOT NULL` + `RESTRICT` |
+| `treatment_plan_items` | none (child of `treatment_plans`) | **add** (denormalized) → `NOT NULL` |
+| `dental_chart_entries` | none | **add** → `NOT NULL` |
+| `prescriptions` | already `NOT NULL`, `RESTRICT` | none (already V2-shaped) |
+| `prescription_items` | none (child of `prescriptions`) | none — resolves via parent |
+| `documents` | none (has `uploaded_by`) | **add** → `NOT NULL` |
+| `notes` | none (has `created_by`) | **add** → `NOT NULL` |
+| `payments` | none (has `recorded_by`) | **add** → `NOT NULL` |
+| `form_submissions` | none | **add** → `NOT NULL` (patient-scoped) |
 
-Each has:
+The `doctor_id` is **denormalized** from `patients.doctor_id` so RLS policies can
+scope without a join. The shape on each is:
+
 ```sql
-doctor_id uuid REFERENCES profiles(id) NOT NULL
+doctor_id uuid REFERENCES profiles(id) ON DELETE RESTRICT NOT NULL
 ```
 
-For RLS purposes. The `doctor_id` is denormalized from `patient.doctor_id` to avoid join-heavy RLS policies.
+The V1 `org_id` on every one of these is **renamed to `org_id_v1`** (kept for
+rollback), not dropped.
+
+### Other V1 tables (previously unaccounted — 17 tables)
+
+Phase 0 didn't enumerate these, but they exist and all depend on `org_id` /
+`current_org_id()`, so the migration must handle them. Their V2 fate:
+
+**Wiped now** (integration/messaging — slated for removal in Phase 5 anyway, and
+they back killed connectors). Rows deleted; tables retained with `org_id_v1`:
+- `conversations`, `messages` (WhatsApp inbox)
+- `automations`
+- `social_connections`
+- `ai_usage`, `whatsapp_usage` (usage meters)
+
+**Operator-only holding pattern** (V2 ownership undecided — a genuine product
+call deferred to Phase 2/3). Their `*_own_org` policies are dropped, but their
+existing `*_operator` policies (which use `is_operator()`) survive, so regular
+users get deny-all until a doctor/clinic owner is assigned:
+- `forms`, `expenses`, `tasks`, `inventory_items`
+- `invitations` (an org-scoped invite table + `accept_invitation()` RPC already
+  exists; Phase 4 receptionist invites should **reuse/extend** this, not rebuild)
+- `org_secrets`
+- `audit_log` — kept as the compliance trail (operator-readable); additionally
+  gets an authenticated-INSERT policy so the Phase 2 data layer can keep writing.
+
+> These are flagged, not silently decided. Whether `expenses`/`inventory` become
+> doctor-owned or clinic-group-shared is an open product question (chair-rental
+> clinics could go either way).
 
 ### `xrays` (new V2)
 
@@ -249,7 +363,7 @@ xrays (
   id uuid PRIMARY KEY,
   doctor_id uuid REFERENCES profiles(id) NOT NULL,
   patient_id uuid REFERENCES patients(id) ON DELETE CASCADE,
-  treatment_id uuid REFERENCES treatments(id) NULL,  -- optional link
+  treatment_id uuid REFERENCES treatment_plans(id) NULL,  -- optional link (no `treatments` table — see Clinical tables)
 
   file_path text NOT NULL,  -- storage bucket key
   file_name text NOT NULL,
@@ -289,11 +403,19 @@ CREATE INDEX idx_receptionist_by_doctor ON receptionist_assignments(doctor_id, r
 -- Clinic group membership
 CREATE INDEX idx_clinic_memberships_active ON clinic_memberships(doctor_id, clinic_group_id) WHERE left_at IS NULL;
 
--- Clinical tables (doctor scoping)
-CREATE INDEX idx_appointments_doctor ON appointments(doctor_id, scheduled_at);
-CREATE INDEX idx_treatments_doctor_patient ON treatments(doctor_id, patient_id);
-CREATE INDEX idx_xrays_patient_date ON xrays(patient_id, date_taken DESC);
+-- Clinical tables (doctor scoping) — note treatment_plans, not "treatments"
+CREATE INDEX idx_appointments_doctor    ON appointments(doctor_id, scheduled_at);
+CREATE INDEX idx_treatment_plans_doctor ON treatment_plans(doctor_id, patient_id);
+CREATE INDEX idx_payments_doctor        ON payments(doctor_id, patient_id);
+CREATE INDEX idx_documents_doctor       ON documents(doctor_id, patient_id);
+CREATE INDEX idx_notes_doctor           ON notes(doctor_id, patient_id);
+CREATE INDEX idx_xrays_patient_date     ON xrays(patient_id, date_taken DESC);
+CREATE INDEX idx_xrays_doctor           ON xrays(doctor_id, patient_id);
+CREATE INDEX idx_xrays_batch            ON xrays(batch_id) WHERE batch_id IS NOT NULL;
 ```
+
+The migration creates **16 indexes** total (the above plus the
+sharing/receptionist/clinic-membership indexes listed earlier).
 
 ---
 
@@ -305,11 +427,16 @@ Every clinical/patient table follows the same RLS shape for SELECT:
 
 ```
 SELECT WHERE
-  doctor_id = auth.uid()                              -- doctor sees own
+  is_operator()                                       -- super-admin (operators table)
+  OR doctor_id = auth.uid()                           -- doctor sees own
   OR EXISTS (patient_shares with shared_with = uid)   -- shared with me
   OR EXISTS (receptionist_assignment + perm)          -- hired with view perm
   OR EXISTS (clinic_membership + share rule)          -- shared via clinic group
 ```
+
+In practice this logic is centralized in the `can_access_patient()` helper
+(below); most table policies just call it. The migration **drops 89 V1
+`*_own_org` policies and creates 50 new V2 policies** in their place.
 
 Write operations are more restrictive:
 - INSERT/UPDATE/DELETE typically require `doctor_id = auth.uid()` (the doctor)
@@ -356,10 +483,8 @@ FOR SELECT TO authenticated USING (
     )
   )
 
-  -- OR I'm a super-admin (operator)
-  OR EXISTS (
-    SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'operator'
-  )
+  -- OR I'm a super-admin (operator) — via the operators table, NOT a profile role
+  OR public.is_operator()
 );
 ```
 
@@ -414,9 +539,11 @@ FOR SELECT TO authenticated USING (
 );
 ```
 
-### Helper function
+### Helper functions
 
-To DRY the RLS, create a SECURITY DEFINER function:
+To DRY the RLS, Phase 1A created **two** SECURITY DEFINER helpers. The READ
+helper (completed from the Phase 0 sketch — operator branch added, clinic-group
+branch filled in):
 
 ```sql
 CREATE FUNCTION public.can_access_patient(p_patient_id uuid)
@@ -425,21 +552,41 @@ LANGUAGE sql STABLE SECURITY DEFINER
 SET search_path = pg_catalog, public
 AS $$
   SELECT
-    EXISTS (SELECT 1 FROM patients p WHERE p.id = p_patient_id AND p.doctor_id = auth.uid())
-    OR EXISTS (SELECT 1 FROM patient_shares ps WHERE ps.patient_id = p_patient_id AND ps.shared_with_user_id = auth.uid() AND ps.revoked_at IS NULL)
-    OR EXISTS (
-      SELECT 1 FROM patients p
-      JOIN receptionist_assignments ra ON ra.doctor_id = p.doctor_id
-      WHERE p.id = p_patient_id
-        AND ra.receptionist_id = auth.uid()
-        AND ra.terminated_at IS NULL
-        AND ra.can_view_patients = true
-    )
-    -- (clinic group visibility check elided for brevity, same pattern)
+    public.is_operator()                                          -- 0. super-admin
+    OR EXISTS (SELECT 1 FROM patients p WHERE p.id = p_patient_id AND p.doctor_id = auth.uid())  -- 1. owner
+    OR EXISTS (SELECT 1 FROM patient_shares ps WHERE ps.patient_id = p_patient_id  -- 2. shared with me
+                 AND ps.shared_with_user_id = auth.uid() AND ps.revoked_at IS NULL)
+    OR EXISTS (SELECT 1 FROM patients p                                            -- 3. permitted receptionist
+                 JOIN receptionist_assignments ra ON ra.doctor_id = p.doctor_id
+                 WHERE p.id = p_patient_id AND ra.receptionist_id = auth.uid()
+                   AND ra.terminated_at IS NULL AND ra.can_view_patients = true)
+    OR EXISTS (SELECT 1 FROM patients p                                            -- 4. clinic-group full-record share
+                 JOIN clinic_memberships m_owner ON m_owner.doctor_id = p.doctor_id AND m_owner.left_at IS NULL
+                 JOIN clinic_memberships m_me ON m_me.clinic_group_id = m_owner.clinic_group_id AND m_me.left_at IS NULL
+                 WHERE p.id = p_patient_id AND p.clinic_visible = true
+                   AND m_me.doctor_id = auth.uid() AND m_me.share_full_records = true);
 $$;
 ```
 
-RLS policies on clinical tables (xrays, treatments, etc.) call `can_access_patient(patient_id)` instead of duplicating logic.
+And a **WRITE** helper — kept strict (owner, non-read-only share, or operator;
+receptionist write permission is checked per-table via the specific flag):
+
+```sql
+CREATE FUNCTION public.can_write_patient(p_patient_id uuid)  -- NEW in Phase 1A
+RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path = pg_catalog, public
+AS $$
+  SELECT public.is_operator()
+    OR EXISTS (SELECT 1 FROM patients p WHERE p.id = p_patient_id AND p.doctor_id = auth.uid())
+    OR EXISTS (SELECT 1 FROM patient_shares ps WHERE ps.patient_id = p_patient_id
+                 AND ps.shared_with_user_id = auth.uid() AND ps.revoked_at IS NULL AND ps.read_only = false);
+$$;
+```
+
+Clinical-table SELECT policies (`xrays`, `treatment_plans`, `documents`, …) call
+`can_access_patient(patient_id)` rather than duplicating logic. Child tables
+(`prescription_items`, `treatment_plan_items`) resolve via their parent.
+`current_org_id()` — the V1 linchpin called by ~80 old policies — is **retired**
+once those policies are dropped.
 
 ---
 
@@ -447,17 +594,27 @@ RLS policies on clinical tables (xrays, treatments, etc.) call `can_access_patie
 
 ### Le Royal (test data) — wipe and restart
 
-Le Royal is your test/development account, not real patient data. Migration:
+Le Royal is your test/development account, not real patient data. The Phase 1A
+migration SQL (PR #31) implements this as a **single transaction**:
 
-1. **Pre-migration snapshot:** export current schema + Le Royal data as reference (for rollback)
-2. **Wipe:** drop V1 schema (or rename columns to `_v1` for safety)
-3. **Apply V2 schema:** new tables, new columns, new RLS, indexes
-4. **Reseed Le Royal:**
-   - `alialjobory89@gmail.com` → profile with `role='doctor'`, `tooth_notation='fdi'`
-   - No clinic group created (solo by default)
-   - No receptionists assigned
-   - Create 2-3 test patients to verify the flow
-5. **Verify:** smoke-test patient CRUD, X-ray upload, treatment creation, prescription entry
+1. **Pre-flight guard:** abort if the DB isn't V1-shaped, if the operator/doctor
+   accounts are missing, or if **patient count > 50** (a wrong-instance safety —
+   real data would blow past 50; test data stays under it).
+2. **Pre-migration snapshot:** `pg_dump` / Supabase backup (manual, outside the
+   transaction) — the authoritative rollback path, since the wipe deletes rows.
+3. **Apply V2 schema:** new enums, 5 new tables, new columns, new RLS, indexes.
+4. **Wipe + rename, not drop:** delete tenant rows; **rename `org_id`→`org_id_v1`
+   on every table and `orgs`→`orgs_v1`** (kept for rollback). Retire
+   `current_org_id()` after dropping the 89 V1 policies that reference it.
+5. **Preserve two accounts:**
+   - `madmaxali@gmail.com` — **operator** (separate `operators` table) — untouched.
+   - `alialjobory89@gmail.com` — **kept and set to `role='doctor'`** (demoted from
+     its V1 role, e.g. `owner`), solo by default — no clinic group, no
+     receptionists. Patients reseeded (2–3) post-migration via UI / seed script.
+6. **Verify:** schema assertions + **RLS denial tests with simulated user JWTs**
+   (cannot be asserted from a service-role session, which bypasses RLS) — this is
+   Phase 1B. Smoke-test patient CRUD, X-ray upload, treatment-plan creation,
+   prescription entry.
 
 ### Saif (planned, not yet onboarded)
 
@@ -484,7 +641,14 @@ Since Le Royal is the only live data and it's test:
   - Unlock production
 - **T+1:** sanity check next day, look for any errors in logs
 
-If anything goes wrong, restore from pre-migration snapshot.
+**Downtime:** ~1 hour, **dominated by manual steps** (snapshot + reseed + smoke).
+The SQL itself runs in **< 1 minute** (Le Royal is test-sized; almost all DDL).
+⚠️ The app is **intentionally broken between Phase 1 and Phase 2** — the V1
+`src/lib/*` still expects `org_id`/`current_org_id()`. Recommend bundling
+Phases 1→3 into one window, or keeping prod down until Phase 2 ships.
+
+If anything goes wrong, restore from the pre-migration snapshot (authoritative,
+since the wipe deletes data the `_v1` columns can't reconstruct).
 
 ---
 
@@ -494,6 +658,11 @@ If anything goes wrong, restore from pre-migration snapshot.
 |-------|-------|----------|-------------|
 | **0** | Architecture document (this) | 1 | `ARCH-V2-PLATFORM.md` committed to master |
 | **1** | Schema migration + RLS | 2–3 | Production runs V2 schema; Le Royal reseeded; RLS verified |
+| ↳ **1A** | Draft migration SQL + delta report | ✅ done | PR #31 — `scripts/v2-platform-migration.{sql,md}` (no execution) |
+| ↳ **1A.5** | Realign this ARCH doc with schema reality | ✅ this PR | Entity model / RLS / migration sections corrected to the 27-table reality |
+| ↳ **1B** | Apply to a Supabase **test environment** + JWT RLS tests | 1 | **Requires a test/branch Supabase instance separate from production.** Clean execution verified; simulated-JWT denial tests pass (can't be done from a service-role session) |
+| ↳ **1C** | Minimal app stub for Vercel Preview | 1 | V2 schema reachable from a preview deploy |
+| ↳ **1D** | Production migration window | 1 | V2 schema live on prod; Le Royal reseeded |
 | **2** | Data layer + library functions | 2–3 | All `src/lib/*.js` rewritten for V2; smoke-tested |
 | **3** | UI rewrite | 3–5 | Full UI works on V2; sidebar restructured; new tabs (X-ray, clinic group, receptionist mgmt) |
 | **4** | Onboarding flow rewrite | 1–2 | End-to-end doctor signup, clinic-group create/join, receptionist invite |
@@ -505,16 +674,17 @@ If anything goes wrong, restore from pre-migration snapshot.
 **Sessions:** 2–3
 
 **Tasks:**
-- Write migration SQL in `scripts/v2-platform-migration.sql`
-- Drop V1 org-centric tables/columns (or rename `_v1` for safety net)
+- Write migration SQL in `scripts/v2-platform-migration.sql` ✅ (PR #31)
+- **Rename** V1 org columns to `org_id_v1` (and `orgs`→`orgs_v1`) for rollback —
+  not dropped; drop the 89 V1 `*_own_org` policies; **retire `current_org_id()`**
 - Create new tables: `clinic_groups`, `clinic_memberships`, `receptionist_assignments`, `patient_shares`, `xrays`
-- Add new columns: `profiles.tooth_notation`, `profiles.subscription_status`, `profiles.plan_tier`, `patients.clinic_visible`, `patients.family_group_id`
-- Add `doctor_id` to all clinical tables (NOT NULL, FK to profiles)
-- Create indexes (per index strategy section)
-- Apply new RLS policies (SELECT + INSERT + UPDATE + DELETE per table)
-- Create `can_access_patient()` helper function
-- Reseed Le Royal under new schema
-- Smoke test via SQL: super-admin queries return all, doctor queries return scoped, RLS denials confirmed
+- Add new columns: `profiles.tooth_notation`, `profiles.subscription_status`, `profiles.plan_tier`, **`patients.doctor_id`**, `patients.clinic_visible`, `patients.family_group_id`
+- Add `doctor_id` to all clinical tables (NOT NULL, FK `RESTRICT`); `appointments`/`treatment_plans` already had it nullable → tightened
+- Create 16 indexes (per index strategy section)
+- Apply 50 new RLS policies (SELECT + INSERT + UPDATE + DELETE per table)
+- Create `can_access_patient()` + `can_write_patient()` helper functions
+- Reseed Le Royal under new schema (keep operator `madmaxali`; doctor `alialjobory89` → `role='doctor'`)
+- Smoke test via SQL: super-admin queries return all, doctor queries return scoped, RLS denials confirmed (Phase 1B, simulated JWTs)
 
 **Risks:**
 - Wrong RLS = data leakage between doctors (HIGH severity — verify exhaustively)
@@ -527,7 +697,7 @@ If anything goes wrong, restore from pre-migration snapshot.
 
 **Tasks:**
 - Rewrite `src/lib/database.js`: patients/appointments queries use doctor_id
-- Rewrite `src/lib/dental.js`: chart, treatments, prescriptions, notes, documents — all doctor-scoped
+- Rewrite `src/lib/dental.js`: dental chart, treatment plans (+ items), prescriptions, notes, documents — all doctor-scoped
 - Rewrite `src/lib/profiles.js`: tooth_notation read/write, doctor flag
 - Rewrite `src/lib/audit.js`: entity types updated for V2
 - New libs:
@@ -659,8 +829,8 @@ These will break and require explicit handling during the migration:
 
 1. **Every API call referencing `org_id`** → replaced with `doctor_id` scoping
 2. **All RLS policies (every table)** → full rewrite
-3. **`profiles.org_id`** → column dropped
-4. **`orgs` table** → replaced semantically by `clinic_groups`
+3. **`profiles.org_id`** → **renamed to `profiles.org_id_v1`** (kept for rollback; FK + `NOT NULL` dropped), not dropped outright
+4. **`orgs` table** → **renamed to `orgs_v1`** (kept for rollback); replaced semantically by `clinic_groups`
 5. **`api/admin.js` operator endpoints** → rewritten for new schema
 6. **Onboarding flow** → entirely rewritten
 7. **Impersonation context** → operator now impersonates user (doctor or receptionist), not org
@@ -674,7 +844,7 @@ These will break and require explicit handling during the migration:
 
 ---
 
-## Decisions Taken (the 8 Phase 0 questions)
+## Decisions Taken (8 Phase 0 strategic + 1 Phase 1A architectural)
 
 1. **Pricing model:** per-doctor seat with three tiers — **Free** (1 doctor, ~100 patients, basic features), **Pro** (per-doctor monthly, all features), **Clinic** (per-doctor with discount + clinic-group features). Specific prices set in Phase 6; targeting Iraqi market norms.
 
@@ -691,6 +861,14 @@ These will break and require explicit handling during the migration:
 7. **Integrations during restructure:** kill ALL connectors temporarily. Re-add later under doctor-owned model (each doctor connects own Gmail, own WhatsApp, etc.).
 
 8. **Brand:** "Velo Dental" stays. Repositioning happens in Phase 6 — from "clinic SaaS" to "platform for dental practitioners."
+
+9. **Operator architecture (Phase 1A):** operators stay a **separate `operators`
+   table** detected via the `is_operator()` helper — **not** folded into a
+   `profiles.role` value. The V1 design is battle-tested, cleanly preserves the
+   `madmaxali` super-admin account through the wipe, and avoids migrating operator
+   identity. All super-admin RLS branches call `is_operator()`. (The 8 strategic
+   decisions above are unchanged; this one records the architectural call made
+   when reality diverged from the Phase 0 sketch.)
 
 ---
 
@@ -829,17 +1007,20 @@ Between **Dental Chart** and **Treatment Plan** in patient profile tabs. Clinica
 
 | Section | Status |
 |---------|--------|
+| Reality vs original plan | ✅ Added (1A.5) |
 | Executive Summary | ✅ Draft 1 |
 | Strategic Shift | ✅ Draft 1 |
-| Entity Model | ✅ Draft 1 |
-| RLS Strategy | ✅ Draft 1 |
-| Migration Plan | ✅ Draft 1 |
-| Rollout Phases | ✅ Draft 1 |
-| Breaking Changes | ✅ Draft 1 |
-| Decisions Taken | ✅ Draft 1 |
+| Entity Model | ✅ Realigned to schema (1A.5) |
+| RLS Strategy | ✅ Realigned to schema (1A.5) |
+| Migration Plan | ✅ Realigned to schema (1A.5) |
+| Rollout Phases | ✅ Realigned (1A.5 — 1A/1A.5/1B–1D sub-phases) |
+| Breaking Changes | ✅ Realigned (1A.5) |
+| Decisions Taken | ✅ +Decision #9 (1A.5) |
 | Open Questions | ✅ Draft 1 |
 | X-Ray Module | ✅ Draft 1 |
 | Removed Features | ✅ Draft 1 |
 | Test Plan | ✅ Draft 1 |
 
-**Next action:** Ali reviews this document. Sign off or request changes. Phase 1 (schema migration) begins after sign-off.
+**Next action:** Phase 1A (PR #31) and Phase 1A.5 (this PR) are complete. **Phase
+1B** is next — it needs a Supabase **test environment** (separate from production)
+to apply the migration and run the simulated-JWT RLS denial tests.
