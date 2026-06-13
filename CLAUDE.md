@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Velo CRM (v2.0) — a dental/general CRM with multi-language support (English/Arabic). React 19 SPA with Supabase backend, deployed on Vercel. Multi-tenant with agency impersonation. Has live customer data including 3,000+ dental patient records — handle accordingly.
+Velo CRM (v2.0) — a dental/general CRM with multi-language support (English/Arabic). React 19 SPA with Supabase backend, deployed on Vercel. Multi-tenant with agency impersonation. Production currently holds test-scale data — treat the dental module with production-grade care regardless. See docs/DATA-HISTORY.md for historical context on Saif Dental's planned GHL migration.
 
 ## Commands
 
@@ -71,7 +71,7 @@ No test framework is configured. (Tech debt — adding Vitest is roadmap work.)
 - Never sum across currencies without explicit conversion.
 
 **Dental module is live.**
-- 3,000+ real patient records.
+- Live schema, test-scale data today. Schema changes follow full ceremony regardless of row count.
 - Schema changes to dental tables require dry-run on a copy + written rollback plan.
 - Files: `src/lib/dental.js`, `DentalChart.jsx`, `DentalTabs.jsx`, `DentalDashboard.jsx`.
 

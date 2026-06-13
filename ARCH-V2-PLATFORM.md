@@ -37,11 +37,11 @@ investigation produced **9 judgment calls** — see `scripts/v2-platform-migrati
 **Canonical Phase 1A artifacts:** PR #31 — `scripts/v2-platform-migration.sql` +
 `scripts/v2-platform-migration-plan.md`.
 
-> **Stale reference warning:** `CLAUDE.md` still says the app has "3,000+ real
-> patient records." **That is stale** — it refers to a now-decommissioned
-> Supabase instance. Current production is **test-data scale** (Le Royal only,
-> a handful of smoke-test patients). The migration's pre-flight guard aborts if
-> it sees more than 50 patients, precisely to catch a wrong-instance mistake.
+> **Note on data scale:** production is test-scale (~6 patients across Le Royal +
+> My Test Clinic). Historical context on the decommissioned Supabase instance and
+> Saif's planned 3,171-contact GHL migration lives in `docs/DATA-HISTORY.md`. The
+> Phase 1A migration SQL includes a 50-patient pre-flight guard to catch
+> wrong-instance mistakes.
 
 ---
 
