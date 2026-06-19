@@ -1068,7 +1068,7 @@ export default function App() {
               {page === 'tasks' && <Suspense fallback={<SkeletonGeneric />}><TasksPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} user={user} toast={addToast} showConfirm={showConfirm} /></Suspense>}
               {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} toast={addToast} /></Suspense>}
               {page === 'docs' && <Suspense fallback={<SkeletonGeneric />}><DocsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} toast={addToast} /></Suspense>}
-              {page === 'agency' && isOperator && !impersonation && <Suspense fallback={<SkeletonGeneric />}><OperatorConsole user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} /></Suspense>}
+              {page === 'agency' && isOperator && !impersonation && <Suspense fallback={<SkeletonGeneric />}><OperatorConsole user={user} onEnterOrg={startImpersonation} onSignOut={handleSignOut} toast={addToast} /></Suspense>}
               {page === 'billing' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الفواتير' : 'Billing'} description={isRTL ? 'إدارة الفواتير والمدفوعات قريباً' : 'Billing management coming soon.'} icon={Icons.file} />}
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
               {page === 'settings' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الإعدادات' : 'Settings'} description={isRTL ? 'إعدادات الوكالة قريباً' : 'Agency settings coming soon.'} icon={Icons.settings} />}
