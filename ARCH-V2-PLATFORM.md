@@ -2,6 +2,10 @@
 
 # Velo Dental V2 — Doctor-Centric Platform Architecture
 
+> **Status: PLANNING ARTIFACT (DEFERRED — June 2026)**
+>
+> V2 restructure work paused per strategic decision. V1 completion is the current focus. This document remains the canonical reference for V2 work when it resumes — likely 6-12 months out. PR #31 (closed, branch preserved) contains the Phase 1A migration SQL draft for future use.
+
 **Date:** 2026-06-13 (Phase 0); realigned 2026-06-13 (Phase 1A.5)
 **Author:** Ali Al-Jobori + Claude
 **Status:** Phase 1A complete (draft migration, PR #31). This doc realigned to live schema reality in Phase 1A.5.
