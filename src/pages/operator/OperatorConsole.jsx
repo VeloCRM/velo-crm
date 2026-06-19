@@ -25,7 +25,7 @@ const AVATAR_TINT = { color: '#A78BFA', bg: 'rgba(167,139,250,0.08)' }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
+export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) {
   const [orgs, setOrgs] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -70,29 +70,45 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
 
   async function updateOrgStatus(orgId, status) {
     if (isSupabaseConfigured()) {
-      const { data: session } = await supabase.auth.getSession()
-      const res = await fetch('/api/admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.session?.access_token}` },
-        body: JSON.stringify({ action: 'updateOrgStatus', payload: { id: orgId, status } })
-      })
-      if (!res.ok) { console.error(await res.text()); return }
+      try {
+        const { data: session } = await supabase.auth.getSession()
+        const res = await fetch('/api/admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.session?.access_token}` },
+          body: JSON.stringify({ action: 'updateOrgStatus', payload: { id: orgId, status } })
+        })
+        const result = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(result.error || 'Failed to update status')
+      } catch (err) {
+        console.error('Failed to update org status:', err)
+        toast(err.message || 'Failed to update status', 'error')
+        return
+      }
     }
     setOrgs(prev => prev.map(o => o.id === orgId ? { ...o, status } : o))
+    toast(status === 'active' ? 'Organization activated' : 'Organization suspended', 'success')
   }
 
   async function deleteOrg(orgId) {
     if (isSupabaseConfigured()) {
-      const { data: session } = await supabase.auth.getSession()
-      const res = await fetch('/api/admin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.session?.access_token}` },
-        body: JSON.stringify({ action: 'deleteOrg', payload: { id: orgId } })
-      })
-      if (!res.ok) { console.error(await res.text()); return }
+      try {
+        const { data: session } = await supabase.auth.getSession()
+        const res = await fetch('/api/admin', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.session?.access_token}` },
+          body: JSON.stringify({ action: 'deleteOrg', payload: { id: orgId } })
+        })
+        const result = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(result.error || 'Failed to delete organization')
+      } catch (err) {
+        console.error('Failed to delete org:', err)
+        toast(err.message || 'Failed to delete organization', 'error')
+        return
+      }
     }
     setOrgs(prev => prev.filter(o => o.id !== orgId))
     setConfirmDelete(null)
+    toast('Organization deleted', 'success')
   }
 
   async function handleAddOrg() {
@@ -107,7 +123,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
           headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.session?.access_token}` },
           body: JSON.stringify({ action: 'createOrg', payload: { name, admin_email: newOrg.admin_email } })
         })
-        const result = await res.json()
+        const result = await res.json().catch(() => ({}))
         if (!res.ok) throw new Error(result.error || 'Failed to create org')
 
         setOrgs(prev => [result.org, ...prev])
@@ -118,8 +134,16 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
             inviteUrl: result.invite.url,
           })
         }
+        toast('Organization created', 'success')
+        // Close + reset only on success; on error the modal stays open so the
+        // operator sees the toast and can retry without re-typing.
+        setNewOrg({ name: '', admin_email: '' })
+        setShowAddModal(false)
       } catch (err) {
         console.error('Failed to create org:', err)
+        toast(err.message || 'Failed to create org', 'error')
+      } finally {
+        setSaving(false)
       }
     } else {
       const demo = {
@@ -129,10 +153,10 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut }) {
         created_at: new Date().toISOString(),
       }
       setOrgs(prev => [demo, ...prev])
+      setSaving(false)
+      setNewOrg({ name: '', admin_email: '' })
+      setShowAddModal(false)
     }
-    setSaving(false)
-    setNewOrg({ name: '', admin_email: '' })
-    setShowAddModal(false)
   }
 
   async function copyInviteUrl() {
