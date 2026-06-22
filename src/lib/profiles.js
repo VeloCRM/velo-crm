@@ -18,11 +18,19 @@ import { requireUser, getCurrentOrgId } from './auth_session'
 import { logAuditEvent } from './audit'
 import { sanitizeText, LIMITS } from './sanitize'
 
+// Allow-list of valid tooth-notation preferences. Mirrors the schema CHECK on
+// profiles.tooth_notation; anything else is dropped rather than written.
+const TOOTH_NOTATIONS = new Set(['fdi', 'palmer'])
+
 function sanitizeProfileUpdate(updates) {
   const out = {}
   if (updates.full_name !== undefined) out.full_name = sanitizeText(updates.full_name, LIMITS.name)
   if (updates.avatar_url !== undefined) out.avatar_url = sanitizeText(updates.avatar_url, 512)
   if (updates.locale !== undefined) out.locale = sanitizeText(updates.locale, 8)
+  if (updates.tooth_notation !== undefined) {
+    const n = sanitizeText(String(updates.tooth_notation), 8).toLowerCase()
+    if (TOOTH_NOTATIONS.has(n)) out.tooth_notation = n
+  }
   return out
 }
 
@@ -33,7 +41,7 @@ export async function fetchMyProfile() {
   const user = await requireUser()
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, org_id, role, full_name, avatar_url, locale, created_at')
+    .select('id, org_id, role, full_name, avatar_url, locale, tooth_notation, created_at')
     .eq('id', user.id)
     .maybeSingle()
   if (error) throw error

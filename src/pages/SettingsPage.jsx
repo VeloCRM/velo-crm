@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { GlassCard, Button, Input, Select, Modal, Badge } from '../components/ui'
 import { Icons, Toggle } from '../components/shared'
+import ToothLabel from '../components/ToothLabel'
 import { avatarGradient, avatarInitials } from '../lib/avatarGradient'
 import { sanitizeName, isValidEmail } from '../lib/sanitize'
 import { isSupabaseConfigured } from '../lib/supabase'
@@ -254,22 +255,52 @@ function ProfileTab({ t, lang, dir, isRTL, user, toast }) {
     fullName: user?.user_metadata?.full_name || '',
     email: user?.email || '',
     language: lang,
+    notation: 'fdi',
   })
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
   const [saving, setSaving] = useState(false)
+  const [savingNotation, setSavingNotation] = useState(false)
 
-  // Hydrate name/language from the canonical profiles row (not user_metadata),
-  // so a saved change survives reopening the tab.
+  // Hydrate name/language/notation from the canonical profiles row (not
+  // user_metadata), so a saved change survives reopening the tab.
   useEffect(() => {
     let cancelled = false
     fetchMyProfile()
       .then(p => {
         if (cancelled || !p) return
-        setForm(f => ({ ...f, fullName: p.full_name || f.fullName, language: p.locale || f.language }))
+        setForm(f => ({
+          ...f,
+          fullName: p.full_name || f.fullName,
+          language: p.locale || f.language,
+          notation: p.tooth_notation || f.notation,
+        }))
       })
       .catch(() => {})
     return () => { cancelled = true }
   }, [])
+
+  // Tooth-notation persists immediately on toggle (its own write + toast),
+  // separate from the batched "Save Changes" button. Optimistic with rollback.
+  const handleNotationChange = async (next) => {
+    if (next === form.notation || savingNotation) return
+    const prev = form.notation
+    set('notation', next)
+    if (!user?.id) {
+      set('notation', prev)
+      toast?.(lang === 'ar' ? 'لا يوجد سياق مستخدم' : 'No user context', 'error')
+      return
+    }
+    setSavingNotation(true)
+    try {
+      await updateProfile(user.id, { tooth_notation: next })
+      toast?.(lang === 'ar' ? 'تم تحديث ترميز الأسنان' : 'Tooth notation updated', 'success')
+    } catch (e) {
+      set('notation', prev)
+      toast?.(e.message || (lang === 'ar' ? 'فشل الحفظ' : 'Save failed'), 'error')
+    } finally {
+      setSavingNotation(false)
+    }
+  }
 
   const handleSave = async () => {
     if (!user?.id) { toast?.(lang === 'ar' ? 'لا يوجد سياق مستخدم' : 'No user context', 'error'); return }
@@ -331,6 +362,47 @@ function ProfileTab({ t, lang, dir, isRTL, user, toast }) {
             { value: 'ar', label: 'العربية' },
           ]}
         />
+      </div>
+
+      {/* Tooth notation — saves immediately on toggle (own write + toast) */}
+      <div className="mt-5">
+        <label className="block text-[13px] font-medium text-navy-600 mb-2">
+          {lang === 'ar' ? 'ترميز الأسنان' : 'Tooth notation'}
+        </label>
+        <div className="flex gap-3">
+          {[
+            { id: 'fdi', label: lang === 'ar' ? 'FDI (١١–٤٨)' : 'FDI (11–48)' },
+            { id: 'palmer', label: lang === 'ar' ? 'بالمر' : 'Palmer' },
+          ].map(opt => {
+            const active = form.notation === opt.id
+            return (
+              <button
+                key={opt.id}
+                type="button"
+                onClick={() => handleNotationChange(opt.id)}
+                aria-pressed={active}
+                disabled={savingNotation}
+                className={[
+                  'flex-1 flex items-center justify-between gap-3 px-4 py-3 rounded-glass border transition-colors',
+                  savingNotation ? 'opacity-60 cursor-wait' : 'cursor-pointer',
+                  active
+                    ? 'border-accent-cyan-500 bg-accent-cyan-500/10 text-navy-900'
+                    : 'border-navy-100 text-navy-600 hover:border-navy-300',
+                ].join(' ')}
+              >
+                <span className="text-sm font-semibold">{opt.label}</span>
+                <span className="text-lg font-bold text-navy-800" aria-hidden="true">
+                  <ToothLabel fdi={16} notation={opt.id} locale={lang} />
+                </span>
+              </button>
+            )
+          })}
+        </div>
+        <p className="text-[11px] text-navy-500 mt-1.5 m-0">
+          {lang === 'ar'
+            ? 'يحدد كيفية عرض أرقام الأسنان في المخطط وخطط العلاج (مثال: السن ١٦).'
+            : 'Controls how tooth numbers display in the chart and treatment plans (e.g. tooth 16).'}
+        </p>
       </div>
 
       <div className="flex justify-end mt-6">
