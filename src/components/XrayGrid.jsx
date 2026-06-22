@@ -42,7 +42,7 @@ function Placeholder() {
   )
 }
 
-export default function XrayGrid({ xrays, loading, canEdit, roleLoading, isRTL, busyId, onOpen, onUpload }) {
+export default function XrayGrid({ xrays, loading, canEdit, roleLoading, isRTL, onOpen, onUpload }) {
   const [filter, setFilter] = useState('all')
   const typeLabel = (id) => {
     const o = XRAY_TYPE_OPTIONS.find(t => t.id === id)
@@ -110,11 +110,10 @@ export default function XrayGrid({ xrays, loading, canEdit, roleLoading, isRTL, 
               <button
                 key={x.id}
                 type="button"
-                onClick={() => onOpen(x)}
-                disabled={busyId === x.id}
+                onClick={() => onOpen(x, filtered)}
                 aria-label={`${typeLabel(x.xray_type)} — ${x.file_name || ''} — ${formatDate(x.date_taken, isRTL)}`}
                 title={`${typeLabel(x.xray_type)}${x.notes ? ` — ${x.notes}` : ''}`}
-                className="group relative aspect-square rounded-lg overflow-hidden border border-navy-200 bg-navy-50 hover:border-accent-cyan-400 focus:outline-none focus-visible:border-accent-cyan-500 transition-colors disabled:opacity-60"
+                className="group relative aspect-square rounded-lg overflow-hidden border border-navy-200 bg-navy-50 hover:border-accent-cyan-400 focus:outline-none focus-visible:border-accent-cyan-500 transition-colors"
               >
                 {x.thumbnail_data_url
                   ? <img src={x.thumbnail_data_url} alt="" className="w-full h-full object-cover" />
@@ -122,7 +121,6 @@ export default function XrayGrid({ xrays, loading, canEdit, roleLoading, isRTL, 
                 <span className="absolute bottom-0 inset-x-0 bg-navy-900/65 text-white text-[10px] px-1.5 py-0.5 truncate">
                   {typeLabel(x.xray_type)}
                 </span>
-                {busyId === x.id && <span className="absolute inset-0 grid place-items-center bg-white/50 text-xs text-navy-700">…</span>}
               </button>
             ))}
           </div>
