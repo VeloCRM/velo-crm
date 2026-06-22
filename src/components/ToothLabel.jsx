@@ -29,6 +29,11 @@ const BRACKET_SIDES = {
 export default function ToothLabel({ fdi, notation = 'fdi', locale = 'en', hash = false }) {
   const ar = locale === 'ar'
 
+  // Nothing to render for an absent tooth — honor the contract rather than
+  // emitting the literal text "null". Live call sites guard upstream; this is
+  // defense in depth for future reuse.
+  if (fdi == null || fdi === '') return null
+
   // Palmer path — guard the conversion so a stray non-FDI value (legacy/bad row)
   // degrades to plain FDI text instead of crashing the chart.
   if (notation === 'palmer') {
