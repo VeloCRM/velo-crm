@@ -55,6 +55,9 @@ const PROCEDURES = [
 
 function pick(arr) { return arr[Math.floor(Math.random() * arr.length)] }
 function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min }
+// Valid FDI code: quadrant 1-4 + position 1-8 → 11-18, 21-28, 31-38, 41-48.
+// (The old randomInt(1,32) produced non-FDI values like 1-10/19/20.)
+function randomFdiTooth() { return pick([1, 2, 3, 4]) * 10 + randomInt(1, 8) }
 function offsetDate(days, hours = 0) {
   const d = new Date()
   d.setDate(d.getDate() + days)
@@ -218,7 +221,7 @@ export default async function handler(req, res) {
         planItems.push({
           org_id: orgId,
           treatment_plan_id: plan.id,
-          tooth_number: randomInt(1, 32),
+          tooth_number: randomFdiTooth(),
           surface: pick(['M', 'O', 'D', 'MOD', null]),
           procedure_code: proc.code,
           procedure_label: proc.label,
