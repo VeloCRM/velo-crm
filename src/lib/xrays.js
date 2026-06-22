@@ -28,10 +28,10 @@ import { isValidFdiTooth } from './dental'
 const BUCKET = 'patient-xrays'
 
 // Authoritative gate is the bucket's allowed-MIME list; this fast-fails before
-// the round-trip. JPEG/PNG only for V1 (DICOM/CBCT files deferred to V2.1 — the
-// 'cbct' xray_type is just a label on a JPEG export).
-const ALLOWED_MIME = new Set(['image/jpeg', 'image/png'])
-const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png' }
+// the round-trip. JPEG/PNG/WebP for V1 (DICOM/CBCT files deferred to V2.1 — the
+// 'cbct' xray_type is just a label on a raster export).
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp'])
+const MIME_EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }
 const MAX_BYTES = 25 * 1024 * 1024 // 25 MB — must match the bucket's file_size_limit
 const XRAY_TYPES = new Set(['bitewing', 'periapical', 'panoramic', 'occlusal', 'cbct', 'other'])
 const MAX_TEETH = 32 // permanent dentition
@@ -190,7 +190,7 @@ export async function uploadXray({ patientId, file, metadata = {}, thumbnailData
   if (!patientId) throw new Error('uploadXray: patientId is required')
   if (!file) throw new Error('uploadXray: file is required')
   if (!ALLOWED_MIME.has(file.type)) {
-    throw new Error('Unsupported file type. X-rays must be JPG or PNG.')
+    throw new Error('Unsupported file type. X-rays must be JPG, PNG, or WebP.')
   }
   if (file.size > MAX_BYTES) {
     throw new Error('File exceeds the 25 MB limit.')

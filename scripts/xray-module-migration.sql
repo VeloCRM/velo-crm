@@ -44,12 +44,12 @@ BEGIN
      WHERE id = 'patient-xrays'
        AND public IS FALSE
        AND file_size_limit = 26214400
-       AND allowed_mime_types @> ARRAY['image/jpeg','image/png']
-       AND allowed_mime_types <@ ARRAY['image/jpeg','image/png'];
+       AND allowed_mime_types @> ARRAY['image/jpeg','image/png','image/webp']
+       AND allowed_mime_types <@ ARRAY['image/jpeg','image/png','image/webp'];
     IF NOT FOUND THEN
       RAISE EXCEPTION
         'Pre-flight: a patient-xrays bucket already exists with unexpected config '
-        '(expected private, 25 MB, image/jpeg+image/png). Reconcile before proceeding.';
+        '(expected private, 25 MB, image/jpeg+image/png+image/webp). Reconcile before proceeding.';
     END IF;
   END IF;
 END $$;
@@ -148,11 +148,11 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- ─── 5. patient-xrays bucket (private, 25 MB, JPEG/PNG) ───────────────────────
+-- ─── 5. patient-xrays bucket (private, 25 MB, JPEG/PNG/WebP) ──────────────────
 -- Created here via SQL (modern Supabase supports file_size_limit/allowed_mime_types
 -- columns). The pre-flight above already aborted if a mis-configured bucket existed.
 INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('patient-xrays', 'patient-xrays', false, 26214400, ARRAY['image/jpeg','image/png'])
+VALUES ('patient-xrays', 'patient-xrays', false, 26214400, ARRAY['image/jpeg','image/png','image/webp'])
 ON CONFLICT (id) DO NOTHING;
 
 -- ─── 6. Storage RLS on patient-xrays ─────────────────────────────────────────
@@ -226,7 +226,7 @@ END $$;
 -- SELECT policyname FROM pg_policies WHERE tablename='xrays';
 -- SELECT policyname FROM pg_policies WHERE schemaname='storage' AND policyname LIKE 'xrays_storage_%';
 --
--- 3. Bucket config (expect public=false, 26214400, {image/jpeg,image/png}):
+-- 3. Bucket config (expect public=false, 26214400, {image/jpeg,image/png,image/webp}):
 -- SELECT id, public, file_size_limit, allowed_mime_types FROM storage.buckets WHERE id='patient-xrays';
 --
 -- 4. Receptionist write denial (run while authenticated as a receptionist; expect 42501):
