@@ -154,12 +154,19 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
         })
       } catch (err) {
         console.error('[DentalDashboard] stats fetch failed:', err)
-        if (mounted) setDbData(p => ({ ...p, loading: false }))
+        if (mounted) {
+          setDbData(p => ({ ...p, loading: false }))
+          // Surface the failure; otherwise a load error renders identically to a
+          // legitimately empty clinic ("No appointments" / "No recent patients").
+          toast?.(isRTL ? 'فشل تحميل بيانات لوحة التحكم' : 'Failed to load dashboard data', 'error')
+        }
       }
     }
     fetchData()
     return () => { mounted = false }
-  }, [refreshTrigger, patients])
+    // toast/isRTL intentionally omitted: this effect fetches on data triggers
+    // (refreshTrigger/patients) only, not on language toggle. See dateLabel below.
+  }, [refreshTrigger, patients]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Doctors
   useEffect(() => {
@@ -171,11 +178,12 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
         if (mounted) setDoctors(docs)
       } catch (err) {
         console.error('[DentalDashboard] doctors fetch failed:', err)
+        if (mounted) toast?.(isRTL ? 'فشل تحميل قائمة الأطباء' : 'Failed to load doctors', 'error')
       }
     }
     fetchDoctors()
     return () => { mounted = false }
-  }, [refreshTrigger])
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAction = async (id, status) => {
     // Snapshot for rollback if the write fails. Mirrors the optimistic-then-revert
