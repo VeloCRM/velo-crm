@@ -10,7 +10,7 @@ import { useState, useEffect } from 'react'
 import { FormField, inputStyle, selectStyle } from './shared'
 import MiniToothChart from './MiniToothChart'
 import { XRAY_TYPE_OPTIONS } from '../lib/xrayTypes'
-import { fetchTreatmentPlansForPatient } from '../lib/dental'
+import { fetchTreatmentPlansForPatient, treatmentPlanLabel } from '../lib/dental'
 import { todayLocal } from '../lib/date'
 
 export default function XrayMetadataForm({ value, onChange, patientId, lang, dir, disabled = false }) {
@@ -26,11 +26,6 @@ export default function XrayMetadataForm({ value, onChange, patientId, lang, dir
       .catch(err => { if (!cancelled) { console.error('[XrayMetadataForm] treatment plans load failed:', err); setTreatments([]) } })
     return () => { cancelled = true }
   }, [patientId])
-
-  const treatmentLabel = (t) => {
-    const d = t.created_at ? new Date(t.created_at).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
-    return `${d}${t.status ? ` — ${t.status}` : ''}`
-  }
 
   return (
     <fieldset disabled={disabled} className="contents">
@@ -52,7 +47,7 @@ export default function XrayMetadataForm({ value, onChange, patientId, lang, dir
       <FormField label={isRTL ? 'ربط بخطة علاج (اختياري)' : 'Link to treatment (optional)'} dir={dir}>
         <select value={value.treatment_plan_id} onChange={e => set('treatment_plan_id', e.target.value)} style={selectStyle(dir)}>
           <option value="">{isRTL ? 'بدون' : 'None'}</option>
-          {treatments.map(t => <option key={t.id} value={t.id}>{treatmentLabel(t)}</option>)}
+          {treatments.map(t => <option key={t.id} value={t.id}>{treatmentPlanLabel(t, isRTL)}</option>)}
         </select>
       </FormField>
 

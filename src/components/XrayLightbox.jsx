@@ -1,102 +1,19 @@
 /**
  * XrayLightbox — fullscreen in-place X-ray viewer (replaces PR-B1's window.open).
- * Custom zoom/pan/pinch (no library), metadata view + edit + delete, prev/next
- * across the grid's filtered set. Dark overlay at z-[2900] (ConfirmDialog sits
- * above at 3000). NOT wrapped in .ds-root (would hijack to the light surface).
+ * Custom zoom/pan/pinch (useZoomPan), metadata view + edit + delete, prev/next
+ * across the grid's filtered set. Dark overlay at z-[2900] (ConfirmDialog at
+ * 3000, toasts at 9999 sit above). NOT wrapped in .ds-root at the root (that
+ * would hijack to the light surface); the metadata sidebar IS a .ds-root island.
  */
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Button } from './ui'
 import { Icons } from './shared'
 import XrayMetadataForm from './XrayMetadataForm'
 import ConfirmDialog from './ConfirmDialog'
+import useZoomPan from '../hooks/useZoomPan'
 import { XRAY_TYPE_OPTIONS } from '../lib/xrayTypes'
 import { getXraySignedUrl, updateXray, deleteXray } from '../lib/xrays'
-import { fetchTreatmentPlansForPatient } from '../lib/dental'
-
-const MIN_SCALE = 0.5
-const MAX_SCALE = 5
-
-// ── Zoom/pan gesture core (~60 LOC; custom, no dependency) ───────────────────
-function useZoomPan(viewerRef) {
-  const [t, setT] = useState({ scale: 1, x: 0, y: 0 })
-  const pointers = useRef(new Map())
-  const pinch = useRef(null)
-  const reset = useCallback(() => setT({ scale: 1, x: 0, y: 0 }), [])
-
-  const zoomAt = useCallback((clientX, clientY, factor) => {
-    setT(prev => {
-      const el = viewerRef.current
-      if (!el) return prev
-      const r = el.getBoundingClientRect()
-      const cx = clientX - r.left - r.width / 2
-      const cy = clientY - r.top - r.height / 2
-      const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, prev.scale * factor))
-      const k = scale / prev.scale
-      const mx = (r.width * scale) / 2
-      const my = (r.height * scale) / 2
-      const nx = Math.max(-mx, Math.min(mx, cx - (cx - prev.x) * k))
-      const ny = Math.max(-my, Math.min(my, cy - (cy - prev.y) * k))
-      return { scale, x: nx, y: ny }
-    })
-  }, [viewerRef])
-
-  // Non-passive wheel so preventDefault works; cleaned up on unmount.
-  useEffect(() => {
-    const el = viewerRef.current
-    if (!el) return
-    const onWheel = (e) => { e.preventDefault(); zoomAt(e.clientX, e.clientY, e.deltaY < 0 ? 1.1 : 1 / 1.1) }
-    el.addEventListener('wheel', onWheel, { passive: false })
-    return () => el.removeEventListener('wheel', onWheel)
-  }, [viewerRef, zoomAt])
-
-  const onPointerDown = (e) => {
-    e.currentTarget.setPointerCapture?.(e.pointerId)
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    if (pointers.current.size === 2) {
-      const [a, b] = [...pointers.current.values()]
-      pinch.current = { dist: Math.hypot(a.x - b.x, a.y - b.y) }
-    }
-  }
-  const onPointerMove = (e) => {
-    const prev = pointers.current.get(e.pointerId)
-    if (!prev) return
-    pointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    if (pointers.current.size === 1) {
-      const dx = e.clientX - prev.x
-      const dy = e.clientY - prev.y
-      setT(p => {
-        const el = viewerRef.current
-        const r = el?.getBoundingClientRect()
-        const mx = r ? (r.width * p.scale) / 2 : Infinity
-        const my = r ? (r.height * p.scale) / 2 : Infinity
-        return { ...p, x: Math.max(-mx, Math.min(mx, p.x + dx)), y: Math.max(-my, Math.min(my, p.y + dy)) }
-      })
-    } else if (pointers.current.size === 2 && pinch.current) {
-      const [a, b] = [...pointers.current.values()]
-      const dist = Math.hypot(a.x - b.x, a.y - b.y)
-      zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, dist / pinch.current.dist)
-      pinch.current.dist = dist
-    }
-  }
-  const endPointer = (e) => {
-    pointers.current.delete(e.pointerId)
-    if (pointers.current.size < 2) pinch.current = null
-  }
-
-  const zoomBy = (factor) => {
-    const el = viewerRef.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    zoomAt(r.left + r.width / 2, r.top + r.height / 2, factor)
-  }
-
-  return {
-    t,
-    reset,
-    zoomBy,
-    handlers: { onPointerDown, onPointerMove, onPointerUp: endPointer, onPointerCancel: endPointer },
-  }
-}
+import { fetchTreatmentPlansForPatient, treatmentPlanLabel } from '../lib/dental'
 
 function formatBytes(n) {
   if (!n) return ''
@@ -106,11 +23,17 @@ function formatBytes(n) {
 
 export default function XrayLightbox({ list, index, canEdit, patientId, lang, dir, toast, onIndexChange, onClose, onMutated }) {
   const isRTL = lang === 'ar'
+  const overlayRef = useRef(null)
   const viewerRef = useRef(null)
   const closeBtnRef = useRef(null)
   const { t, reset, zoomBy, handlers } = useZoomPan(viewerRef)
 
-  const [active, setActive] = useState(list[index])
+  // Local working copy of the navigable set so an in-place edit survives prev/next
+  // (the prop `list` is a frozen snapshot from the grid). active is derived.
+  const [items, setItems] = useState(list)
+  useEffect(() => { setItems(list) }, [list])
+  const active = items[index]
+
   const [url, setUrl] = useState(null)
   const [imgState, setImgState] = useState('loading') // loading | loaded | error
   const [editing, setEditing] = useState(false)
@@ -122,15 +45,15 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
   const [planLabels, setPlanLabels] = useState({})
   const retried = useRef(false)
 
-  const hasPrev = index > 0
-  const hasNext = index < list.length - 1
   const goPrev = useCallback(() => { if (index > 0) onIndexChange(index - 1) }, [index, onIndexChange])
-  const goNext = useCallback(() => { if (index < list.length - 1) onIndexChange(index + 1) }, [index, list.length, onIndexChange])
+  const goNext = useCallback(() => { if (index < items.length - 1) onIndexChange(index + 1) }, [index, items.length, onIndexChange])
+  const hasPrev = index > 0
+  const hasNext = index < items.length - 1
 
-  // Sync the displayed row + reset view whenever the index changes.
-  useEffect(() => { setActive(list[index]); setEditing(false); setShowMeta(false); reset() }, [index]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Reset view/edit on navigation.
+  useEffect(() => { setEditing(false); setShowMeta(false); reset() }, [index, reset])
 
-  // Sign the full-size URL for the active row (progressive: thumbnail shows first).
+  // Sign the full-size URL for the active row (thumbnail shows first; progressive).
   useEffect(() => {
     if (!active?.id) return
     let cancelled = false
@@ -145,22 +68,25 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
   useEffect(() => {
     let cancelled = false
     fetchTreatmentPlansForPatient(patientId)
-      .then(rows => {
-        if (cancelled) return
-        const m = {}
-        for (const r of (rows || [])) {
-          const d = r.created_at ? new Date(r.created_at).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
-          m[r.id] = `${d}${r.status ? ` — ${r.status}` : ''}`
-        }
-        setPlanLabels(m)
-      })
+      .then(rows => { if (!cancelled) setPlanLabels(Object.fromEntries((rows || []).map(r => [r.id, treatmentPlanLabel(r, isRTL)]))) })
       .catch(err => console.error('[XrayLightbox] plan labels load failed:', err))
     return () => { cancelled = true }
   }, [patientId, isRTL])
 
-  // Keyboard: Esc close, arrows nav, +/- zoom, 0 fit (suspended during edit/confirm).
+  // Keyboard: Tab traps focus; Esc/arrows/zoom otherwise.
   useEffect(() => {
     const onKey = (e) => {
+      if (e.key === 'Tab') {
+        const root = overlayRef.current
+        if (!root) return
+        const f = [...root.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')]
+          .filter(el => !el.disabled && el.offsetParent !== null)
+        if (!f.length) return
+        const first = f[0]; const last = f[f.length - 1]
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+        return
+      }
       if (editing || confirmDel) { if (e.key === 'Escape') { setConfirmDel(false); setEditing(false) } return }
       if (e.key === 'Escape') onClose()
       else if (e.key === 'ArrowLeft') goPrev()
@@ -183,8 +109,7 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
   if (!active) return null
 
   const onImgError = () => {
-    // One re-fetch in case the signed URL expired mid-view.
-    if (retried.current) { setImgState('error'); return }
+    if (retried.current) { setImgState('error'); return } // one re-fetch on expiry
     retried.current = true
     getXraySignedUrl(active.id, 3600)
       .then(({ url: u }) => (u ? setUrl(u) : setImgState('error')))
@@ -202,33 +127,29 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
     setEditing(true)
   }
 
+  const patchAt = (i, row) => setItems(cur => cur.map((x, j) => (j === i ? row : x)))
+
   const saveEdit = async () => {
     setSaving(true)
-    const prev = active
-    const optimistic = {
-      ...active,
+    const i = index
+    const prev = items[i]
+    const updates = {
       xray_type: editForm.xray_type,
       date_taken: editForm.date_taken,
       teeth_shown: editForm.teeth,
       treatment_plan_id: editForm.treatment_plan_id || null,
       notes: editForm.notes || null,
     }
-    setActive(optimistic) // optimistic
+    patchAt(i, { ...prev, ...updates }) // optimistic (persists across prev/next via items)
     try {
-      const row = await updateXray(active.id, {
-        xray_type: editForm.xray_type,
-        date_taken: editForm.date_taken,
-        teeth_shown: editForm.teeth,
-        treatment_plan_id: editForm.treatment_plan_id || null,
-        notes: editForm.notes || null,
-      })
-      setActive(row)
+      const row = await updateXray(prev.id, updates)
+      patchAt(i, row)
       setEditing(false)
       toast?.(isRTL ? 'تم تحديث الصورة' : 'X-ray updated', 'success')
       onMutated?.()
     } catch (err) {
       console.error('[XrayLightbox] update failed:', err)
-      setActive(prev) // rollback
+      patchAt(i, prev) // rollback
       toast?.(err?.message || (isRTL ? 'فشل التحديث' : 'Update failed'), 'error')
     } finally {
       setSaving(false)
@@ -261,6 +182,7 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
 
   return (
     <div
+      ref={overlayRef}
       role="dialog"
       aria-modal="true"
       aria-label={isRTL ? 'عارض صور الأشعة' : 'X-ray viewer'}
@@ -273,12 +195,12 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
         <span className="text-white/50 hidden sm:inline">
           {[formatBytes(active.file_size), active.uploader?.full_name, dateLabel].filter(Boolean).join(' · ')}
         </span>
-        <span className="ms-auto text-white/60 text-xs">{index + 1} / {list.length}</span>
+        <span className="ms-auto text-white/60 text-xs">{index + 1} / {items.length}</span>
         <button type="button" onClick={() => setShowMeta(m => !m)} className="md:hidden px-2 py-1 rounded text-white/80 hover:bg-white/10" aria-label={isRTL ? 'تبديل العرض' : 'Toggle metadata'}>
           {showMeta ? (isRTL ? 'الصورة' : 'Image') : (isRTL ? 'التفاصيل' : 'Details')}
         </button>
         <button ref={closeBtnRef} type="button" onClick={onClose} aria-label={isRTL ? 'إغلاق' : 'Close'} className="w-8 h-8 grid place-items-center rounded-full text-white/90 hover:bg-white/15">
-          {Icons.x ? Icons.x(18) : '×'}
+          {Icons.x(18)}
         </button>
       </div>
 
@@ -290,13 +212,13 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
             ref={viewerRef}
             {...handlers}
             onDoubleClick={reset}
+            onClick={e => { if (e.target === e.currentTarget && t.scale === 1 && !editing) onClose() }}
             className="absolute inset-0 overflow-hidden grid place-items-center select-none"
             style={{ touchAction: 'none', cursor: t.scale > 1 ? 'grab' : 'default' }}
             aria-label={isRTL ? `صورة الأشعة: ${typeLabel}` : `X-ray image: ${typeLabel}`}
           >
-            {/* progressive: thumbnail under the full image */}
             {active.thumbnail_data_url && imgState !== 'loaded' && (
-              <img src={active.thumbnail_data_url} alt="" aria-hidden="true" className="max-w-full max-h-full object-contain opacity-60 blur-[1px]" />
+              <img src={active.thumbnail_data_url} alt="" aria-hidden="true" className="max-w-full max-h-full object-contain opacity-60 blur-[1px] pointer-events-none" />
             )}
             {url && imgState !== 'error' && (
               <img
@@ -305,7 +227,7 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
                 onLoad={() => setImgState('loaded')}
                 onError={onImgError}
                 draggable={false}
-                className="max-w-full max-h-full object-contain"
+                className="max-w-full max-h-full object-contain pointer-events-none"
                 style={{ transform: `translate(${t.x}px, ${t.y}px) scale(${t.scale})` }}
               />
             )}
@@ -328,8 +250,8 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
           </div>
 
           {/* Prev / next */}
-          {hasPrev && <button type="button" onClick={goPrev} aria-label={isRTL ? 'السابق' : 'Previous'} className="absolute start-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">‹</button>}
-          {hasNext && <button type="button" onClick={goNext} aria-label={isRTL ? 'التالي' : 'Next'} className="absolute end-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">›</button>}
+          {hasPrev && <button type="button" onClick={goPrev} aria-label={isRTL ? 'السابق' : 'Previous'} className="absolute start-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">{isRTL ? '›' : '‹'}</button>}
+          {hasNext && <button type="button" onClick={goNext} aria-label={isRTL ? 'التالي' : 'Next'} className="absolute end-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">{isRTL ? '‹' : '›'}</button>}
         </div>
 
         {/* Metadata sidebar */}
