@@ -186,18 +186,19 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
   }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAction = async (id, status) => {
-    // Snapshot for rollback if the write fails. Mirrors the optimistic-then-revert
-    // pattern in DentalTabs (handlePlanStatus / handleItemStatus / togglePin), which
-    // re-sync via reload(); here a direct snapshot/restore avoids a network round-trip.
-    const prevList = dbData.appointmentsList
+    // Optimistic-then-revert, mirroring DentalTabs (handlePlanStatus / handleItemStatus).
+    // Capture only THIS appointment's prior status — not a whole-list snapshot — so the
+    // revert can't clobber a concurrent action or a mid-flight refetch (stats effect).
+    const prevStatus = dbData.appointmentsList.find(a => a.id === id)?.status
     setDbData(prev => ({ ...prev, appointmentsList: prev.appointmentsList.map(a => a.id === id ? { ...a, status } : a) }))
     if (!isSupabaseConfigured()) return
     try {
       await updateAppointmentStatus(id, status)
     } catch (err) {
       console.error('[DentalDashboard] status update failed:', err)
-      // Revert the optimistic mutation so the UI never shows a status the DB rejected.
-      setDbData(prev => ({ ...prev, appointmentsList: prevList }))
+      // Revert just this row via a functional update so the UI never shows a status the
+      // DB rejected, while leaving any other concurrent/refetched changes intact.
+      setDbData(prev => ({ ...prev, appointmentsList: prev.appointmentsList.map(a => a.id === id ? { ...a, status: prevStatus } : a) }))
       const msg = ACTION_FAIL_MSG[status] || { en: 'Failed to update appointment', ar: 'فشل تحديث الموعد' }
       toast?.(isRTL ? msg.ar : msg.en, 'error')
     }
