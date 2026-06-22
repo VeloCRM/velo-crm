@@ -1052,7 +1052,7 @@ export default function App() {
             <>
               {page === 'dashboard' && (orgSettings === null || orgSettings === undefined
                 ? <SkeletonDashboard />
-                : <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} patients={patients} setPage={setPage} /></Suspense>
+                : <Suspense fallback={<SkeletonDashboard />}><DentalDashboard t={t} lang={lang} isRTL={isRTL} dir={dir} patients={patients} setPage={setPage} toast={addToast} /></Suspense>
               )}
               {page === 'patients' && <PatientsPage t={t} lang={lang} dir={dir} isRTL={isRTL} patients={patients} patientsTotal={patientsTotal} loadMorePatients={loadMorePatients} patientsLoadingMore={patientsLoadingMore} addPatient={addPatient} updatePatient={updatePatient} deletePatient={deletePatient} setPage={setPage} toast={addToast} showConfirm={showConfirm} urlPatientId={pageSubId} navigate={navigate} isOperator={isOperator} impersonation={impersonation} orgId={dentalOrgId} currentUserId={user?.id} currentUserRole={effectiveRole} patientFilterDoctorId={patientFilterDoctorId} setPatientFilterDoctorId={setPatientFilterDoctorId} />}
               {page === 'inbox' && <InboxPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} setPage={setPage} toast={addToast} urlConvId={pageSubId} navigate={navigate} teamMembers={teamMembers} isOperator={isOperator} impersonation={impersonation} orgId={dentalOrgId} demoMode={demoMode} sampleData={sampleData} />}

@@ -51,6 +51,15 @@ const STATUS_TONE = {
   cancelled:   'danger',
 }
 
+// Per-action failure message so the toast carries the action context the user
+// just attempted (e.g. "Failed to cancel appointment"). Falls back to a generic
+// message for any status not listed here.
+const ACTION_FAIL_MSG = {
+  confirmed: { en: 'Failed to confirm appointment',  ar: 'فشل تأكيد الموعد' },
+  cancelled: { en: 'Failed to cancel appointment',   ar: 'فشل إلغاء الموعد' },
+  completed: { en: 'Failed to complete appointment', ar: 'فشل إكمال الموعد' },
+}
+
 function aptTimeStr(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -70,7 +79,7 @@ function firstNameOf(fullName, fallback) {
 }
 
 /* ───────────────────────────────────────────────────────────────────────── */
-export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage }) {
+export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage, toast }) {
   void t
   const [dbData, setDbData] = useState({
     appointmentsCount: 0, appointmentsList: [],
@@ -145,12 +154,19 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
         })
       } catch (err) {
         console.error('[DentalDashboard] stats fetch failed:', err)
-        if (mounted) setDbData(p => ({ ...p, loading: false }))
+        if (mounted) {
+          setDbData(p => ({ ...p, loading: false }))
+          // Surface the failure; otherwise a load error renders identically to a
+          // legitimately empty clinic ("No appointments" / "No recent patients").
+          toast?.(isRTL ? 'فشل تحميل بيانات لوحة التحكم' : 'Failed to load dashboard data', 'error')
+        }
       }
     }
     fetchData()
     return () => { mounted = false }
-  }, [refreshTrigger, patients])
+    // toast/isRTL intentionally omitted: this effect fetches on data triggers
+    // (refreshTrigger/patients) only, not on language toggle. See dateLabel below.
+  }, [refreshTrigger, patients]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Doctors
   useEffect(() => {
@@ -162,17 +178,30 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
         if (mounted) setDoctors(docs)
       } catch (err) {
         console.error('[DentalDashboard] doctors fetch failed:', err)
+        if (mounted) toast?.(isRTL ? 'فشل تحميل قائمة الأطباء' : 'Failed to load doctors', 'error')
       }
     }
     fetchDoctors()
     return () => { mounted = false }
-  }, [refreshTrigger])
+  }, [refreshTrigger]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleAction = async (id, status) => {
+    // Optimistic-then-revert, mirroring DentalTabs (handlePlanStatus / handleItemStatus).
+    // Capture only THIS appointment's prior status — not a whole-list snapshot — so the
+    // revert can't clobber a concurrent action or a mid-flight refetch (stats effect).
+    const prevStatus = dbData.appointmentsList.find(a => a.id === id)?.status
     setDbData(prev => ({ ...prev, appointmentsList: prev.appointmentsList.map(a => a.id === id ? { ...a, status } : a) }))
     if (!isSupabaseConfigured()) return
-    try { await updateAppointmentStatus(id, status) }
-    catch (err) { console.error('[DentalDashboard] status update failed:', err) }
+    try {
+      await updateAppointmentStatus(id, status)
+    } catch (err) {
+      console.error('[DentalDashboard] status update failed:', err)
+      // Revert just this row via a functional update so the UI never shows a status the
+      // DB rejected, while leaving any other concurrent/refetched changes intact.
+      setDbData(prev => ({ ...prev, appointmentsList: prev.appointmentsList.map(a => a.id === id ? { ...a, status: prevStatus } : a) }))
+      const msg = ACTION_FAIL_MSG[status] || { en: 'Failed to update appointment', ar: 'فشل تحديث الموعد' }
+      toast?.(isRTL ? msg.ar : msg.en, 'error')
+    }
   }
 
   const today = new Date()
