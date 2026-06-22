@@ -51,6 +51,15 @@ const STATUS_TONE = {
   cancelled:   'danger',
 }
 
+// Per-action failure message so the toast carries the action context the user
+// just attempted (e.g. "Failed to cancel appointment"). Falls back to a generic
+// message for any status not listed here.
+const ACTION_FAIL_MSG = {
+  confirmed: { en: 'Failed to confirm appointment',  ar: 'فشل تأكيد الموعد' },
+  cancelled: { en: 'Failed to cancel appointment',   ar: 'فشل إلغاء الموعد' },
+  completed: { en: 'Failed to complete appointment', ar: 'فشل إكمال الموعد' },
+}
+
 function aptTimeStr(iso) {
   if (!iso) return ''
   const d = new Date(iso)
@@ -70,7 +79,7 @@ function firstNameOf(fullName, fallback) {
 }
 
 /* ───────────────────────────────────────────────────────────────────────── */
-export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage }) {
+export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage, toast }) {
   void t
   const [dbData, setDbData] = useState({
     appointmentsCount: 0, appointmentsList: [],
@@ -169,10 +178,21 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
   }, [refreshTrigger])
 
   const handleAction = async (id, status) => {
+    // Snapshot for rollback if the write fails. Mirrors the optimistic-then-revert
+    // pattern in DentalTabs (handlePlanStatus / handleItemStatus / togglePin), which
+    // re-sync via reload(); here a direct snapshot/restore avoids a network round-trip.
+    const prevList = dbData.appointmentsList
     setDbData(prev => ({ ...prev, appointmentsList: prev.appointmentsList.map(a => a.id === id ? { ...a, status } : a) }))
     if (!isSupabaseConfigured()) return
-    try { await updateAppointmentStatus(id, status) }
-    catch (err) { console.error('[DentalDashboard] status update failed:', err) }
+    try {
+      await updateAppointmentStatus(id, status)
+    } catch (err) {
+      console.error('[DentalDashboard] status update failed:', err)
+      // Revert the optimistic mutation so the UI never shows a status the DB rejected.
+      setDbData(prev => ({ ...prev, appointmentsList: prevList }))
+      const msg = ACTION_FAIL_MSG[status] || { en: 'Failed to update appointment', ar: 'فشل تحديث الموعد' }
+      toast?.(isRTL ? msg.ar : msg.en, 'error')
+    }
   }
 
   const today = new Date()
