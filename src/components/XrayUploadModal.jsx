@@ -27,40 +27,50 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
   const [items, setItems] = useState([]) // { id, file, thumb, status:'pending'|'ok'|'failed', error }
   const [form, setForm] = useState({ xray_type: 'bitewing', date_taken: todayLocal(), teeth: [], treatment_plan_id: '', notes: '' })
   const [submitting, setSubmitting] = useState(false)
+  const [dragging, setDragging] = useState(false)
   const [treatments, setTreatments] = useState([])
   const fileInputRef = useRef(null)
+  const thumbTried = useRef(new Set()) // item ids we've already attempted a thumbnail for
 
-  // Optional treatment link; degrade quietly if it fails to load.
+  // Optional treatment link; degrade quietly if it fails to load (logged, not toasted).
   useEffect(() => {
     let cancelled = false
     fetchTreatmentPlansForPatient(patientId)
       .then(rows => { if (!cancelled) setTreatments(rows || []) })
-      .catch(() => { if (!cancelled) setTreatments([]) })
+      .catch(err => { if (!cancelled) { console.error('[XrayUploadModal] treatment plans load failed:', err); setTreatments([]) } })
     return () => { cancelled = true }
   }, [patientId])
+
+  // Generate a thumbnail for each pending item exactly once. Driven off `items`
+  // (not addFiles) so it can't race the cap or attach to the wrong id; cosmetic,
+  // so a failure just leaves the placeholder.
+  useEffect(() => {
+    for (const it of items) {
+      if (it.thumb == null && it.status === 'pending' && !thumbTried.current.has(it.id)) {
+        thumbTried.current.add(it.id)
+        generateThumbnail(it.file)
+          .then(thumb => setItems(cur => cur.map(x => (x.id === it.id ? { ...x, thumb } : x))))
+          .catch(err => console.warn('[XrayUploadModal] thumbnail failed:', it.file?.name, err))
+      }
+    }
+  }, [items])
 
   const addFiles = (fileList) => {
     const incoming = Array.from(fileList || []).filter(f => ACCEPT_MIME.includes(f.type))
     if (!incoming.length) return
-    const room = Math.max(0, MAX_FILES - items.length)
-    if (incoming.length > room) {
+    // Pre-build with ids OUTSIDE the updater; the updater itself enforces the cap
+    // against the authoritative `prev.length` (not a stale closure).
+    const candidates = incoming.map(f => ({ id: crypto.randomUUID(), file: f, thumb: null, status: 'pending', error: null }))
+    setItems(prev => [...prev, ...candidates.slice(0, Math.max(0, MAX_FILES - prev.length))])
+    if (items.length + incoming.length > MAX_FILES) {
       toast?.(isRTL ? `الحد الأقصى ${MAX_FILES} ملفًا للدفعة` : `Maximum ${MAX_FILES} files per batch`, 'error')
     }
-    const added = incoming.slice(0, room).map(f => ({ id: crypto.randomUUID(), file: f, thumb: null, status: 'pending', error: null }))
-    if (!added.length) return
-    setItems(prev => [...prev, ...added])
-    // Best-effort thumbnails (placeholder on failure). Side-effect outside the updater.
-    added.forEach(it => {
-      generateThumbnail(it.file)
-        .then(thumb => setItems(cur => cur.map(x => (x.id === it.id ? { ...x, thumb } : x))))
-        .catch(() => { /* leave thumb null → placeholder */ })
-    })
   }
 
   const removeItem = (id) => setItems(prev => prev.filter(x => x.id !== id))
 
   const onPick = (e) => { addFiles(e.target.files); e.target.value = '' }
-  const onDrop = (e) => { e.preventDefault(); if (!submitting) addFiles(e.dataTransfer?.files) }
+  const onDrop = (e) => { e.preventDefault(); setDragging(false); if (!submitting) addFiles(e.dataTransfer?.files) }
 
   const handleSubmit = async () => {
     if (!items.length || submitting) return
@@ -112,7 +122,7 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
     ? (isRTL ? 'جارٍ الرفع…' : 'Uploading…')
     : failedCount > 0
       ? (isRTL ? `إعادة محاولة الفاشل (${failedCount})` : `Retry failed (${failedCount})`)
-      : (isRTL ? `رفع ${items.length || ''}` : `Upload ${items.length || ''}`.trim())
+      : (isRTL ? `رفع ${items.length}` : `Upload ${items.length}`) // button is disabled at 0 items
 
   const treatmentLabel = (t) => {
     const d = t.created_at ? new Date(t.created_at).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
@@ -127,12 +137,17 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
         {/* Dropzone */}
         <div
           onClick={() => !submitting && fileInputRef.current?.click()}
-          onDragOver={e => e.preventDefault()}
+          onDragOver={e => { e.preventDefault(); if (!dragging) setDragging(true) }}
+          onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           role="button"
           tabIndex={0}
+          aria-label={isRTL ? 'منطقة رفع صور الأشعة' : 'X-ray upload dropzone'}
           onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click() } }}
-          className="rounded-xl border-2 border-dashed border-navy-200 py-6 px-4 text-center cursor-pointer hover:border-accent-cyan-400 hover:bg-accent-cyan-50/30 transition-colors"
+          className={[
+            'rounded-xl border-2 border-dashed py-6 px-4 text-center cursor-pointer transition-colors',
+            dragging ? 'border-accent-cyan-500 bg-accent-cyan-50/60' : 'border-navy-200 hover:border-accent-cyan-400 hover:bg-accent-cyan-50/30',
+          ].join(' ')}
         >
           <div className="flex items-center justify-center gap-2 text-navy-500 text-sm">
             {Icons.plus ? Icons.plus(16) : '+'}

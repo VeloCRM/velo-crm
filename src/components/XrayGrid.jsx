@@ -42,7 +42,7 @@ function Placeholder() {
   )
 }
 
-export default function XrayGrid({ xrays, loading, canEdit, isRTL, busyId, onOpen, onUpload }) {
+export default function XrayGrid({ xrays, loading, canEdit, roleLoading, isRTL, busyId, onOpen, onUpload }) {
   const [filter, setFilter] = useState('all')
   const typeLabel = (id) => {
     const o = XRAY_TYPE_OPTIONS.find(t => t.id === id)
@@ -79,7 +79,9 @@ export default function XrayGrid({ xrays, loading, canEdit, isRTL, busyId, onOpe
       <div className="py-10 flex flex-col items-center gap-3 text-center">
         <Placeholder />
         <p className="text-sm text-navy-600 m-0">
-          {canEdit
+          {/* While role is still resolving, show the neutral copy — never flash the
+              receptionist message to a doctor. */}
+          {roleLoading || canEdit
             ? (isRTL ? 'لا توجد صور أشعة بعد.' : 'No X-rays yet.')
             : (isRTL ? 'ستظهر صور الأشعة هنا بعد أن يرفعها طبيبك.' : 'X-rays will appear here once your doctor uploads them.')}
         </p>
@@ -102,7 +104,7 @@ export default function XrayGrid({ xrays, loading, canEdit, isRTL, busyId, onOpe
 
       {groups.map(([date, list]) => (
         <section key={date} className="flex flex-col gap-2">
-          <h4 className="text-xs font-semibold text-navy-500 m-0">{formatDate(date, isRTL)}</h4>
+          <h4 className="text-xs font-semibold text-navy-500 m-0">{formatDate(date, isRTL) || (isRTL ? 'بدون تاريخ' : 'Undated')}</h4>
           <div className="grid gap-2" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
             {list.map(x => (
               <button

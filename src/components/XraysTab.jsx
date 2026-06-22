@@ -60,7 +60,7 @@ export default function XraysTab({ patient, lang, dir, toast }) {
         xrays={xrays}
         loading={loading}
         canEdit={canEdit}
-        lang={lang}
+        roleLoading={roleLoading}
         isRTL={isRTL}
         busyId={busyId}
         onOpen={openFull}
