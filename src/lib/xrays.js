@@ -73,9 +73,10 @@ function assertXrayType(t) {
 }
 
 /**
- * Normalize teeth_shown to an array of valid FDI code strings (e.g. '16').
- * Drops blanks, de-dupes, caps length; throws on any non-FDI code so a typo
- * surfaces before the write (matches dental.js tooth handling).
+ * Normalize teeth_shown to an array of canonical FDI code strings (e.g. '16').
+ * Requires a plain two-digit string AND a valid FDI code — this rejects inputs
+ * like '16.0' / '0x10' / '+16' that Number()-based validation would accept but
+ * which would persist as junk that never matches a bare '16'. De-dupes + caps.
  */
 function normalizeTeeth(teeth) {
   if (teeth == null) return []
@@ -84,7 +85,7 @@ function normalizeTeeth(teeth) {
   for (const t of teeth) {
     const code = String(t).trim()
     if (!code) continue
-    if (!isValidFdiTooth(code)) {
+    if (!/^\d{2}$/.test(code) || !isValidFdiTooth(code)) {
       throw new Error(`Invalid FDI tooth code "${t}" in teeth_shown (use 11-18, 21-28, 31-38, 41-48).`)
     }
     if (!out.includes(code)) out.push(code)
@@ -93,11 +94,38 @@ function normalizeTeeth(teeth) {
   return out
 }
 
-/** Normalize a date input to a YYYY-MM-DD string (defaults today). */
+/** Local YYYY-MM-DD — avoids the UTC off-by-one toISOString() causes near midnight. */
+function toYmdLocal(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+/** Normalize a date input (a Date instance or a 'YYYY-MM-DD' string) → 'YYYY-MM-DD'. */
 function normalizeDate(d) {
-  if (!d) return new Date().toISOString().slice(0, 10)
+  if (!d) return toYmdLocal(new Date())
+  if (d instanceof Date) {
+    if (Number.isNaN(d.getTime())) throw new Error('Invalid date_taken (invalid Date).')
+    return toYmdLocal(d)
+  }
   const s = String(d).slice(0, 10)
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) throw new Error(`Invalid date_taken "${d}" (expected YYYY-MM-DD).`)
+  return s
+}
+
+const MAX_THUMB_BYTES = 64 * 1024 // generated thumb is ~5-15 KB; cap well above to bound row size
+
+/**
+ * Accept only a small base64 JPEG/PNG data URL — exactly what generateThumbnail
+ * emits. Anything else (wrong type, junk string, oversized blob) → null, keeping
+ * this the only field NOT written verbatim and bounding row/response size.
+ */
+function sanitizeThumbnail(dataUrl) {
+  if (!dataUrl) return null
+  const s = String(dataUrl)
+  if (s.length > MAX_THUMB_BYTES) return null
+  if (!/^data:image\/(jpeg|png);base64,[A-Za-z0-9+/=]+$/.test(s)) return null
   return s
 }
 
@@ -134,6 +162,7 @@ export async function generateThumbnail(file) {
     canvas.width = w
     canvas.height = h
     const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('generateThumbnail: 2D canvas context unavailable')
     ctx.drawImage(bitmap, 0, 0, w, h)
     return canvas.toDataURL('image/jpeg', THUMB_QUALITY)
   } finally {
@@ -199,7 +228,7 @@ export async function uploadXray({ patientId, file, metadata = {}, thumbnailData
       storage_path: storagePath,
       mime_type: file.type || null,
       file_size: Number.isFinite(file.size) ? file.size : null,
-      thumbnail_data_url: thumbnailDataUrl || null,
+      thumbnail_data_url: sanitizeThumbnail(thumbnailDataUrl),
       xray_type: xrayType,
       date_taken: dateTaken,
       teeth_shown: teeth,
@@ -283,6 +312,12 @@ export async function updateXray(xrayId, updates = {}) {
   if (updates.notes !== undefined) patch.notes = updates.notes ? sanitizeNotes(updates.notes) : null
   if (updates.treatment_plan_id !== undefined) patch.treatment_plan_id = updates.treatment_plan_id || null
 
+  // patch always carries updated_at; if that's the ONLY key, no real edit was
+  // requested — avoid a no-op write + a meaningless audit row.
+  if (Object.keys(patch).length === 1) {
+    throw new Error('updateXray: no editable fields provided')
+  }
+
   const { data: row, error } = await supabase
     .from('xrays')
     .update(patch)
@@ -332,9 +367,13 @@ export async function deleteXray(xrayId) {
     .eq('org_id', orgId)
   if (dErr) throw dErr
 
+  let blobRemoved = true
   if (row?.storage_path) {
     const { error: sErr } = await supabase.storage.from(BUCKET).remove([row.storage_path])
-    if (sErr) console.warn('[xrays] orphaned blob not removed:', row.storage_path, sErr)
+    if (sErr) {
+      blobRemoved = false
+      console.warn('[xrays] orphaned blob not removed:', row.storage_path, sErr)
+    }
   }
 
   await logAuditEvent({
@@ -342,6 +381,7 @@ export async function deleteXray(xrayId) {
     action: 'xray.delete',
     entityType: 'xray',
     entityId: xrayId,
+    payload: { blob_removed: blobRemoved }, // trace orphan-blob leaks via audit_log
   })
 }
 

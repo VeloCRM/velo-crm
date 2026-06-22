@@ -38,11 +38,14 @@ BEGIN
   END IF;
 
   IF EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'patient-xrays') THEN
+    -- Set-equality (order-insensitive): `=` on text[] is order-sensitive, which
+    -- would falsely abort if a pre-existing bucket stored the MIME list reversed.
     PERFORM 1 FROM storage.buckets
      WHERE id = 'patient-xrays'
        AND public IS FALSE
        AND file_size_limit = 26214400
-       AND allowed_mime_types = ARRAY['image/jpeg','image/png'];
+       AND allowed_mime_types @> ARRAY['image/jpeg','image/png']
+       AND allowed_mime_types <@ ARRAY['image/jpeg','image/png'];
     IF NOT FOUND THEN
       RAISE EXCEPTION
         'Pre-flight: a patient-xrays bucket already exists with unexpected config '
