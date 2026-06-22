@@ -84,9 +84,10 @@ export function groupBySurface(entries) {
   const bySurface = {}
   const surfaceClaimed = {} // surface → its latest entry already seen (override guard)
   let whole = null
+  let wholeClaimed = false  // the whole-tooth slot's latest entry has been seen
   for (const e of (entries || [])) {
     if (WHOLE_TOOTH_FINDINGS.has(e.finding)) {
-      if (!whole) whole = e // first seen = latest (DESC order); type wins over surface
+      if (!wholeClaimed) { wholeClaimed = true; whole = e } // type wins over surface; latest claims
       continue
     }
     const surf = (e.surface && e.surface !== 'whole') ? e.surface : null
@@ -95,8 +96,11 @@ export function groupBySurface(entries) {
         surfaceClaimed[surf] = true
         if (e.finding !== 'healthy') bySurface[surf] = e // healthy claims slot but doesn't tint
       }
-    } else if (e.finding !== 'healthy' && !whole) {
-      whole = e // legacy: surface-specific finding saved without a surface
+    } else if (!wholeClaimed) {
+      // null/'whole' surface (legacy whole-tooth entry). Healthy claims the slot
+      // so it clears an older whole-tooth finding, but renders no tint.
+      wholeClaimed = true
+      if (e.finding !== 'healthy') whole = e
     }
   }
   return { bySurface, whole }
