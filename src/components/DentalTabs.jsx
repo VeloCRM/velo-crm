@@ -16,6 +16,7 @@ import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import { GlassCard, Button } from './ui'
 import ToothLabel from './ToothLabel'
 import ToothSurfaces from './ToothSurfaces'
+import { WHOLE_TOOTH_FINDINGS } from '../lib/toothSurfaces'
 import useMyToothNotation from '../hooks/useMyToothNotation'
 import {
   fetchPatientMedicalHistory,
@@ -431,13 +432,19 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
     return isRTL ? s.ar : s.en
   }
 
+  // Whole-tooth finding types cover the entire tooth → force/lock surface to
+  // "Whole tooth" regardless of how the modal was opened (hybrid rule).
+  const isWholeFinding = WHOLE_TOOTH_FINDINGS.has(form.finding)
+  const surfaceLocked = isWholeFinding || prefillSurface != null
+  const effectiveSurface = isWholeFinding ? '' : form.surface
+
   const handleSubmit = async () => {
     if (!activeTooth) return
     setSubmitting(true)
     try {
       await addDentalChartEntry(patient.id, {
         tooth_number: activeTooth,
-        surface: form.surface || null,
+        surface: effectiveSurface || null,
         finding: form.finding,
         notes: form.notes || null,
       })
@@ -602,17 +609,40 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                   ))}
                 </select>
               </FormField>
-              <FormField label={isRTL ? 'السطح' : 'Surface'} dir={dir}>
-                {prefillSurface != null ? (
-                  // Opened from a surface wedge → surface is fixed, shown read-only.
-                  <select value={form.surface} disabled aria-readonly="true"
-                    style={{ ...selectStyle(dir), opacity: 0.75, cursor: 'not-allowed' }}>
+              <FormField
+                label={
+                  <span className="inline-flex items-center gap-1.5">
+                    {isRTL ? 'السطح' : 'Surface'}
+                    {surfaceLocked && (
+                      <span aria-hidden="true" className="text-navy-400" title={isRTL ? 'مقفل' : 'Locked'}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      </span>
+                    )}
+                  </span>
+                }
+                dir={dir}
+              >
+                {surfaceLocked ? (
+                  // Locked: whole-tooth finding type (surface forced to whole) OR opened
+                  // from a wedge (surface fixed to the clicked one). Distinct accent
+                  // outline + hint make the lock read as intentional, not broken.
+                  <select value={effectiveSurface} disabled aria-readonly="true"
+                    style={{ ...selectStyle(dir), borderColor: '#67e8f9', opacity: 0.9, cursor: 'not-allowed' }}>
                     {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{surfaceOptionLabel(s)}</option>)}
                   </select>
                 ) : (
                   <select value={form.surface} onChange={e => setForm(p => ({ ...p, surface: e.target.value }))} style={selectStyle(dir)}>
                     {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{surfaceOptionLabel(s)}</option>)}
                   </select>
+                )}
+                {surfaceLocked && (
+                  <p className="text-[11px] text-navy-500 mt-1 m-0 leading-snug">
+                    {isWholeFinding
+                      ? (isRTL ? 'معاينة شاملة — تغطي السن بالكامل.' : 'Whole-tooth finding — covers the entire tooth.')
+                      : (isRTL ? 'السطح محدد من السن الذي نقرت عليه — انقر رقم السن لإضافة معاينة بسطح مختلف.' : "Surface set by the clicked wedge — click the tooth number to add a finding on a different surface.")}
+                  </p>
                 )}
               </FormField>
               <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>

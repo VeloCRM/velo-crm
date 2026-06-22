@@ -68,23 +68,36 @@ export function surfaceLayout(fdi) {
 
 /**
  * Group a tooth's entries (assumed ordered recorded_at DESC, as
- * fetchDentalChartEntries returns them) into the latest finding per surface
- * plus the latest whole-tooth entry. An entry is treated as whole-tooth when
- * its finding is a structural whole-tooth finding OR it has no surface (legacy/
- * "whole tooth" entries) — the renderer tints those rather than dropping them.
+ * fetchDentalChartEntries returns them) for the hybrid render rule:
  *
- *   → { bySurface: { mesial: entry, ... }, whole: entry|null }
+ *   - finding TYPE wins: any whole-tooth finding (missing/implant/crown/bridge/
+ *     root_canal_done) → whole-tooth tint, REGARDLESS of the saved surface (a
+ *     crown covers the whole tooth even if a surface was recorded).
+ *   - cavity/restoration on a real surface → that wedge.
+ *   - cavity/restoration with null/'whole' surface (legacy) → whole-tooth tint.
+ *   - healthy → no tint, but still CLAIMS its surface slot so it overrides an
+ *     older finding on the same surface (latest-overrides per Q3).
+ *
+ *   → { bySurface: { mesial: entry, ... }, whole: entry|null }   (latest wins)
  */
 export function groupBySurface(entries) {
   const bySurface = {}
+  const surfaceClaimed = {} // surface → its latest entry already seen (override guard)
   let whole = null
   for (const e of (entries || [])) {
-    const isWhole = WHOLE_TOOTH_FINDINGS.has(e.finding) || !e.surface
-    if (isWhole) {
-      if (!whole) whole = e // first seen = latest (DESC order)
+    if (WHOLE_TOOTH_FINDINGS.has(e.finding)) {
+      if (!whole) whole = e // first seen = latest (DESC order); type wins over surface
       continue
     }
-    if (!(e.surface in bySurface)) bySurface[e.surface] = e
+    const surf = (e.surface && e.surface !== 'whole') ? e.surface : null
+    if (surf) {
+      if (!(surf in surfaceClaimed)) {
+        surfaceClaimed[surf] = true
+        if (e.finding !== 'healthy') bySurface[surf] = e // healthy claims slot but doesn't tint
+      }
+    } else if (e.finding !== 'healthy' && !whole) {
+      whole = e // legacy: surface-specific finding saved without a surface
+    }
   }
   return { bySurface, whole }
 }
