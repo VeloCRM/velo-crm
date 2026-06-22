@@ -15,6 +15,8 @@ import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import { GlassCard, Button } from './ui'
 import ToothLabel from './ToothLabel'
+import ToothSurfaces from './ToothSurfaces'
+import { WHOLE_TOOTH_FINDINGS } from '../lib/toothSurfaces'
 import useMyToothNotation from '../hooks/useMyToothNotation'
 import {
   fetchPatientMedicalHistory,
@@ -372,6 +374,9 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
   const [activeTooth, setActiveTooth] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [form, setForm] = useState({ finding: 'cavity', surface: '', notes: '' })
+  // When set, the modal was opened from a specific surface wedge → surface
+  // dropdown is locked. null → interactive (whole-tooth / any surface) entry.
+  const [prefillSurface, setPrefillSurface] = useState(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -388,22 +393,50 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
 
   useEffect(() => { reload() }, [reload])
 
-  // Most-recent finding per tooth, derived from the entries list (already
-  // ordered DESC by recorded_at by the helper).
-  const findingByTooth = useMemo(() => {
+  // All entries grouped per tooth (each list stays DESC by recorded_at, as the
+  // helper returns them). ToothSurfaces derives latest-per-surface from this.
+  const entriesByTooth = useMemo(() => {
     const map = {}
     for (const e of entries) {
-      if (!(e.tooth_number in map)) map[e.tooth_number] = e.finding
+      if (!map[e.tooth_number]) map[e.tooth_number] = []
+      map[e.tooth_number].push(e)
     }
     return map
   }, [entries])
 
+  // Interactive entry (whole-tooth or any surface) — surface dropdown unlocked.
   const openTooth = (n) => {
     if (!canEdit) return
     setActiveTooth(n)
+    setPrefillSurface(null)
     setForm({ finding: 'cavity', surface: '', notes: '' })
     setShowForm(true)
   }
+
+  // Surface-specific entry from a wedge click — surface dropdown locked.
+  const openSurface = (n, surface) => {
+    if (!canEdit) return
+    setActiveTooth(n)
+    setPrefillSurface(surface)
+    setForm({ finding: 'cavity', surface, notes: '' })
+    setShowForm(true)
+  }
+
+  const closeForm = () => { setShowForm(false); setActiveTooth(null); setPrefillSurface(null) }
+
+  // Anterior teeth (FDI position 1-3) label the central surface "Incisal"
+  // while still storing it as 'occlusal' (no schema/data change).
+  const isAnterior = activeTooth != null && (activeTooth % 10) <= 3
+  const surfaceOptionLabel = (s) => {
+    if (s.id === 'occlusal' && isAnterior) return isRTL ? 'قاطعة' : 'Incisal'
+    return isRTL ? s.ar : s.en
+  }
+
+  // Whole-tooth finding types cover the entire tooth → force/lock surface to
+  // "Whole tooth" regardless of how the modal was opened (hybrid rule).
+  const isWholeFinding = WHOLE_TOOTH_FINDINGS.has(form.finding)
+  const surfaceLocked = isWholeFinding || prefillSurface != null
+  const effectiveSurface = isWholeFinding ? '' : form.surface
 
   const handleSubmit = async () => {
     if (!activeTooth) return
@@ -411,14 +444,13 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
     try {
       await addDentalChartEntry(patient.id, {
         tooth_number: activeTooth,
-        surface: form.surface || null,
+        surface: effectiveSurface || null,
         finding: form.finding,
         notes: form.notes || null,
       })
       await reload()
       toast?.(isRTL ? 'تم تسجيل المعاينة' : 'Finding recorded', 'success')
-      setShowForm(false)
-      setActiveTooth(null)
+      closeForm()
     } catch (err) {
       console.error('[DentalChartTab] add failed:', err)
       toast?.(isRTL ? 'فشل إضافة المعاينة' : 'Failed to add finding', 'error')
@@ -439,48 +471,44 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
     }
   }
 
-  const Tooth = ({ num }) => {
-    const finding = findingByTooth[num] || 'healthy'
-    const style = FINDING_STYLES[finding]
-    return (
-      <button
-        type="button"
-        onClick={() => openTooth(num)}
-        disabled={!canEdit}
-        title={`#${num} — ${findingLabel(finding, isRTL)}`}
-        style={{
-          width: '100%', aspectRatio: '1 / 1', minHeight: 36,
-          border: `2px solid ${style.color}`, borderRadius: 8,
-          cursor: canEdit ? 'pointer' : 'default',
-          background: style.bg, color: '#0A2540', fontWeight: 700, fontSize: 11,
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          fontFamily: 'inherit', transition: 'transform .12s', padding: 0,
-        }}
-      >
-        <span style={{ fontSize: 11, lineHeight: 1 }}>
-          <ToothLabel fdi={num} notation={notation} locale={lang} />
-        </span>
-      </button>
-    )
-  }
+  const renderTooth = (num) => (
+    <ToothSurfaces
+      key={num}
+      fdi={num}
+      findings={entriesByTooth[num] || []}
+      findingStyles={FINDING_STYLES}
+      onSurfaceClick={(surface) => openSurface(num, surface)}
+      onAddClick={() => openTooth(num)}
+      notation={notation}
+      locale={lang}
+      disabled={!canEdit}
+    />
+  )
 
   return (
     <div className="ds-root flex flex-col gap-3">
       {/* Legend */}
-      <GlassCard padding="md" className="flex flex-wrap gap-x-4 gap-y-2">
-        {Object.entries(FINDING_STYLES).map(([key, val]) => (
-          <div key={key} className="flex items-center gap-1.5 text-xs">
-            <span
-              aria-hidden="true"
-              className="block w-3.5 h-3.5 rounded-sm"
-              style={{ background: val.bg, border: `2px solid ${val.color}` }}
-            />
-            <span className="text-navy-600 font-medium">{isRTL ? val.ar : val.label}</span>
-          </div>
-        ))}
+      <GlassCard padding="md" className="flex flex-col gap-2">
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {Object.entries(FINDING_STYLES).map(([key, val]) => (
+            <div key={key} className="flex items-center gap-1.5 text-xs">
+              <span
+                aria-hidden="true"
+                className="block w-3.5 h-3.5 rounded-sm"
+                style={{ background: val.bg, border: `2px solid ${val.color}` }}
+              />
+              <span className="text-navy-600 font-medium">{isRTL ? val.ar : val.label}</span>
+            </div>
+          ))}
+        </div>
+        <p className="text-[11px] text-navy-500 m-0 leading-snug">
+          {isRTL
+            ? 'انقر على سطح السن لتسجيل معاينة عليه، أو على رقم السن للمعاينات الشاملة للسن (مفقود، تاج، زرعة…). المعاينات الشاملة تلوّن السن بالكامل.'
+            : 'Click a surface to record a finding on it, or the tooth number for whole-tooth findings (missing, crown, implant…). Whole-tooth findings tint the entire tooth.'}
+        </p>
       </GlassCard>
 
-      {/* Chart grid (visual rebuilt in Phase 3 with anatomical SVGs) */}
+      {/* Chart grid — 5-surface diamond-wedge teeth (see ToothSurfaces). */}
       <GlassCard padding="lg">
         {loading ? (
           <div className="text-center text-sm text-navy-500 py-5">
@@ -493,12 +521,14 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                 ? (isRTL ? 'الفك العلوي' : 'Upper jaw')
                 : (isRTL ? 'الفك العلوي (18-11 / 21-28)' : 'Upper jaw (18-11 / 21-28)')}
             </div>
-            <div className="grid grid-cols-16 gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
-              {UPPER_TEETH.map(n => <Tooth key={n} num={n} />)}
+            {/* dir=ltr pins the arch order (patient-right on the viewer's left)
+                regardless of UI language — a dental chart is conventionally LTR. */}
+            <div dir="ltr" className="grid grid-cols-16 gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+              {UPPER_TEETH.map(renderTooth)}
             </div>
             <div className="h-px bg-navy-100/80 my-1.5 mb-4" />
-            <div className="grid grid-cols-16 gap-1.5" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
-              {LOWER_TEETH.map(n => <Tooth key={n} num={n} />)}
+            <div dir="ltr" className="grid grid-cols-16 gap-1.5" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+              {LOWER_TEETH.map(renderTooth)}
             </div>
             <div className="text-[11px] font-semibold text-navy-500 mt-2 text-center uppercase tracking-wider">
               {notation === 'palmer'
@@ -566,7 +596,7 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
 
       {/* Add-finding modal */}
       {showForm && activeTooth && (
-        <Modal onClose={() => { if (!submitting) { setShowForm(false); setActiveTooth(null) } }} dir={dir} width={460}>
+        <Modal onClose={() => { if (!submitting) closeForm() }} dir={dir} width={460}>
           <div className="ds-root">
             <form onSubmit={e => { e.preventDefault(); handleSubmit() }}>
               <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
@@ -579,17 +609,48 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                   ))}
                 </select>
               </FormField>
-              <FormField label={isRTL ? 'السطح' : 'Surface'} dir={dir}>
-                <select value={form.surface} onChange={e => setForm(p => ({ ...p, surface: e.target.value }))} style={selectStyle(dir)}>
-                  {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{isRTL ? s.ar : s.en}</option>)}
-                </select>
+              <FormField
+                label={
+                  <span className="inline-flex items-center gap-1.5">
+                    {isRTL ? 'السطح' : 'Surface'}
+                    {surfaceLocked && (
+                      <span aria-hidden="true" className="text-navy-400" title={isRTL ? 'مقفل' : 'Locked'}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                        </svg>
+                      </span>
+                    )}
+                  </span>
+                }
+                dir={dir}
+              >
+                {surfaceLocked ? (
+                  // Locked: whole-tooth finding type (surface forced to whole) OR opened
+                  // from a wedge (surface fixed to the clicked one). Distinct accent
+                  // outline + hint make the lock read as intentional, not broken.
+                  <select value={effectiveSurface} disabled aria-readonly="true"
+                    style={{ ...selectStyle(dir), borderColor: '#67e8f9', opacity: 0.9, cursor: 'not-allowed' }}>
+                    {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{surfaceOptionLabel(s)}</option>)}
+                  </select>
+                ) : (
+                  <select value={form.surface} onChange={e => setForm(p => ({ ...p, surface: e.target.value }))} style={selectStyle(dir)}>
+                    {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{surfaceOptionLabel(s)}</option>)}
+                  </select>
+                )}
+                {surfaceLocked && (
+                  <p className="text-[11px] text-navy-500 mt-1 m-0 leading-snug">
+                    {isWholeFinding
+                      ? (isRTL ? 'معاينة شاملة — تغطي السن بالكامل.' : 'Whole-tooth finding — covers the entire tooth.')
+                      : (isRTL ? 'السطح محدد من السن الذي نقرت عليه — انقر رقم السن لإضافة معاينة بسطح مختلف.' : "Surface set by the clicked wedge — click the tooth number to add a finding on a different surface.")}
+                  </p>
+                )}
               </FormField>
               <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
                 <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} maxLength={500}
                   style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
               </FormField>
               <div className="flex gap-2 justify-end mt-2">
-                <Button variant="secondary" disabled={submitting} onClick={() => { setShowForm(false); setActiveTooth(null) }}>
+                <Button variant="secondary" disabled={submitting} onClick={closeForm}>
                   {isRTL ? 'إلغاء' : 'Cancel'}
                 </Button>
                 <Button variant="primary" type="submit" loading={submitting} disabled={submitting}>
