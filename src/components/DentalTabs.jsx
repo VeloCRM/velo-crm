@@ -514,11 +514,13 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                 ? (isRTL ? 'الفك العلوي' : 'Upper jaw')
                 : (isRTL ? 'الفك العلوي (18-11 / 21-28)' : 'Upper jaw (18-11 / 21-28)')}
             </div>
-            <div className="grid grid-cols-16 gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+            {/* dir=ltr pins the arch order (patient-right on the viewer's left)
+                regardless of UI language — a dental chart is conventionally LTR. */}
+            <div dir="ltr" className="grid grid-cols-16 gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
               {UPPER_TEETH.map(renderTooth)}
             </div>
             <div className="h-px bg-navy-100/80 my-1.5 mb-4" />
-            <div className="grid grid-cols-16 gap-1.5" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+            <div dir="ltr" className="grid grid-cols-16 gap-1.5" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
               {LOWER_TEETH.map(renderTooth)}
             </div>
             <div className="text-[11px] font-semibold text-navy-500 mt-2 text-center uppercase tracking-wider">

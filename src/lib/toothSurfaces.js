@@ -69,24 +69,22 @@ export function surfaceLayout(fdi) {
 /**
  * Group a tooth's entries (assumed ordered recorded_at DESC, as
  * fetchDentalChartEntries returns them) into the latest finding per surface
- * plus the latest whole-tooth finding. Legacy entries with a null/empty surface
- * are treated as whole-tooth (flagged via hasLegacyNullSurface).
+ * plus the latest whole-tooth entry. An entry is treated as whole-tooth when
+ * its finding is a structural whole-tooth finding OR it has no surface (legacy/
+ * "whole tooth" entries) — the renderer tints those rather than dropping them.
  *
- *   → { bySurface: { mesial: entry, ... }, whole: entry|null, hasLegacyNullSurface }
+ *   → { bySurface: { mesial: entry, ... }, whole: entry|null }
  */
 export function groupBySurface(entries) {
   const bySurface = {}
   let whole = null
-  let hasLegacyNullSurface = false
   for (const e of (entries || [])) {
-    const surfaceMissing = !e.surface
-    if (surfaceMissing && !WHOLE_TOOTH_FINDINGS.has(e.finding)) hasLegacyNullSurface = true
-    const isWhole = WHOLE_TOOTH_FINDINGS.has(e.finding) || surfaceMissing
+    const isWhole = WHOLE_TOOTH_FINDINGS.has(e.finding) || !e.surface
     if (isWhole) {
       if (!whole) whole = e // first seen = latest (DESC order)
       continue
     }
     if (!(e.surface in bySurface)) bySurface[e.surface] = e
   }
-  return { bySurface, whole, hasLegacyNullSurface }
+  return { bySurface, whole }
 }

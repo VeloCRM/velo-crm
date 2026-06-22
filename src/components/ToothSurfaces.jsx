@@ -18,7 +18,8 @@
  * Accessibility: every wedge is role="button" + aria-label naming the tooth,
  * surface, and any current finding; focusable and Enter/Space-activated.
  */
-import { surfaceLayout, groupBySurface, SURFACE_LABELS, WEDGE_POLYGONS, WHOLE_TOOTH_FINDINGS } from '../lib/toothSurfaces'
+import { surfaceLayout, groupBySurface, SURFACE_LABELS, WEDGE_POLYGONS } from '../lib/toothSurfaces'
+import { toLocaleDigits } from '../lib/toothNotation'
 import ToothLabel from './ToothLabel'
 
 const WEDGE_POSITIONS = ['top', 'bottom', 'left', 'right', 'center']
@@ -39,8 +40,10 @@ export default function ToothSurfaces({
   }
 
   // Whole-tooth tint takes precedence over per-surface wedges (e.g. a crowned
-  // or missing tooth). 'healthy' whole entries don't tint.
-  const wholeTinted = whole && WHOLE_TOOTH_FINDINGS.has(whole.finding)
+  // or missing tooth). Any non-healthy whole entry tints — this includes a
+  // legacy/explicit "whole tooth" entry whose finding is a surface-type finding
+  // (e.g. surface=null + cavity), which must stay visible rather than vanish.
+  const wholeTinted = whole && whole.finding !== 'healthy'
 
   // Interactive when editable (role=button, focusable, Enter/Space); purely
   // informational (role=img) for read-only users.
@@ -65,8 +68,8 @@ export default function ToothSurfaces({
             strokeWidth="1.5"
             aria-label={
               ar
-                ? `سن، ${findingName(whole.finding)} (السن كامل)`
-                : `Tooth, ${findingName(whole.finding)} (whole tooth)`
+                ? `سن ${toLocaleDigits(fdi, 'ar')}، ${findingName(whole.finding)} (السن كامل)`
+                : `Tooth ${fdi}, ${findingName(whole.finding)} (whole tooth)`
             }
             {...activate(() => onAddClick?.())}
           />
@@ -77,7 +80,7 @@ export default function ToothSurfaces({
             const fill = entry ? styleFor(entry.finding).color : EMPTY_FILL
             const surfaceLbl = labelFor(labelKey)
             const aria = ar
-              ? `سن، سطح ${surfaceLbl}${entry ? `، ${findingName(entry.finding)}` : ''}`
+              ? `سن ${toLocaleDigits(fdi, 'ar')}، سطح ${surfaceLbl}${entry ? `، ${findingName(entry.finding)}` : ''}`
               : `Tooth ${fdi}, ${surfaceLbl} surface${entry ? `, ${findingName(entry.finding)}` : ''}`
             return (
               <polygon
