@@ -1,26 +1,20 @@
 /**
  * XrayUploadModal — multi-file X-ray upload with shared batch metadata.
- * Adapts the DocumentsTab dropzone + per-file loop, adds metadata (type / date /
- * teeth / treatment / notes), per-file client thumbnails, and per-file
- * best-effort upload with a summary toast + retry-failed-only.
+ * Dropzone + per-file thumbnails + per-file best-effort upload with a summary
+ * toast + retry-failed-only. Metadata fields are the shared <XrayMetadataForm>
+ * (applied to every file in the batch).
  */
 import { useState, useEffect, useRef } from 'react'
-import { Modal, FormField, inputStyle, selectStyle, Icons } from './shared'
+import { Modal, Icons } from './shared'
 import { Button } from './ui'
-import MiniToothChart from './MiniToothChart'
+import XrayMetadataForm from './XrayMetadataForm'
 import { uploadXray, generateThumbnail } from '../lib/xrays'
-import { fetchTreatmentPlansForPatient } from '../lib/dental'
-import { XRAY_TYPE_OPTIONS } from '../lib/xrayTypes'
+import { todayLocal } from '../lib/date'
 
 const ACCEPT_MIME = ['image/jpeg', 'image/png', 'image/webp']
 const ACCEPT_ATTR = ACCEPT_MIME.join(',')
 const MAX_FILES = 20
 const WARN_FILES = 10
-
-function todayLocal() {
-  const d = new Date()
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploaded, toast }) {
   const isRTL = lang === 'ar'
@@ -28,22 +22,11 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
   const [form, setForm] = useState({ xray_type: 'bitewing', date_taken: todayLocal(), teeth: [], treatment_plan_id: '', notes: '' })
   const [submitting, setSubmitting] = useState(false)
   const [dragging, setDragging] = useState(false)
-  const [treatments, setTreatments] = useState([])
   const fileInputRef = useRef(null)
   const thumbTried = useRef(new Set()) // item ids we've already attempted a thumbnail for
 
-  // Optional treatment link; degrade quietly if it fails to load (logged, not toasted).
-  useEffect(() => {
-    let cancelled = false
-    fetchTreatmentPlansForPatient(patientId)
-      .then(rows => { if (!cancelled) setTreatments(rows || []) })
-      .catch(err => { if (!cancelled) { console.error('[XrayUploadModal] treatment plans load failed:', err); setTreatments([]) } })
-    return () => { cancelled = true }
-  }, [patientId])
-
-  // Generate a thumbnail for each pending item exactly once. Driven off `items`
-  // (not addFiles) so it can't race the cap or attach to the wrong id; cosmetic,
-  // so a failure just leaves the placeholder.
+  // Generate a thumbnail for each pending item exactly once (driven off items,
+  // so it can't race the cap or attach to the wrong id). Cosmetic → placeholder on failure.
   useEffect(() => {
     for (const it of items) {
       if (it.thumb == null && it.status === 'pending' && !thumbTried.current.has(it.id)) {
@@ -58,8 +41,8 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
   const addFiles = (fileList) => {
     const incoming = Array.from(fileList || []).filter(f => ACCEPT_MIME.includes(f.type))
     if (!incoming.length) return
-    // Pre-build with ids OUTSIDE the updater; the updater itself enforces the cap
-    // against the authoritative `prev.length` (not a stale closure).
+    // ids built OUTSIDE the updater; the updater enforces the cap against the
+    // authoritative prev.length (not a stale closure).
     const candidates = incoming.map(f => ({ id: crypto.randomUUID(), file: f, thumb: null, status: 'pending', error: null }))
     setItems(prev => [...prev, ...candidates.slice(0, Math.max(0, MAX_FILES - prev.length))])
     if (items.length + incoming.length > MAX_FILES) {
@@ -68,7 +51,6 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
   }
 
   const removeItem = (id) => setItems(prev => prev.filter(x => x.id !== id))
-
   const onPick = (e) => { addFiles(e.target.files); e.target.value = '' }
   const onDrop = (e) => { e.preventDefault(); setDragging(false); if (!submitting) addFiles(e.dataTransfer?.files) }
 
@@ -107,12 +89,9 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
       onClose?.()
       return
     }
-    // Partial: refresh the grid for successes, keep the modal open for retry.
-    if (ok > 0) onUploaded?.()
+    if (ok > 0) onUploaded?.() // refresh grid for successes; keep modal open for retry
     toast?.(
-      isRTL
-        ? `تم رفع ${ok} من ${total}. فشل: ${failedNames.join('، ')}`
-        : `${ok} of ${total} uploaded. Failed: ${failedNames.join(', ')}`,
+      isRTL ? `تم رفع ${ok} من ${total}. فشل: ${failedNames.join('، ')}` : `${ok} of ${total} uploaded. Failed: ${failedNames.join(', ')}`,
       'error'
     )
   }
@@ -124,17 +103,11 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
       ? (isRTL ? `إعادة محاولة الفاشل (${failedCount})` : `Retry failed (${failedCount})`)
       : (isRTL ? `رفع ${items.length}` : `Upload ${items.length}`) // button is disabled at 0 items
 
-  const treatmentLabel = (t) => {
-    const d = t.created_at ? new Date(t.created_at).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''
-    return `${d}${t.status ? ` — ${t.status}` : ''}`
-  }
-
   return (
     <Modal onClose={() => { if (!submitting) onClose?.() }} dir={dir} width={560}>
       <div className="ds-root p-1">
         <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">{isRTL ? 'رفع أشعة' : 'Upload X-rays'}</h3>
 
-        {/* Dropzone */}
         <div
           onClick={() => !submitting && fileInputRef.current?.click()}
           onDragOver={e => { e.preventDefault(); if (!dragging) setDragging(true) }}
@@ -162,7 +135,6 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
           </p>
         )}
 
-        {/* Selected files */}
         {items.length > 0 && (
           <ul className="flex flex-wrap gap-2 mt-3">
             {items.map(it => (
@@ -186,33 +158,9 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
           </ul>
         )}
 
-        {/* Metadata (applied to all files in the batch) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 mt-4">
-          <FormField label={isRTL ? 'النوع' : 'Type'} dir={dir}>
-            <select value={form.xray_type} onChange={e => setForm(p => ({ ...p, xray_type: e.target.value }))} style={selectStyle(dir)}>
-              {XRAY_TYPE_OPTIONS.map(o => <option key={o.id} value={o.id}>{isRTL ? o.ar : o.en}</option>)}
-            </select>
-          </FormField>
-          <FormField label={isRTL ? 'التاريخ' : 'Date taken'} dir={dir}>
-            <input type="date" value={form.date_taken} max={todayLocal()} onChange={e => setForm(p => ({ ...p, date_taken: e.target.value }))} style={inputStyle(dir)} />
-          </FormField>
+        <div className="mt-4">
+          <XrayMetadataForm value={form} onChange={setForm} patientId={patientId} lang={lang} dir={dir} disabled={submitting} />
         </div>
-
-        <FormField label={isRTL ? 'الأسنان الظاهرة' : 'Teeth shown'} dir={dir}>
-          <MiniToothChart value={form.teeth} onChange={teeth => setForm(p => ({ ...p, teeth }))} lang={lang} dir={dir} />
-        </FormField>
-
-        <FormField label={isRTL ? 'ربط بخطة علاج (اختياري)' : 'Link to treatment (optional)'} dir={dir}>
-          <select value={form.treatment_plan_id} onChange={e => setForm(p => ({ ...p, treatment_plan_id: e.target.value }))} style={selectStyle(dir)}>
-            <option value="">{isRTL ? 'بدون' : 'None'}</option>
-            {treatments.map(t => <option key={t.id} value={t.id}>{treatmentLabel(t)}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label={isRTL ? 'ملاحظات' : 'Notes'} dir={dir}>
-          <textarea value={form.notes} onChange={e => setForm(p => ({ ...p, notes: e.target.value }))} rows={2} maxLength={500}
-            style={{ ...inputStyle(dir), height: 'auto', padding: '10px 12px', resize: 'vertical' }} />
-        </FormField>
 
         <div className="flex gap-2 justify-end mt-3">
           <Button variant="secondary" disabled={submitting} onClick={() => onClose?.()}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
