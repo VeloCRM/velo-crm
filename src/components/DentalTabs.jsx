@@ -14,6 +14,8 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import { GlassCard, Button } from './ui'
+import ToothLabel from './ToothLabel'
+import useMyToothNotation from '../hooks/useMyToothNotation'
 import {
   fetchPatientMedicalHistory,
   updatePatientMedicalHistory,
@@ -361,6 +363,7 @@ function findingLabel(f, isRTL) {
 export function DentalChartTab({ patient, lang, dir, toast }) {
   const isRTL = lang === 'ar'
   const role = useMyRole()
+  const notation = useMyToothNotation()
   const canEdit = role && EDIT_ROLES.has(role)
 
   const [entries, setEntries] = useState([])
@@ -454,7 +457,9 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
           fontFamily: 'inherit', transition: 'transform .12s', padding: 0,
         }}
       >
-        <span style={{ fontSize: 11, lineHeight: 1 }}>{num}</span>
+        <span style={{ fontSize: 11, lineHeight: 1 }}>
+          <ToothLabel fdi={num} notation={notation} locale={lang} />
+        </span>
       </button>
     )
   }
@@ -484,7 +489,9 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
         ) : (
           <>
             <div className="text-[11px] font-semibold text-navy-500 mb-2 text-center uppercase tracking-wider">
-              {isRTL ? 'الفك العلوي (18-11 / 21-28)' : 'Upper jaw (18-11 / 21-28)'}
+              {notation === 'palmer'
+                ? (isRTL ? 'الفك العلوي' : 'Upper jaw')
+                : (isRTL ? 'الفك العلوي (18-11 / 21-28)' : 'Upper jaw (18-11 / 21-28)')}
             </div>
             <div className="grid grid-cols-16 gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
               {UPPER_TEETH.map(n => <Tooth key={n} num={n} />)}
@@ -494,7 +501,9 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
               {LOWER_TEETH.map(n => <Tooth key={n} num={n} />)}
             </div>
             <div className="text-[11px] font-semibold text-navy-500 mt-2 text-center uppercase tracking-wider">
-              {isRTL ? 'الفك السفلي (48-41 / 31-38)' : 'Lower jaw (48-41 / 31-38)'}
+              {notation === 'palmer'
+                ? (isRTL ? 'الفك السفلي' : 'Lower jaw')
+                : (isRTL ? 'الفك السفلي (48-41 / 31-38)' : 'Lower jaw (48-41 / 31-38)')}
             </div>
           </>
         )}
@@ -526,7 +535,7 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                     className="min-w-[36px] text-xs font-bold tabular-nums"
                     style={{ color: style.color }}
                   >
-                    #{e.tooth_number}
+                    <ToothLabel fdi={e.tooth_number} notation={notation} locale={lang} hash />
                   </span>
                   <span
                     className="text-[11px] font-bold px-2 py-0.5 rounded"
@@ -633,6 +642,7 @@ const ITEM_STATUS_COLOR = {
 export function TreatmentPlanTab({ patient, lang, dir, toast }) {
   const isRTL = lang === 'ar'
   const role = useMyRole()
+  const notation = useMyToothNotation()
   const canEdit = role && EDIT_ROLES.has(role)
 
   const [plans, setPlans] = useState([])
@@ -795,7 +805,7 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
                         const ic = ITEM_STATUS_COLOR[item.status] || ITEM_STATUS_COLOR.pending
                         return (
                           <tr key={item.id} className="border-t border-navy-100/60">
-                            <td className="px-3.5 py-2 font-semibold text-navy-800 tabular-nums">{item.tooth_number ? `#${item.tooth_number}` : '—'}</td>
+                            <td className="px-3.5 py-2 font-semibold text-navy-800 tabular-nums">{item.tooth_number ? <ToothLabel fdi={item.tooth_number} notation={notation} locale={lang} hash /> : '—'}</td>
                             <td className="px-3.5 py-2 text-navy-600 capitalize">{item.surface || '—'}</td>
                             <td className="px-3.5 py-2 text-navy-800">{item.procedure_label}</td>
                             <td className="px-3.5 py-2 font-semibold text-navy-800 tabular-nums">
@@ -872,6 +882,7 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
 
 // ─── New-plan modal ────────────────────────────────────────────────────────
 function NewTreatmentPlanModal({ patientId, dir, isRTL, onCancel, onSaved, onError }) {
+  const notation = useMyToothNotation()
   const [doctors, setDoctors] = useState([])
   const [doctorId, setDoctorId] = useState('')
   const [currency, setCurrency] = useState('IQD')
@@ -993,6 +1004,12 @@ function NewTreatmentPlanModal({ patientId, dir, isRTL, onCancel, onSaved, onErr
                     {toothInvalid && (
                       <div className="text-[10px] text-rose-700 mt-0.5 leading-tight">
                         {isRTL ? 'ترميز FDI غير صالح' : 'Invalid FDI'}
+                      </div>
+                    )}
+                    {/* Display-only Palmer echo of the FDI entry (input stays FDI). */}
+                    {notation === 'palmer' && it.tooth_number !== '' && it.tooth_number != null && !toothInvalid && (
+                      <div className="text-[10px] text-navy-500 mt-0.5 leading-tight flex items-center justify-center">
+                        <ToothLabel fdi={Number(it.tooth_number)} notation="palmer" locale={isRTL ? 'ar' : 'en'} />
                       </div>
                     )}
                   </div>
