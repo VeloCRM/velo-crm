@@ -1,17 +1,15 @@
 /**
- * XraysTab — patient-profile X-rays tab (PR-B1). Loads the patient's X-rays,
- * renders the grid, and gates the upload modal by role (owner/doctor only;
- * receptionists browse read-only — RLS enforces this server-side too).
- *
- * Interim full-size view: a thumbnail click signs a URL and opens it in a new
- * tab (matching the Documents tab). The in-app zoom/pan lightbox + metadata
- * edit/delete arrive in PR-B2.
+ * XraysTab — patient-profile X-rays tab. Loads the patient's X-rays, renders the
+ * grid, gates upload by role (owner/doctor; receptionists read-only — RLS also
+ * enforces). A thumbnail click opens the in-place XrayLightbox (PR-B2) over the
+ * grid's current filtered set; the lightbox handles zoom/pan + edit + delete.
  */
 import { useState, useEffect, useCallback } from 'react'
 import XrayGrid from './XrayGrid'
 import XrayUploadModal from './XrayUploadModal'
+import XrayLightbox from './XrayLightbox'
 import useMyRole from '../hooks/useMyRole'
-import { fetchXrays, getXraySignedUrl } from '../lib/xrays'
+import { fetchXrays } from '../lib/xrays'
 
 const EDIT_ROLES = new Set(['owner', 'doctor'])
 
@@ -23,7 +21,7 @@ export default function XraysTab({ patient, lang, dir, toast }) {
   const [xrays, setXrays] = useState([])
   const [loading, setLoading] = useState(true)
   const [showUpload, setShowUpload] = useState(false)
-  const [busyId, setBusyId] = useState(null)
+  const [lightbox, setLightbox] = useState(null) // { list, index } | null
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -39,19 +37,12 @@ export default function XraysTab({ patient, lang, dir, toast }) {
 
   useEffect(() => { reload() }, [reload])
 
-  // Interim view: signed URL → new tab (lightbox in PR-B2).
-  const openFull = async (xray) => {
-    setBusyId(xray.id)
-    try {
-      const { url } = await getXraySignedUrl(xray.id, 3600)
-      if (!url) throw new Error('no url')
-      window.open(url, '_blank', 'noopener,noreferrer')
-    } catch (err) {
-      console.error('[XraysTab] signed-url failed:', err)
-      toast?.(isRTL ? 'فشل فتح الصورة' : 'Failed to open image', 'error')
-    } finally {
-      setBusyId(null)
-    }
+  // Open the lightbox over the grid's current filtered/ordered set (frozen as a
+  // snapshot for stable prev/next; the grid behind still refreshes via reload).
+  const openLightbox = (xray, orderedList) => {
+    const list = orderedList && orderedList.length ? orderedList : [xray]
+    const index = Math.max(0, list.findIndex(x => x.id === xray.id))
+    setLightbox({ list, index })
   }
 
   return (
@@ -62,8 +53,7 @@ export default function XraysTab({ patient, lang, dir, toast }) {
         canEdit={canEdit}
         roleLoading={roleLoading}
         isRTL={isRTL}
-        busyId={busyId}
-        onOpen={openFull}
+        onOpen={openLightbox}
         onUpload={() => setShowUpload(true)}
       />
       {showUpload && canEdit && (
@@ -74,6 +64,20 @@ export default function XraysTab({ patient, lang, dir, toast }) {
           toast={toast}
           onClose={() => setShowUpload(false)}
           onUploaded={reload}
+        />
+      )}
+      {lightbox && (
+        <XrayLightbox
+          list={lightbox.list}
+          index={lightbox.index}
+          canEdit={canEdit}
+          patientId={patient.id}
+          lang={lang}
+          dir={dir}
+          toast={toast}
+          onIndexChange={(i) => setLightbox(lb => (lb ? { ...lb, index: i } : lb))}
+          onClose={() => setLightbox(null)}
+          onMutated={reload}
         />
       )}
     </div>

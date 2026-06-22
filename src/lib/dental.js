@@ -33,6 +33,17 @@ import { requireUser, getCurrentOrgId } from './auth_session'
 import { logAuditEvent } from './audit'
 import { sanitizeText, sanitizeNotes, toSafeNumber } from './sanitize'
 
+/**
+ * Human-readable label for a treatment plan (date — status), used by X-ray
+ * UI (upload form dropdown + lightbox). Shared so the format stays in one place.
+ */
+export function treatmentPlanLabel(plan, isRTL = false) {
+  const d = plan?.created_at
+    ? new Date(plan.created_at).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : ''
+  return `${d}${plan?.status ? ` — ${plan.status}` : ''}`
+}
+
 // ─── Enum allow-lists ──────────────────────────────────────────────────────
 // Mirrors the schema enums exactly. Any input that doesn't match throws so we
 // never write invalid rows.
