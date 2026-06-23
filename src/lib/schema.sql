@@ -83,7 +83,12 @@ CREATE TYPE dental_finding AS ENUM (
   'bridge',
   'implant',
   'root_canal_done',
-  'healthy'
+  'healthy',
+  -- Surface-specific structural-loss findings. Added to existing databases via
+  -- scripts/add-fracture-wear-finding-types.sql; listed here so fresh installs
+  -- match. Both render per-surface (NOT whole-tooth).
+  'fracture',
+  'wear'
 );
 
 CREATE TYPE payment_method AS ENUM (
