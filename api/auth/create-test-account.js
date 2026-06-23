@@ -301,9 +301,11 @@ export default async function handler(req, res) {
         .then(() => null, () => null)
     }
 
+    // Do NOT return err.message to the client: this endpoint is unauthenticated,
+    // and raw Supabase/Postgres errors leak DB schema (table/column/constraint
+    // names). The full error is logged server-side above (console.error).
     return res.status(500).json({
       error: 'Failed to create test account',
-      detail: err.message,
     })
   }
 }

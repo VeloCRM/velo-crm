@@ -93,6 +93,7 @@ export default async function handler(req, res) {
     })
   } catch (err) {
     console.error('[cleanup-test-accounts] failed:', err)
-    return res.status(500).json({ error: 'Cleanup failed', detail: err.message })
+    // Full error logged above; don't echo err.message to the client (DB-detail leak).
+    return res.status(500).json({ error: 'Cleanup failed' })
   }
 }
