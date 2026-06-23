@@ -345,6 +345,8 @@ const FINDING_STYLES = {
   implant:         { color: '#0d9488', bg: 'rgba(13,148,136,0.12)', label: 'Implant',    ar: 'زرعة' },
   root_canal_done: { color: '#1e40af', bg: 'rgba(30,64,175,0.12)',  label: 'Root Canal', ar: 'عصب' },
   healthy:         { color: '#22c55e', bg: 'rgba(255,255,255,0.04)', label: 'Healthy',   ar: 'سليم' },
+  fracture:        { color: '#db2777', bg: 'rgba(219,39,123,0.12)', label: 'Fracture',  ar: 'كسر' },
+  wear:            { color: '#78350f', bg: 'rgba(120,53,15,0.14)',  label: 'Wear',      ar: 'تآكل' },
 }
 
 const SURFACE_OPTIONS = [
@@ -355,6 +357,17 @@ const SURFACE_OPTIONS = [
   { id: 'lingual',   en: 'Lingual',     ar: 'لساني' },
   { id: 'occlusal',  en: 'Occlusal',    ar: 'إطباقي' },
 ]
+
+// Findings that describe partial structural loss on a SPECIFIC surface. For
+// these the surface dropdown may NOT be "Whole tooth" — a real surface is
+// required (form-level validation in DentalChartTab). They are intentionally
+// NOT in WHOLE_TOOTH_FINDINGS, so the hybrid render rule routes them to a wedge.
+const SURFACE_REQUIRED_FINDINGS = new Set(['fracture', 'wear'])
+
+// The 5 real surfaces (the non-empty SURFACE_OPTIONS ids). 'incisal' is only a
+// DISPLAY label for the anterior occlusal surface — it is stored as 'occlusal',
+// so it is already covered here by 'occlusal'.
+const REAL_SURFACES = new Set(SURFACE_OPTIONS.filter(s => s.id).map(s => s.id))
 
 function findingLabel(f, isRTL) {
   const def = FINDING_STYLES[f]
@@ -437,9 +450,31 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
   const isWholeFinding = WHOLE_TOOTH_FINDINGS.has(form.finding)
   const surfaceLocked = isWholeFinding || prefillSurface != null
   const effectiveSurface = isWholeFinding ? '' : form.surface
+  // Fracture/Wear require a real surface (no "Whole tooth"). When that's not yet
+  // satisfied the form is invalid → Save disabled + inline error.
+  const isSurfaceRequired = SURFACE_REQUIRED_FINDINGS.has(form.finding)
+  const surfaceMissing = isSurfaceRequired && !REAL_SURFACES.has(effectiveSurface)
+
+  // Changing the finding type. When switching to a surface-required type while
+  // the current surface is "Whole tooth"/empty, clear it so the user must pick a
+  // real surface (Save stays disabled meanwhile). A real surface already set
+  // (e.g. a wedge-click prefill) is preserved. Other fields (notes) untouched.
+  const handleFindingChange = (finding) => {
+    setForm(p => (
+      SURFACE_REQUIRED_FINDINGS.has(finding) && !REAL_SURFACES.has(p.surface)
+        ? { ...p, finding, surface: '' }
+        : { ...p, finding }
+    ))
+  }
 
   const handleSubmit = async () => {
     if (!activeTooth) return
+    // Surface-required guard (mirrors the disabled Save state) — blocks a
+    // Fracture/Wear save that has no real surface, e.g. via keyboard submit.
+    if (SURFACE_REQUIRED_FINDINGS.has(form.finding) && !REAL_SURFACES.has(effectiveSurface)) {
+      toast?.(isRTL ? 'السطح مطلوب لمعاينات الكسر والتآكل' : 'Surface is required for Fracture and Wear findings', 'error')
+      return
+    }
     setSubmitting(true)
     try {
       await addDentalChartEntry(patient.id, {
@@ -603,7 +638,7 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                 {isRTL ? `سن رقم ${activeTooth}` : `Tooth #${activeTooth}`}
               </h3>
               <FormField label={isRTL ? 'المعاينة' : 'Finding'} dir={dir}>
-                <select value={form.finding} onChange={e => setForm(p => ({ ...p, finding: e.target.value }))} style={selectStyle(dir)}>
+                <select value={form.finding} onChange={e => handleFindingChange(e.target.value)} style={selectStyle(dir)}>
                   {Object.keys(FINDING_STYLES).map(f => (
                     <option key={f} value={f}>{findingLabel(f, isRTL)}</option>
                   ))}
@@ -633,8 +668,15 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                     {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{surfaceOptionLabel(s)}</option>)}
                   </select>
                 ) : (
-                  <select value={form.surface} onChange={e => setForm(p => ({ ...p, surface: e.target.value }))} style={selectStyle(dir)}>
-                    {SURFACE_OPTIONS.map(s => <option key={s.id} value={s.id}>{surfaceOptionLabel(s)}</option>)}
+                  <select value={form.surface} onChange={e => setForm(p => ({ ...p, surface: e.target.value }))}
+                    aria-invalid={surfaceMissing || undefined}
+                    style={{ ...selectStyle(dir), ...(surfaceMissing ? { borderColor: '#e11d48' } : {}) }}>
+                    {SURFACE_OPTIONS.map(s => (
+                      // Fracture/Wear forbid "Whole tooth" — disable that option.
+                      <option key={s.id} value={s.id} disabled={isSurfaceRequired && s.id === ''}>
+                        {surfaceOptionLabel(s)}
+                      </option>
+                    ))}
                   </select>
                 )}
                 {surfaceLocked && (
@@ -642,6 +684,11 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                     {isWholeFinding
                       ? (isRTL ? 'معاينة شاملة — تغطي السن بالكامل.' : 'Whole-tooth finding — covers the entire tooth.')
                       : (isRTL ? 'السطح محدد من السن الذي نقرت عليه — انقر رقم السن لإضافة معاينة بسطح مختلف.' : "Surface set by the clicked wedge — click the tooth number to add a finding on a different surface.")}
+                  </p>
+                )}
+                {surfaceMissing && (
+                  <p className="text-[11px] text-rose-600 mt-1 m-0 leading-snug">
+                    {isRTL ? 'السطح مطلوب لمعاينات الكسر والتآكل' : 'Surface is required for Fracture and Wear findings'}
                   </p>
                 )}
               </FormField>
@@ -653,7 +700,7 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                 <Button variant="secondary" disabled={submitting} onClick={closeForm}>
                   {isRTL ? 'إلغاء' : 'Cancel'}
                 </Button>
-                <Button variant="primary" type="submit" loading={submitting} disabled={submitting}>
+                <Button variant="primary" type="submit" loading={submitting} disabled={submitting || surfaceMissing}>
                   {submitting ? (isRTL ? 'جاري الحفظ...' : 'Saving...') : (isRTL ? 'تسجيل' : 'Record')}
                 </Button>
               </div>
