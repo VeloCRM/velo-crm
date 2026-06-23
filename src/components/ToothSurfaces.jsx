@@ -95,8 +95,8 @@ export default function ToothSurfaces({
                 key={pos}
                 points={WEDGE_POLYGONS[pos]}
                 fill={fill}
-                stroke="#94a3b8"
-                strokeWidth="1"
+                stroke="#64748b"
+                strokeWidth="1.5"
                 className={disabled ? '' : WEDGE_CLASS}
                 aria-label={aria}
                 {...interactive(() => onSurfaceClick?.(surface))}
