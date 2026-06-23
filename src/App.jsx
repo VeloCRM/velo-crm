@@ -845,8 +845,12 @@ export default function App() {
               </div>
               {!sidebarCollapsed && (
                 <div className="overflow-hidden">
-                  <div className="font-display text-[19px] font-extrabold tracking-[-0.03em] text-navy-900 leading-tight truncate">{orgSettings.name || t.appName}</div>
-                  <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500 truncate">{orgSettings.name ? t.appName : t.appTagline}</div>
+                  <div className="font-display text-[19px] font-bold tracking-[-0.03em] text-navy-900 leading-tight truncate">{orgSettings.name || t.appName}</div>
+                  {orgSettings.name ? (
+                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-accent-cyan-50 text-accent-cyan-700 text-[10px] font-semibold uppercase tracking-wider">{t.appName}</span>
+                  ) : (
+                    <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500 truncate">{t.appTagline}</div>
+                  )}
                 </div>
               )}
             </>
@@ -1654,6 +1658,17 @@ function DentalSpinner({ isRTL }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // PATIENT PROFILE
 // ═══════════════════════════════════════════════════════════════════════════
+
+// Renders a field value, or a muted-italic "Not specified" placeholder when the
+// value is empty (null/''). Returns JSX so the empty state reads distinctly from
+// real data instead of a bare em-dash. EN/AR aware.
+function fieldValue(value, isRTL) {
+  if (value == null || value === '') {
+    return <span className="italic text-navy-400">{isRTL ? 'غير محدد' : 'Not specified'}</span>
+  }
+  return value
+}
+
 function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTab, onBack, onEdit, onDelete, toast }) {
   void t
   void lang
@@ -1739,14 +1754,14 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
         <button
           type="button"
           onClick={onBack}
-          className="self-start inline-flex items-center gap-1.5 text-sm font-medium text-navy-600 hover:text-navy-800 transition-colors"
+          className="self-start inline-flex items-center gap-1.5 -ms-2.5 px-2.5 py-1.5 rounded-lg text-sm font-medium text-navy-600 hover:text-navy-800 hover:bg-navy-50 transition-colors"
         >
           {isRTL ? Icons.arrowRight(16) : Icons.arrowLeft(16)}
           {isRTL ? 'العودة إلى المرضى' : 'Back to Patients'}
         </button>
 
         {/* ── Profile header ─────────────────────────────────────────── */}
-        <GlassCard padding="lg" className="relative overflow-hidden">
+        <GlassCard padding="lg" tone="strong" className="relative overflow-hidden">
           {/* Subtle navy → white gradient backdrop */}
           <span
             aria-hidden="true"
@@ -1761,7 +1776,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
               {avatarInitials(fullName)}
             </span>
             <div className="flex-1 min-w-0">
-              <h2 className="text-3xl font-semibold text-navy-900 leading-tight tracking-tight m-0">
+              <h2 className="text-3xl font-medium text-navy-900 leading-tight tracking-tight m-0">
                 {fullName || '—'}
               </h2>
               <div className="flex flex-wrap gap-x-5 gap-y-1.5 mt-3 text-sm text-navy-700">
@@ -1862,7 +1877,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
                   {active && (
                     <span
                       aria-hidden="true"
-                      className="absolute inset-x-3 -bottom-px h-0.5 rounded-full"
+                      className="absolute inset-x-2 -bottom-px h-[3px] rounded-full"
                       style={{ background: 'linear-gradient(90deg, #103562, #06B6D4)' }}
                     />
                   )}
@@ -1881,16 +1896,16 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
               </h3>
               <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-5">
                 {[
-                  [isRTL ? 'الاسم'    : 'Full Name',     fullName || '—'],
-                  [isRTL ? 'الهاتف'   : 'Phone',         patient.phone || '—'],
-                  [isRTL ? 'البريد'   : 'Email',         patient.email || '—'],
-                  [isRTL ? 'الميلاد'  : 'Date of Birth', patient.dob   || '—'],
-                  [isRTL ? 'الجنس'    : 'Gender',        patient.gender ? (GENDER_OPTIONS.find(g => g.id === patient.gender)?.[isRTL ? 'ar' : 'en'] || patient.gender) : '—'],
-                  [isRTL ? 'الحساسيات' : 'Allergies',    allergies.length ? allergies.join(', ') : '—'],
+                  [isRTL ? 'الاسم'    : 'Full Name',     fullName || null],
+                  [isRTL ? 'الهاتف'   : 'Phone',         patient.phone || null],
+                  [isRTL ? 'البريد'   : 'Email',         patient.email || null],
+                  [isRTL ? 'الميلاد'  : 'Date of Birth', patient.dob   || null],
+                  [isRTL ? 'الجنس'    : 'Gender',        patient.gender ? (GENDER_OPTIONS.find(g => g.id === patient.gender)?.[isRTL ? 'ar' : 'en'] || patient.gender) : null],
+                  [isRTL ? 'الحساسيات' : 'Allergies',    allergies.length ? allergies.join(', ') : null],
                 ].map(([label, value], i) => (
                   <div key={i}>
-                    <dt className="text-[11px] font-semibold uppercase tracking-[0.12em] text-navy-500 mb-1">{label}</dt>
-                    <dd className="text-sm text-navy-800 m-0">{value}</dd>
+                    <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-navy-600 mb-1">{label}</dt>
+                    <dd className="text-sm text-navy-800 m-0">{fieldValue(value, isRTL)}</dd>
                   </div>
                 ))}
               </dl>
