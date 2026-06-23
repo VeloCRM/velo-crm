@@ -26,6 +26,26 @@
 --   later transaction. `IF NOT EXISTS` makes both ADDs idempotent.
 --
 -- Idempotent: re-running is a no-op (ADD VALUE IF NOT EXISTS).
+--
+-- ── DENTAL CEREMONY (CLAUDE.md: "Schema changes to dental tables require
+--    dry-run on a copy + written rollback plan") ──────────────────────────────
+--   DRY-RUN: run this whole script first against a non-prod copy of the DB
+--   (Supabase branch or a restored snapshot), then run the verification block.
+--   Confirm both values appear and that an existing-row read still works.
+--
+--   ROLLBACK PLAN (only valid while NO dental_chart_entries row uses the new
+--   values — check first: SELECT count(*) FROM dental_chart_entries
+--   WHERE finding IN ('fracture','wear'); must be 0). Postgres has no DROP
+--   VALUE, so reversal rebuilds the type:
+--     1. ALTER TABLE dental_chart_entries ALTER COLUMN finding TYPE text;
+--     2. DROP TYPE dental_finding;
+--     3. CREATE TYPE dental_finding AS ENUM (
+--          'cavity','restoration','missing','crown','bridge','implant',
+--          'root_canal_done','healthy');           -- pre-migration value list
+--     4. ALTER TABLE dental_chart_entries
+--          ALTER COLUMN finding TYPE dental_finding USING finding::dental_finding;
+--   If any row already uses 'fracture'/'wear', this is NOT reversible without
+--   first re-mapping or deleting those rows — treat the migration as one-way.
 -- ═══════════════════════════════════════════════════════════════════════════
 
 -- ── Pre-flight check ───────────────────────────────────────────────────────

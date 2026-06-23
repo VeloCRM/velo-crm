@@ -32,6 +32,7 @@ import {
   removeTreatmentPlan,
   updateTreatmentPlanItemStatus,
   isValidFdiTooth,
+  SURFACE_REQUIRED_FINDINGS,
 } from '../lib/dental'
 import { fetchMyProfile, listDoctorsInOrg } from '../lib/profiles'
 import { formatMoney, toMinor } from '../lib/money'
@@ -358,16 +359,21 @@ const SURFACE_OPTIONS = [
   { id: 'occlusal',  en: 'Occlusal',    ar: 'إطباقي' },
 ]
 
-// Findings that describe partial structural loss on a SPECIFIC surface. For
-// these the surface dropdown may NOT be "Whole tooth" — a real surface is
-// required (form-level validation in DentalChartTab). They are intentionally
+// SURFACE_REQUIRED_FINDINGS (fracture/wear) is imported from ../lib/dental — the
+// single source of truth, also enforced server-side in addDentalChartEntry. For
+// these, the surface dropdown may NOT be "Whole tooth"; they are intentionally
 // NOT in WHOLE_TOOTH_FINDINGS, so the hybrid render rule routes them to a wedge.
-const SURFACE_REQUIRED_FINDINGS = new Set(['fracture', 'wear'])
 
 // The 5 real surfaces (the non-empty SURFACE_OPTIONS ids). 'incisal' is only a
 // DISPLAY label for the anterior occlusal surface — it is stored as 'occlusal',
 // so it is already covered here by 'occlusal'.
 const REAL_SURFACES = new Set(SURFACE_OPTIONS.filter(s => s.id).map(s => s.id))
+
+// Shown both as the inline field error and the keyboard-submit toast.
+const SURFACE_REQUIRED_MSG = {
+  en: 'Surface is required for Fracture and Wear findings',
+  ar: 'السطح مطلوب لمعاينات الكسر والتآكل',
+}
 
 function findingLabel(f, isRTL) {
   const def = FINDING_STYLES[f]
@@ -469,10 +475,10 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
 
   const handleSubmit = async () => {
     if (!activeTooth) return
-    // Surface-required guard (mirrors the disabled Save state) — blocks a
-    // Fracture/Wear save that has no real surface, e.g. via keyboard submit.
-    if (SURFACE_REQUIRED_FINDINGS.has(form.finding) && !REAL_SURFACES.has(effectiveSurface)) {
-      toast?.(isRTL ? 'السطح مطلوب لمعاينات الكسر والتآكل' : 'Surface is required for Fracture and Wear findings', 'error')
+    // Surface-required guard (same condition as the disabled Save state) —
+    // blocks a Fracture/Wear save with no real surface, e.g. via keyboard submit.
+    if (surfaceMissing) {
+      toast?.(isRTL ? SURFACE_REQUIRED_MSG.ar : SURFACE_REQUIRED_MSG.en, 'error')
       return
     }
     setSubmitting(true)
@@ -688,7 +694,7 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                 )}
                 {surfaceMissing && (
                   <p className="text-[11px] text-rose-600 mt-1 m-0 leading-snug">
-                    {isRTL ? 'السطح مطلوب لمعاينات الكسر والتآكل' : 'Surface is required for Fracture and Wear findings'}
+                    {isRTL ? SURFACE_REQUIRED_MSG.ar : SURFACE_REQUIRED_MSG.en}
                   </p>
                 )}
               </FormField>

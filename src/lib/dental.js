@@ -51,6 +51,11 @@ const DENTAL_FINDINGS = new Set([
   'cavity', 'restoration', 'missing', 'crown', 'bridge', 'implant',
   'root_canal_done', 'healthy', 'fracture', 'wear',
 ])
+// Findings that describe partial structural loss on a SPECIFIC surface — they
+// must carry a real surface (never whole-tooth). Enforced at the data layer
+// (addDentalChartEntry) so the invariant holds for ALL writers, not just the
+// add-finding form; the form (DentalTabs.jsx) imports this same Set to mirror it.
+export const SURFACE_REQUIRED_FINDINGS = new Set(['fracture', 'wear'])
 const TOOTH_SURFACES = new Set([
   'mesial', 'distal', 'buccal', 'lingual', 'occlusal',
 ])
@@ -266,6 +271,13 @@ export async function addDentalChartEntry(patientId, { tooth_number, surface = n
     finding: assertFinding(finding),
     notes: notes ? sanitizeNotes(notes) : null,
     recorded_by: userId,
+  }
+
+  // Fracture/Wear are surface-specific — reject a whole-tooth (null) surface so
+  // a surfaceless row can never be written (it would render as a whole-tooth
+  // tint, contradicting the finding). assertSurface already normalised '' → null.
+  if (SURFACE_REQUIRED_FINDINGS.has(safe.finding) && !safe.surface) {
+    throw new Error(`dental finding "${safe.finding}" requires a tooth surface (mesial/distal/buccal/lingual/occlusal)`)
   }
 
   const { data, error } = await supabase
