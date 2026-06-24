@@ -1,68 +1,91 @@
 # Velo CRM — Session State
-## Last updated: 2026-06-23
+## Last updated: 2026-06-24
 
 ## Current branch: master (working tree clean)
 
-## Production state (aajwuwjxpmmqcwhiynla, free tier — test-scale data)
+## ⭐ Critical framing (read first)
+- **Velo is a multi-tenant SaaS dental CRM — NOT a Le Royal-specific build.** Every
+  feature must generalize across clinics; org-scoping via RLS is the boundary.
+- **Le Royal = real production customer** (org_id 66f75f33-40b0-4f00-bf33-b9ac1c20af46).
+  Earlier notes treating it as "test-scale" are stale — treat its data as production.
+- **Saif Dental = incoming paying customer**, onboarding mid-to-late **July 2026**.
+  - 4-doctor clinic: **Saif + Hawkar + 2 others**, plus an **X-ray department** and **reception**.
+  - **Has paid.** Explicit expectation: **"better than GHL"** (they're migrating off GoHighLevel).
+  - GHL data to import: **3,171 contacts**, already **tagged per doctor (Saif vs Hawkar)**,
+    with notes / payments / documents attached.
+  - Saif was **told tonight (2026-06-24)** about the timeline shift to late July — accepted.
 
-### Recent merges (most recent first)
-- PR #40 (22981ae): X-ray lightbox — in-place zoom/pan/pinch + metadata edit + delete (replaces interim window.open)
-- PR #39 (85f4516): X-ray UI tab — upload modal + grid + filter chips + MiniToothChart
-- PR #38 (feb1dbb): X-ray backend — xrays table + patient-xrays bucket + data layer
-- Hotfix: xrays_storage_insert policy added via scripts/xray-fix-storage-insert-policy.sql
-- PR #37 (7d465b5): 5-surface diamond-wedge dental chart with hybrid whole-tooth/wedge rendering
-- PR #36 (425f175): Palmer notation toggle (FDI/Palmer per-doctor preference + schema migration)
-- PR #35 (e1a1b17): DentalDashboard handleAction rollback (SEVERE silent-catch fix)
-- PR #34 (510e408): OperatorConsole silent-catch fixes + stale create-first-org SQL deleted
+## V1 dental features: ALL SHIPPED ✅ (PRs #36–#46)
+- Palmer notation toggle (per-doctor FDI/Palmer) — PR #36
+- 5-surface diamond-wedge dental chart, hybrid whole-tooth/wedge render — PR #37
+- X-ray module: backend + bucket (#38), UI tab/upload/grid (#39), in-place lightbox (#40)
+- Fracture + Wear finding types w/ required-surface validation — PR #41
+- Tooth wedge divider WCAG contrast — PR #42
+- Patient profile + sidebar UI polish (7 targets) — PR #43
+- Demo-blocker fixes from the dental-flow dry-run (6 fixes: lightbox click-through,
+  HEIC upload feedback, dashboard skeleton, patient-form validation, in-profile Book
+  Appointment, operator confirm dialogs) — **PR #46 (merge 6d63b25)**
+- Phase 1 dry-run audit committed to master: `scripts/dental-flow-dry-run-2026-06-24.md` (6d7fb5e)
 
-### Schema state (all live on production)
-- profiles.tooth_notation enum('fdi','palmer') default 'fdi' — migration applied
-- xrays table (17 columns, 5 indexes, 5 RLS policies) — migration applied
-- patient-xrays bucket (25 MB, jpeg/png/webp, 4 storage RLS policies including hotfix INSERT) — applied
+## Security perimeter: HARDENED
+- PR #44 (c54c0a0): stop leaking raw DB error detail to clients (H-4, L-11)
+- PR #45 (e198908): HTTP security headers + CSP consolidated to vercel.json
+- Supabase auth config tightened: **8-char passwords w/ special chars required, JWT 1h,
+  OTP 1h, rate limits at defaults.**
+- Audit doc: `scripts/security-audit-2026-06-24.md` (7 categories)
 
-### Three dentist V1 asks: ALL LIVE ✅
-- Palmer notation: ✅ live (per-doctor toggle in Settings → Profile)
-- 5-surface chart with comments: ✅ live (diamond-wedge SVG, hybrid render rule)
-- X-ray module: ✅ live (upload + browse + in-place lightbox + edit + delete)
+## Schema state (all live on production)
+- profiles.tooth_notation enum('fdi','palmer') default 'fdi'
+- xrays table + patient-xrays bucket (25 MB, jpeg/png/webp, 4 storage RLS incl. INSERT hotfix)
+- dental_finding enum extended with 'fracture' + 'wear' (surface-required, app-enforced)
+- prescriptions + prescription_items (doctor-role enforced via trigger)
+- profile_role enum currently: owner | doctor | receptionist | assistant
 
-### Components added this cycle
-- src/hooks/useMyRole.js — shared role hook (DentalTabs still has inline version, migration is backlog)
-- src/hooks/useMyToothNotation.js — Palmer/FDI preference hook
-- src/hooks/useZoomPan.js — custom gesture handler (~70 LOC, no library dep)
-- src/components/ToothLabel.jsx — FDI/Palmer rendering with CSS-border brackets
-- src/components/ToothSurfaces.jsx — 5-wedge SVG with hybrid render rule
-- src/components/MiniToothChart.jsx — multi-select FDI picker
-- src/components/XraysTab.jsx + XrayGrid.jsx + XrayUploadModal.jsx + XrayLightbox.jsx + XrayMetadataForm.jsx
-- src/lib/xrays.js — fetch/upload/update/delete/signed URL + canvas thumbnail
-- src/lib/toothNotation.js + toothSurfaces.js — pure utils
+# ── V1.5 PLAN (next cycle — Saif onboarding prep) ──────────────────────────
 
-## Three Phase 1 diagnostics on master (all stale-memory ghosts caught)
-- scripts/onboarding-bug-diagnostic.md — premise stale (self-serve flow deleted in Sprint 0)
-- scripts/teamtab-invite-diagnostic.md — premise stale (transient deploy gap, healed)
-- scripts/cron-diagnostic.md — premise stale (rotation completed in May 2026)
+## Scope (3 workstreams)
+1. **Role-scoped patient ownership** — 4 roles with **separate views**:
+   owner / doctor / **xray_tech (NEW role)** / receptionist.
+   - Doctors see their own caseload (Saif's vs Hawkar's patients, driven by the
+     per-doctor GHL tags); reception sees all; xray_tech scoped to imaging.
+   - New `xray_tech` role → profile_role enum migration + permissions + RLS + UI gating.
+2. **Mobile responsive pass** — **both phone AND tablet** (clinic reception + chairside).
+3. **GHL import pipeline** — 3,171 contacts, preserve per-doctor tags → primary_doctor_id,
+   plus notes / payments / documents. Route to categorized tabs via external_id/external_source.
 
-## Pattern recognition / lessons recorded
-- Storage RLS: every new Supabase Storage bucket needs all 4 op policies (SELECT/INSERT/UPDATE/DELETE) verified before declaring migration complete. Silent INSERT denial cost ~30 min on PR #38. Worth adding to CLAUDE.md.
-- Merge ordering: gh pr merge --auto doesn't enforce manual migration steps from PR description. Code can ship before SQL. PR #38 hit this — code dormant so no harm, but worth mitigating for future migration PRs.
-- Phase 1 diagnostic pattern: 3 ghosts caught this week + 1 X-ray legacy bucket caught at Phase 1 of PR #38. Read-only verification before fixing pays off repeatedly. When memory flags something as "broken," verify against current code/schema first.
-- Code-review value: caught real concurrency bugs in PR #35 (whole-list snapshot rollback), PR #37 (whole-slot latest-overrides), PR #40 (stale snapshot on nav after edit). Each would have shipped silently. Mandatory review on dental code earning its keep.
-- 4-runtime-dep discipline preserved: PR #40 considered react-zoom-pan-pinch, came in at 70 LOC custom instead. Conscious decision, not silent.
+## Decisions locked (2026-06-24)
+- Separate role-specific views (not one shared view with hide/show).
+- New `xray_tech` role (4 roles total).
+- Mobile = phone + tablet both.
+- Late-July onboarding is acceptable to Saif.
+
+## Timeline — 4 weeks
+- **Week 1–2:** V1.5 architecture — role-scoped ownership + xray_tech role + RLS/permissions.
+- **Week 3:** Mobile responsive pass (phone + tablet).
+- **Week 4:** GHL import (3,171 contacts w/ doctor tags) + Saif Dental onboarding.
 
 ## V2 restructure: DEFERRED
-- ARCH-V2-PLATFORM.md on master with deferred banner
-- PR #31 (Phase 1A migration SQL draft) closed cleanly, branch refactor/v2-platform-phase-1a preserved
-- V1 completion is current focus, V2 to resume 6-12 months out
+- ARCH-V2-PLATFORM.md on master (deferred banner); PR #31 (Phase 1A SQL draft) closed,
+  branch refactor/v2-platform-phase-1a preserved. Resume 6–12 months out.
 
-## Next session — three options
-1. Dentist demo (recommended) — show all three V1 features in production, capture his reactions before building more polish
-2. GHL import pipeline (4 scripts) → Saif Dental onboarding prep (3 sessions est.)
-3. Small backlog: migrate DentalTabs' inline useMyRole → shared hook; V1.1 Missing/whole-tooth surface rule; agency dashboard dark-on-light bleed
+## Pattern recognition / lessons (carry forward)
+- **Phase 1 (read + propose) before Phase 2 (execute)** repeatedly catches stale-memory
+  ghosts and audit miscounts before any code is touched. Verify "broken" claims against
+  current code/schema first.
+- **Storage RLS:** every new bucket needs all 4 op policies (SELECT/INSERT/UPDATE/DELETE)
+  verified before declaring a migration complete (silent INSERT denial cost ~30 min, PR #38).
+- **Merge ordering:** `gh pr merge --auto` doesn't enforce manual migration steps from the PR
+  body — code can ship before SQL. Mitigate for migration PRs.
+- **Mandatory code-review on dental code earns its keep:** caught real concurrency bugs in
+  PR #35/#37/#40 that would've shipped silently.
+- **Runtime-dep discipline preserved** (PR #40: 70-LOC custom zoom/pan over a library).
+- **Supabase `.update()` matching 0 rows under RLS returns NO error** — cross-user writes
+  silently no-op; use SECURITY DEFINER RPC or check rows-affected.
 
 ## Backlog (filed)
-- V1.1: Missing/whole-tooth findings should clear or block subsequent surface findings on same tooth (dentist conversation item)
-- DentalTabs' inline useMyRole → migrate to shared src/hooks/useMyRole.js (small refactor)
-- Repo-wide silent-catch audit remaining MINOR/LOW findings (6 sites in SettingsPage/FinancePage/AppointmentsPage)
+- DentalTabs' inline useMyRole → shared src/hooks/useMyRole.js (small refactor)
+- V1.1: Missing/whole-tooth finding should clear/block surface findings on same tooth
+- Remaining MINOR silent-catch sites (SettingsPage/FinancePage/AppointmentsPage)
 - Agency dashboard dark-on-light bleed (visual polish)
-- PR #6 (operator-banner-suppression) still open from much earlier — decide later
-- Optional cron hardening: add ?dryRun=1 mode to cleanup-test-accounts.js for verifiable runs
 - Storage RLS 4-policy convention → add to CLAUDE.md
+- Demo seed: scripts/seed-demo-patient-ahmed-hassan.sql (Ahmed Hassan Al-Bayati, Le Royal)
