@@ -3,23 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <!--
-      Content Security Policy — report-only for now. Flip to enforcing
-      (Content-Security-Policy) once we've confirmed no legitimate Supabase /
-      fonts / Vercel traffic is violating it. 'unsafe-inline' for styles is
-      currently required because the app uses inline style objects throughout.
+      Security headers (CSP, X-Frame-Options, HSTS, etc.) are delivered as HTTP
+      response headers via vercel.json so they apply at the right layer and
+      frame-ancestors actually enforces. CSP ships report-only; flip the
+      vercel.json key to "Content-Security-Policy" once the browser console
+      shows no legitimate violations across all pages (incl. Settings/WhatsApp).
     -->
-    <meta http-equiv="Content-Security-Policy-Report-Only" content="
-      default-src 'self';
-      script-src 'self';
-      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-      font-src 'self' https://fonts.gstatic.com data:;
-      img-src 'self' data: blob: https:;
-      connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.vercel-insights.com https://vitals.vercel-insights.com;
-      frame-ancestors 'none';
-      object-src 'none';
-      base-uri 'self';
-      form-action 'self';
-    " />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
