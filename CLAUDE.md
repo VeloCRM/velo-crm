@@ -30,15 +30,27 @@ No test framework is configured. (Tech debt — adding Vitest is roadmap work.)
 
 ### Backend
 - **Supabase** (Postgres) for DB, auth, storage with Row-Level Security
-- **Vercel Serverless Functions** in `api/`:
-  - `api/admin/payments.js` — admin payments (bypasses RLS with service key)
-  - `api/webhooks/whatsapp.js` — WhatsApp Cloud API webhook
 - Auth: Supabase email/password, rate limit (5/5min), 8h session timeout, login lockout
+- **Vercel Serverless Functions** in `api/` — 12 functions (Hobby tier ceiling; see Infra note below). **The service-role key (which bypasses RLS) is used in 11 of the 12** — only `api/invitations/accept.js` runs as the caller (its SECURITY DEFINER RPC needs the real `auth.uid()`). Despite the name, only `api/admin/payments.js` actually lives under `api/admin/`. Grouped by who calls them:
+  - **End-user-facing** (caller is a clinic user with a Supabase JWT — these MUST self-enforce auth + org-scope + role; RLS does NOT protect them, see the invariant below):
+    - `api/whatsapp/send.js` — send outbound WhatsApp; role-gated to owner/doctor/receptionist (PR #47), org-scoped patient lookup
+    - `api/invitations/create.js` — owner invites a member; owner-role-gated
+    - `api/invitations/[id].js` — revoke invite; owner-or-operator-gated
+    - `api/invitations/accept.js` — accept invite; runs as caller (no service role)
+    - `api/ai/chat.js` — Claude proxy; JWT-verified + org-resolved, ⚠️ no role gate (any member can spend the org's AI budget) — touches only `profiles`/`ai_usage`, no clinical data
+    - `api/social-fetch.js` — social stats scrape; JWT-only, ⚠️ no org-scope (no DB read/write, no clinical data)
+  - **System / elevated-facing** (own auth, not an end-user identity):
+    - `api/webhooks/whatsapp.js` — Meta inbound webhook; per-org HMAC signature verification
+    - `api/cron/cleanup-test-accounts.js` — cron; `Bearer CRON_SECRET`
+    - `api/auth/create-test-account.js` — **public/unauthenticated by design**; only ever creates a fresh test org (no cross-tenant reach), gated to `status='test'` downstream
+    - `api/operator/set-secret.js` — operator-gated (checks `operators` table)
+    - `api/admin.js` — operator org CRUD; operator-gated
+    - `api/admin/payments.js` — cross-org payments; super-admin-gated (`profiles.is_super_admin`)
 
 ### AI Integration
-- Claude API called from client (`src/lib/ai.js`) using org-stored key
+- Claude API is proxied **server-side** via `api/ai/chat.js` (rate-limited per org through `ai_usage`); the client (`src/lib/ai.js`) calls that endpoint. The API key lives in server env, **not** the bundle — the earlier client-side-key exposure is resolved.
 - Model: `claude-sonnet-4-20250514` for auto-replies, lead scoring, CRM analysis
-- ⚠️ Risk: client-side key exposure. Migrate to a Vercel Function proxy when bandwidth allows.
+- ⚠️ Remaining gap: `api/ai/chat.js` has no role gate — any authenticated org member can spend the org's AI budget (see Backend).
 
 ### Key Directories
 - `src/lib/` — services: `supabase.js`, `auth.js`, `database.js`, `ai.js`, `sanitize.js`, `permissions.js`, `dental.js`, `whatsapp.js`, `invitations.js`, plus SQL schemas (`schema_*.sql`)
@@ -57,8 +69,9 @@ No test framework is configured. (Tech debt — adding Vitest is roadmap work.)
 ## Non-negotiable invariants
 
 **Multi-tenancy via RLS — every query, every time.**
-- Every tenant-scoped table has `tenant_id`. Every read/write enforced by RLS at the DB.
-- Never bypass RLS from the client. Service-role key is only used in `api/admin/*`.
+- Every tenant-scoped table has `org_id` (NOT `tenant_id`). Every read/write enforced by RLS at the DB via the `current_org_id()` helper.
+- Never bypass RLS from the client. The client only ever uses the anon key (`src/lib/supabase.js`); the service-role key is server-only.
+- **Service-role bypasses RLS, and it is used broadly across `api/` (11 of 12 functions), not just `api/admin/`.** Any service-role endpoint that an **end user** can call MUST self-enforce at the top of the handler: (1) verify the Supabase JWT, (2) resolve the caller's `org_id` **and `role`** from `profiles`, (3) explicitly `org_id`-scope every query and role-gate the action — RLS will not. Canonical pattern: `api/invitations/create.js` (and `api/whatsapp/send.js` per PR #47). System endpoints (webhook/cron/operator/admin) instead use their own auth (HMAC, cron secret, operator/super-admin check). See the Backend section for the per-endpoint breakdown.
 - New tables: write the RLS policy in the same migration.
 
 **Agency impersonation.**
@@ -76,7 +89,8 @@ No test framework is configured. (Tech debt — adding Vitest is roadmap work.)
 - Files: `src/lib/dental.js`, `DentalChart.jsx`, `DentalTabs.jsx`, `DentalDashboard.jsx`.
 
 ## Known risks / tech debt
-- Client-side Claude API key (see AI Integration)
+- `api/ai/chat.js` and `api/social-fetch.js` are user-facing service-role endpoints with no role gate (JWT-only) — flagged for the V1.5 permissions rework (see `scripts/v1.5-architecture-diagnostic.md` §8)
+- Two parallel privilege models coexist: `profiles.is_super_admin` (used by `api/admin/payments.js`) vs the `operators` table (used by other operator endpoints) — reconcile during the permissions rework
 - Hardcoded super-admin email in App.jsx — replace with `super_admin` role flag during permissions rework
 - No automated tests
 - Monolithic App.jsx (extraction is roadmap work)
