@@ -380,6 +380,15 @@ input, textarea, select, button {
   font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/* Mobile: force ≥16px on form controls so iOS Safari does not auto-zoom the
+   viewport on focus. !important overrides Tailwind text-sm/text-xs utilities and
+   inline fontSize:14 (inputStyle). Mobile UX audit H-02 (scripts/mobile-ux-audit-2026-06-24.md). */
+@media (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* ─── Animations ──────────────────────────────────────────────────── */
 @keyframes fadeSlideUp {
   from { opacity: 0; transform: translateY(16px); }

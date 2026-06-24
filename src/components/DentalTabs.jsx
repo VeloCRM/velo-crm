@@ -57,6 +57,7 @@ import {
   updateNote,
   deleteNote,
 } from '../lib/notes'
+import { isHeic, convertHeicToJpeg } from '../lib/heicConverter'
 
 // Roles allowed to mutate dental-tab state at the UI layer. RLS policies are
 // the real security boundary; this just hides the buttons for read-only users.
@@ -1838,6 +1839,12 @@ const DOCUMENT_ACCEPT = [
   'application/pdf',
   'image/jpeg',
   'image/png',
+  // HEIC/HEIF offered in the picker so iOS doesn't grey out phone photos; they're
+  // converted to JPEG on selection (heic2any) before the bucket MIME gate.
+  'image/heic',
+  'image/heif',
+  '.heic',
+  '.heif',
   'application/msword',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.ms-excel',
@@ -1902,7 +1909,25 @@ export function DocumentsTab({ patient, lang, dir, toast }) {
     setUploading(true)
     let ok = 0
     let firstError = null
-    for (const file of files) {
+    let heicAnnounced = false
+    for (const original of files) {
+      let file = original
+      // iPhone HEIC/HEIF → JPEG (heic2any, lazy-loaded). Document uploads accept
+      // images, so a phone photo would otherwise be rejected by the bucket MIME gate.
+      if (isHeic(file)) {
+        if (!heicAnnounced) { heicAnnounced = true; toast?.(isRTL ? 'جارٍ تحويل الصورة…' : 'Converting photo…', 'info') }
+        try {
+          file = await convertHeicToJpeg(original)
+        } catch (err) {
+          console.error('[DocumentsTab] HEIC convert failed:', original?.name, err)
+          if (!firstError) {
+            firstError = new Error(isRTL
+              ? 'تعذّر تحويل صورة HEIC. احفظها بصيغة JPG من صور آيفون.'
+              : "Couldn't convert this HEIC photo. Try saving as JPG from iPhone Photos.")
+          }
+          continue
+        }
+      }
       try {
         await uploadDocument(patient.id, file)
         ok += 1
