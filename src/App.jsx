@@ -52,6 +52,7 @@ const DentalDocuments = lazy(() =>
 )
 const DentalXrays = lazy(() => import('./components/XraysTab'))
 import TestAccountBanner from './components/TestAccountBanner'
+import AddAppointmentModal from './components/AddAppointmentModal'
 import { SkeletonDashboard, SkeletonContacts, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
 import { useToast, ToastContainer } from './components/Toast'
 import ConfirmDialog from './components/ConfirmDialog'
@@ -67,6 +68,7 @@ import * as db from './lib/database'
 import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
+import { todayLocal } from './lib/date'
 import { listDoctorsInOrg } from './lib/profiles'
 import { formatMoney, toMinor } from './lib/money'
 import { avatarGradient, avatarInitials } from './lib/avatarGradient'
@@ -1724,6 +1726,8 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   // Appointments tab — fetched on demand via the appointments helper.
   const [appointments, setAppointments] = useState([])
   const [apptsLoading, setApptsLoading] = useState(false)
+  const [showBook, setShowBook] = useState(false)
+  const [apptRefresh, setApptRefresh] = useState(0) // bump to refetch after booking
   useEffect(() => {
     let cancelled = false
     if (profileTab !== 'appointments') return
@@ -1735,7 +1739,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
         console.error('listAppointmentsForPatient error:', err)
       })
     return () => { cancelled = true }
-  }, [patient.id, profileTab])
+  }, [patient.id, profileTab, apptRefresh])
 
   const fullName = patient.full_name || patient.fullName || ''
   const allergies = Array.isArray(patient.allergies) ? patient.allergies : []
@@ -1931,13 +1935,22 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
           )}
 
           {profileTab === 'appointments' && (
-            apptsLoading ? <DentalSpinner isRTL={isRTL} /> :
-            appointments.length === 0 ? (
-              <GlassCard padding="lg" className="text-center text-sm text-navy-500">
-                {isRTL ? 'لا توجد مواعيد' : 'No appointments yet'}
-              </GlassCard>
-            ) : (
-              <ol className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold text-navy-900 m-0">
+                  {isRTL ? 'المواعيد' : 'Appointments'}
+                </h3>
+                <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowBook(true)}>
+                  {isRTL ? 'حجز موعد' : 'Book Appointment'}
+                </Button>
+              </div>
+              {apptsLoading ? <DentalSpinner isRTL={isRTL} /> :
+              appointments.length === 0 ? (
+                <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+                  {isRTL ? 'لا توجد مواعيد' : 'No appointments yet'}
+                </GlassCard>
+              ) : (
+                <ol className="flex flex-col gap-3">
                 {appointments.map(a => {
                   const d = new Date(a.scheduled_at)
                   const valid = !isNaN(d.getTime())
@@ -1974,8 +1987,9 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
                     </li>
                   )
                 })}
-              </ol>
-            )
+                </ol>
+              )}
+            </div>
           )}
 
           {/* Heavy tabs render in their existing chrome inside a glass shell.
@@ -2027,6 +2041,20 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
             </div>
           )}
         </div>
+
+        {showBook && (
+          <AddAppointmentModal
+            patients={[patient]}
+            initialPatientId={patient.id}
+            initialDate={todayLocal()}
+            onClose={() => setShowBook(false)}
+            onSave={() => {
+              setShowBook(false)
+              setApptRefresh(n => n + 1)
+              toast?.(isRTL ? 'تمت إضافة الموعد' : 'Appointment booked', 'success')
+            }}
+          />
+        )}
       </div>
     </div>
   )
