@@ -32,6 +32,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
   const [statusFilter, setStatusFilter] = useState('all')
   const [showAddModal, setShowAddModal] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [confirmSuspend, setConfirmSuspend] = useState(null)
   const [newOrg, setNewOrg] = useState({ name: '', admin_email: '' })
   const [saving, setSaving] = useState(false)
   const [inviteSuccess, setInviteSuccess] = useState(null)
@@ -318,15 +319,12 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
                     return (
                       <tr
                         key={org.id}
-                        onClick={() => onEnterOrg(org)}
+                        // No row-click impersonation — a mis-click while screen-sharing
+                        // would drop into a client's data. Use the explicit Enter button.
                         style={{
                           borderBottom: '1px solid rgba(255,255,255,0.04)',
                           background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                          cursor: 'pointer',
-                          transition: 'background 150ms ease',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.04)'}
-                        onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)'}
                       >
                         {/* Name */}
                         <td style={{ padding: '12px 14px', fontWeight: 600, color: '#E8EAF5', whiteSpace: 'nowrap' }}>
@@ -358,7 +356,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
                           {org.created_at ? new Date(org.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '\u2014'}
                         </td>
                         {/* Actions */}
-                        <td style={{ padding: '12px 14px' }} onClick={e => e.stopPropagation()}>
+                        <td style={{ padding: '12px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
                             <button
                               onClick={() => onEnterOrg(org)}
@@ -367,7 +365,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
 
                             {org.status === 'active' ? (
                               <button
-                                onClick={() => updateOrgStatus(org.id, 'suspended')}
+                                onClick={() => setConfirmSuspend(org)}
                                 style={makeBtn('secondary', { height: 28, fontSize: 12, padding: '0 10px', color: '#FFB347' })}
                               >Suspend</button>
                             ) : org.status === 'suspended' ? (
@@ -490,6 +488,35 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
               >
                 Done
               </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Suspend Confirm Modal ──────────────────────────────────────── */}
+      {confirmSuspend && (
+        <Modal onClose={() => setConfirmSuspend(null)} width={420}>
+          <div style={{ padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+              <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: 'rgba(255,179,71,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                color: '#FFB347', border: '1px solid rgba(255,179,71,0.15)',
+              }}>{Icons.bolt(20)}</div>
+              <div>
+                <h2 style={{ fontSize: 16, fontWeight: 700, color: '#E8EAF5', margin: 0 }}>Suspend Organization</h2>
+                <p style={{ fontSize: 13, color: '#3A3D55', margin: '2px 0 0' }}>Their access is blocked until reactivated.</p>
+              </div>
+            </div>
+            <p style={{ fontSize: 14, color: '#7B7F9E', margin: '0 0 20px', lineHeight: 1.5 }}>
+              Are you sure you want to suspend <strong style={{ color: '#E8EAF5' }}>{confirmSuspend.name}</strong>? They will lose access to the platform immediately.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button onClick={() => setConfirmSuspend(null)} style={makeBtn('secondary')}>Cancel</button>
+              <button
+                onClick={() => { updateOrgStatus(confirmSuspend.id, 'suspended'); setConfirmSuspend(null) }}
+                style={makeBtn('secondary', { color: '#FFB347' })}
+              >Suspend</button>
             </div>
           </div>
         </Modal>

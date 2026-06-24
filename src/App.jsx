@@ -52,6 +52,7 @@ const DentalDocuments = lazy(() =>
 )
 const DentalXrays = lazy(() => import('./components/XraysTab'))
 import TestAccountBanner from './components/TestAccountBanner'
+import AddAppointmentModal from './components/AddAppointmentModal'
 import { SkeletonDashboard, SkeletonContacts, SkeletonInbox, SkeletonCalendar, SkeletonGeneric } from './components/Skeleton'
 import { useToast, ToastContainer } from './components/Toast'
 import ConfirmDialog from './components/ConfirmDialog'
@@ -67,6 +68,7 @@ import * as db from './lib/database'
 import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
+import { todayLocal } from './lib/date'
 import { listDoctorsInOrg } from './lib/profiles'
 import { formatMoney, toMinor } from './lib/money'
 import { avatarGradient, avatarInitials } from './lib/avatarGradient'
@@ -1511,6 +1513,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
           patient={editingPatient}
           currentUserId={currentUserId}
           currentUserRole={currentUserRole}
+          toast={toast}
           onSave={(data) => {
             if (editingPatient) updatePatient(editingPatient.id, data)
             else addPatient(data)
@@ -1549,7 +1552,7 @@ const GENDER_OPTIONS = [
   { id: 'prefer_not_to_say', en: 'Prefer not to say', ar: 'أفضّل عدم القول' },
 ]
 
-function PatientFormModal({ t, dir, isRTL, patient, currentUserId, currentUserRole, onSave, onClose }) {
+function PatientFormModal({ t, dir, isRTL, patient, currentUserId, currentUserRole, onSave, onClose, toast }) {
   void t
   // Default the primary doctor to the existing value, else the current user if
   // they're a doctor (the common "I'm adding my own patient" case), else blank.
@@ -1564,7 +1567,12 @@ function PatientFormModal({ t, dir, isRTL, patient, currentUserId, currentUserRo
     allergies: Array.isArray(patient?.allergies) ? patient.allergies.join(', ') : '',
     primary_doctor_id: initialPrimaryDoctor || '',
   })
-  const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
+  const [errors, setErrors] = useState({})
+  const set = (k, v) => {
+    setForm(prev => ({ ...prev, [k]: v }))
+    // Clear a field's error as soon as the user edits it.
+    setErrors(prev => (prev[k] ? { ...prev, [k]: undefined } : prev))
+  }
 
   // Doctor options for the Primary Doctor selector (role === 'doctor' only).
   const [doctors, setDoctors] = useState([])
@@ -1577,8 +1585,18 @@ function PatientFormModal({ t, dir, isRTL, patient, currentUserId, currentUserRo
   }, [])
 
   const handleSubmit = () => {
-    if (!form.full_name.trim()) return
-    if (!form.phone.trim()) return
+    // Previously this returned silently on a blank Name/Phone, so Save appeared
+    // to do nothing (the downstream toast in addPatient was never reached).
+    // Surface field-level errors + a toast on every invalid submit.
+    const next = {}
+    if (!form.full_name.trim()) next.full_name = isRTL ? 'الاسم مطلوب' : 'Full name is required'
+    if (!form.phone.trim()) next.phone = isRTL ? 'رقم الهاتف مطلوب' : 'Phone is required'
+    if (Object.keys(next).length) {
+      setErrors(next)
+      toast?.(isRTL ? 'يرجى تعبئة الحقول المطلوبة' : 'Please fill in the required fields', 'error')
+      return
+    }
+    setErrors({})
     onSave({
       full_name: form.full_name.trim(),
       phone: form.phone.trim(),
@@ -1609,11 +1627,13 @@ function PatientFormModal({ t, dir, isRTL, patient, currentUserId, currentUserRo
           </button>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
-          <FormField label={isRTL ? 'الاسم الكامل' : 'Full Name'} dir={dir}>
-            <input value={form.full_name} onChange={e=>set('full_name', e.target.value)} maxLength={LIMITS.name} style={inputStyle(dir)} />
+          <FormField label={<>{isRTL ? 'الاسم الكامل' : 'Full Name'} <span className="text-rose-600">*</span></>} dir={dir}>
+            <input value={form.full_name} onChange={e=>set('full_name', e.target.value)} maxLength={LIMITS.name} aria-invalid={!!errors.full_name} style={{ ...inputStyle(dir), ...(errors.full_name ? { borderColor: '#e11d48' } : {}) }} />
+            {errors.full_name && <p className="text-xs text-rose-600 mt-1 mb-0">{errors.full_name}</p>}
           </FormField>
-          <FormField label={isRTL ? 'رقم الهاتف' : 'Phone'} dir={dir}>
-            <input value={form.phone} onChange={e=>set('phone', e.target.value)} maxLength={LIMITS.phone} style={inputStyle(dir)} />
+          <FormField label={<>{isRTL ? 'رقم الهاتف' : 'Phone'} <span className="text-rose-600">*</span></>} dir={dir}>
+            <input value={form.phone} onChange={e=>set('phone', e.target.value)} maxLength={LIMITS.phone} aria-invalid={!!errors.phone} style={{ ...inputStyle(dir), ...(errors.phone ? { borderColor: '#e11d48' } : {}) }} />
+            {errors.phone && <p className="text-xs text-rose-600 mt-1 mb-0">{errors.phone}</p>}
           </FormField>
           <FormField label={isRTL ? 'البريد الإلكتروني' : 'Email'} dir={dir}>
             <input value={form.email} onChange={e=>set('email', e.target.value)} type="email" maxLength={LIMITS.email} style={inputStyle(dir)} />
@@ -1706,6 +1726,8 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   // Appointments tab — fetched on demand via the appointments helper.
   const [appointments, setAppointments] = useState([])
   const [apptsLoading, setApptsLoading] = useState(false)
+  const [showBook, setShowBook] = useState(false)
+  const [apptRefresh, setApptRefresh] = useState(0) // bump to refetch after booking
   useEffect(() => {
     let cancelled = false
     if (profileTab !== 'appointments') return
@@ -1717,7 +1739,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
         console.error('listAppointmentsForPatient error:', err)
       })
     return () => { cancelled = true }
-  }, [patient.id, profileTab])
+  }, [patient.id, profileTab, apptRefresh])
 
   const fullName = patient.full_name || patient.fullName || ''
   const allergies = Array.isArray(patient.allergies) ? patient.allergies : []
@@ -1913,13 +1935,22 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
           )}
 
           {profileTab === 'appointments' && (
-            apptsLoading ? <DentalSpinner isRTL={isRTL} /> :
-            appointments.length === 0 ? (
-              <GlassCard padding="lg" className="text-center text-sm text-navy-500">
-                {isRTL ? 'لا توجد مواعيد' : 'No appointments yet'}
-              </GlassCard>
-            ) : (
-              <ol className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-semibold text-navy-900 m-0">
+                  {isRTL ? 'المواعيد' : 'Appointments'}
+                </h3>
+                <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowBook(true)}>
+                  {isRTL ? 'حجز موعد' : 'Book Appointment'}
+                </Button>
+              </div>
+              {apptsLoading ? <DentalSpinner isRTL={isRTL} /> :
+              appointments.length === 0 ? (
+                <GlassCard padding="lg" className="text-center text-sm text-navy-500">
+                  {isRTL ? 'لا توجد مواعيد' : 'No appointments yet'}
+                </GlassCard>
+              ) : (
+                <ol className="flex flex-col gap-3">
                 {appointments.map(a => {
                   const d = new Date(a.scheduled_at)
                   const valid = !isNaN(d.getTime())
@@ -1956,8 +1987,9 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
                     </li>
                   )
                 })}
-              </ol>
-            )
+                </ol>
+              )}
+            </div>
           )}
 
           {/* Heavy tabs render in their existing chrome inside a glass shell.
@@ -2009,6 +2041,20 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
             </div>
           )}
         </div>
+
+        {showBook && (
+          <AddAppointmentModal
+            patients={[patient]}
+            initialPatientId={patient.id}
+            initialDate={todayLocal()}
+            onClose={() => setShowBook(false)}
+            onSave={() => {
+              setShowBook(false)
+              setApptRefresh(n => n + 1)
+              toast?.(isRTL ? 'تمت إضافة الموعد' : 'Appointment booked', 'success')
+            }}
+          />
+        )}
       </div>
     </div>
   )

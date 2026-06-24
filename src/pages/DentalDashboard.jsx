@@ -12,7 +12,7 @@ import { listDoctorsInOrg, fetchMyProfile } from '../lib/profiles'
 import { updateAppointmentStatus } from '../lib/appointments'
 import { todayLocal } from '../lib/date'
 import { avatarGradient, avatarInitials } from '../lib/avatarGradient'
-import { GlassCard, Button, Badge } from '../components/ui'
+import { GlassCard, Button, Badge, SkeletonGlass } from '../components/ui'
 
 /* ── Inline icon helpers ────────────────────────────────────────────────── */
 const Ico = (s, children) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
@@ -76,6 +76,40 @@ function firstNameOf(fullName, fallback) {
     return second || fallback
   }
   return part
+}
+
+/* ── Loading skeleton ───────────────────────────────────────────────────────
+   Mirrors the real layout (hero + 3 stat tiles + 4 quick actions + two-column)
+   so a populated clinic never flashes "0 patients / no appointments" while the
+   stats round-trip is in flight. */
+function DashboardSkeleton({ dir }) {
+  return (
+    <div
+      dir={dir}
+      className="ds-root min-h-full -m-4 md:-m-8 p-4 md:p-8 box-border"
+      style={{ background: 'var(--ds-canvas-gradient)' }}
+    >
+      <div className="relative max-w-[1280px] mx-auto flex flex-col gap-7">
+        <header className="flex flex-col gap-2.5">
+          <SkeletonGlass shape="text" className="w-44" />
+          {/* Inline height beats the shape's baked h-* (equal-specificity Tailwind
+              utilities don't resolve by class order). */}
+          <SkeletonGlass shape="title" className="w-72" style={{ height: 36 }} />
+          <SkeletonGlass shape="text" className="w-56" />
+        </header>
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
+          {[0, 1, 2].map(i => <SkeletonGlass key={i} shape="card" />)}
+        </section>
+        <section className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+          {[0, 1, 2, 3].map(i => <SkeletonGlass key={i} shape="block" />)}
+        </section>
+        <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <SkeletonGlass shape="card" className="md:col-span-2" style={{ height: 288 }} />
+          <SkeletonGlass shape="card" style={{ height: 288 }} />
+        </section>
+      </div>
+    </div>
+  )
 }
 
 /* ───────────────────────────────────────────────────────────────────────── */
@@ -245,6 +279,10 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
     { key: 'treatment',      icon: Icons.file,     label: isRTL ? 'خطة علاج'      : 'Treatment Plan', onClick: () => setPage('patients'),      primary: false },
     { key: 'payment',        icon: Icons.dollar,   label: isRTL ? 'تسجيل دفعة'   : 'Record Payment', onClick: () => setPage('finance'),       primary: false },
   ]
+
+  // Hold the skeleton until the first stats fetch resolves — otherwise a
+  // populated clinic briefly renders zeros + "No appointments" empty states.
+  if (dbData.loading) return <DashboardSkeleton dir={dir} />
 
   return (
     <div

@@ -67,10 +67,10 @@ function splitScheduledAt(iso) {
   return { date, time }
 }
 
-export default function AddAppointmentModal({ onClose, onSave, patients, initialDate, editAppointment }) {
+export default function AddAppointmentModal({ onClose, onSave, patients, initialDate, initialPatientId, editAppointment }) {
   const initialSplit = splitScheduledAt(editAppointment?.scheduled_at)
   const [form, setForm] = useState({
-    patient_id: editAppointment?.patient_id || '',
+    patient_id: editAppointment?.patient_id || initialPatientId || '',
     doctor_id: editAppointment?.doctor_id || '',
     date: editAppointment?.scheduled_at ? initialSplit.date : (initialDate || todayLocal()),
     time: editAppointment?.scheduled_at ? initialSplit.time : '10:00',

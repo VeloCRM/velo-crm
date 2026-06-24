@@ -16,6 +16,10 @@ const ACCEPT_ATTR = ACCEPT_MIME.join(',')
 const MAX_FILES = 20
 const WARN_FILES = 10
 
+// HEIC/HEIF (the iPhone default) reports as image/heic|heif, or sometimes an
+// empty type with a .heic/.heif name — detect both so we can give a targeted hint.
+const isHeic = (f) => /image\/hei[cf]/i.test(f.type || '') || /\.(heic|heif)$/i.test(f.name || '')
+
 export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploaded, toast }) {
   const isRTL = lang === 'ar'
   const [items, setItems] = useState([]) // { id, file, thumb, status:'pending'|'ok'|'failed', error }
@@ -39,7 +43,24 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
   }, [items])
 
   const addFiles = (fileList) => {
-    const incoming = Array.from(fileList || []).filter(f => ACCEPT_MIME.includes(f.type))
+    const all = Array.from(fileList || [])
+    if (!all.length) return
+    const incoming = all.filter(f => ACCEPT_MIME.includes(f.type))
+    // Previously rejected files were dropped silently — a dentist dragging an
+    // iPhone HEIC or a PDF saw nothing happen. Surface an explicit toast.
+    const rejected = all.filter(f => !ACCEPT_MIME.includes(f.type))
+    if (rejected.length) {
+      toast?.(
+        rejected.some(isHeic)
+          ? (isRTL
+              ? 'صيغة HEIC من آيفون غير مدعومة بعد. حوّلها إلى JPG/PNG أو التقط صورة جديدة.'
+              : 'iPhone HEIC format not supported yet. Convert to JPG/PNG first or take a fresh photo.')
+          : (isRTL
+              ? 'الصيغة غير مدعومة. استخدم JPG أو PNG أو WebP.'
+              : 'Format not supported. Use JPG, PNG, or WebP.'),
+        'error',
+      )
+    }
     if (!incoming.length) return
     // ids built OUTSIDE the updater; the updater enforces the cap against the
     // authoritative prev.length (not a stale closure).
