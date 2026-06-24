@@ -324,10 +324,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
                         style={{
                           borderBottom: '1px solid rgba(255,255,255,0.04)',
                           background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
-                          transition: 'background 150ms ease',
                         }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'rgba(0,255,178,0.04)'}
-                        onMouseLeave={e => e.currentTarget.style.background = idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)'}
                       >
                         {/* Name */}
                         <td style={{ padding: '12px 14px', fontWeight: 600, color: '#E8EAF5', whiteSpace: 'nowrap' }}>
@@ -359,7 +356,7 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
                           {org.created_at ? new Date(org.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '\u2014'}
                         </td>
                         {/* Actions */}
-                        <td style={{ padding: '12px 14px' }} onClick={e => e.stopPropagation()}>
+                        <td style={{ padding: '12px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'nowrap' }}>
                             <button
                               onClick={() => onEnterOrg(org)}

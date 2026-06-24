@@ -92,7 +92,9 @@ function DashboardSkeleton({ dir }) {
       <div className="relative max-w-[1280px] mx-auto flex flex-col gap-7">
         <header className="flex flex-col gap-2.5">
           <SkeletonGlass shape="text" className="w-44" />
-          <SkeletonGlass shape="title" className="w-72 h-9" />
+          {/* Inline height beats the shape's baked h-* (equal-specificity Tailwind
+              utilities don't resolve by class order). */}
+          <SkeletonGlass shape="title" className="w-72" style={{ height: 36 }} />
           <SkeletonGlass shape="text" className="w-56" />
         </header>
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
@@ -102,8 +104,8 @@ function DashboardSkeleton({ dir }) {
           {[0, 1, 2, 3].map(i => <SkeletonGlass key={i} shape="block" />)}
         </section>
         <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <SkeletonGlass shape="card" className="md:col-span-2 h-72" />
-          <SkeletonGlass shape="card" className="h-72" />
+          <SkeletonGlass shape="card" className="md:col-span-2" style={{ height: 288 }} />
+          <SkeletonGlass shape="card" style={{ height: 288 }} />
         </section>
       </div>
     </div>
