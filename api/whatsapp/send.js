@@ -30,6 +30,12 @@ const RATE_LIMIT_PER_DAY = 1000
 const MAX_BODY_LENGTH = 4000
 const META_GRAPH_VERSION = 'v20.0'
 
+// Roles permitted to send WhatsApp messages to patients. Excludes 'assistant'
+// (read-only), the future 'xray_tech' role, and operators (who don't message
+// clinic patients). This is the endpoint-level mirror of the role gate that
+// RLS cannot enforce here — see scripts/v1.5-architecture-diagnostic.md §8.
+const SEND_ROLES = new Set(['owner', 'doctor', 'receptionist'])
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type')
@@ -64,13 +70,20 @@ export default async function handler(req, res) {
 
   const { data: profile, error: profErr } = await admin
     .from('profiles')
-    .select('org_id')
+    .select('org_id, role')
     .eq('id', userId)
     .single()
   if (profErr || !profile?.org_id) {
     return res.status(403).json({ error: 'No org membership' })
   }
   const orgId = profile.org_id
+
+  // ── 2b. Authorize role (before any patient/credential read) ─────────────
+  // Only owner/doctor/receptionist may message patients. Generic 403 — do not
+  // disclose the caller's role or the allowed set.
+  if (!SEND_ROLES.has(profile.role)) {
+    return res.status(403).json({ error: 'Not authorized to send messages' })
+  }
 
   // ── 3. Block test orgs ──────────────────────────────────────────────────
   const { data: org, error: orgErr } = await admin
