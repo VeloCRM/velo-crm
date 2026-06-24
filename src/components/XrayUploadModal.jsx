@@ -10,21 +10,21 @@ import { Button } from './ui'
 import XrayMetadataForm from './XrayMetadataForm'
 import { uploadXray, generateThumbnail } from '../lib/xrays'
 import { todayLocal } from '../lib/date'
+import { isHeic, convertHeicToJpeg } from '../lib/heicConverter'
 
 const ACCEPT_MIME = ['image/jpeg', 'image/png', 'image/webp']
-const ACCEPT_ATTR = ACCEPT_MIME.join(',')
+// Offer HEIC in the picker too so iOS doesn't grey out camera/library photos;
+// they're converted to JPEG on selection (heic2any, lazy-loaded).
+const ACCEPT_ATTR = [...ACCEPT_MIME, 'image/heic', 'image/heif', '.heic', '.heif'].join(',')
 const MAX_FILES = 20
 const WARN_FILES = 10
-
-// HEIC/HEIF (the iPhone default) reports as image/heic|heif, or sometimes an
-// empty type with a .heic/.heif name — detect both so we can give a targeted hint.
-const isHeic = (f) => /image\/hei[cf]/i.test(f.type || '') || /\.(heic|heif)$/i.test(f.name || '')
 
 export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploaded, toast }) {
   const isRTL = lang === 'ar'
   const [items, setItems] = useState([]) // { id, file, thumb, status:'pending'|'ok'|'failed', error }
   const [form, setForm] = useState({ xray_type: 'bitewing', date_taken: todayLocal(), teeth: [], treatment_plan_id: '', notes: '' })
   const [submitting, setSubmitting] = useState(false)
+  const [converting, setConverting] = useState(false)
   const [dragging, setDragging] = useState(false)
   const fileInputRef = useRef(null)
   const thumbTried = useRef(new Set()) // item ids we've already attempted a thumbnail for
@@ -42,28 +42,10 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
     }
   }, [items])
 
-  const addFiles = (fileList) => {
-    const all = Array.from(fileList || [])
-    if (!all.length) return
-    const incoming = all.filter(f => ACCEPT_MIME.includes(f.type))
-    // Previously rejected files were dropped silently — a dentist dragging an
-    // iPhone HEIC or a PDF saw nothing happen. Surface an explicit toast.
-    const rejected = all.filter(f => !ACCEPT_MIME.includes(f.type))
-    if (rejected.length) {
-      toast?.(
-        rejected.some(isHeic)
-          ? (isRTL
-              ? 'صيغة HEIC من آيفون غير مدعومة بعد. حوّلها إلى JPG/PNG أو التقط صورة جديدة.'
-              : 'iPhone HEIC format not supported yet. Convert to JPG/PNG first or take a fresh photo.')
-          : (isRTL
-              ? 'الصيغة غير مدعومة. استخدم JPG أو PNG أو WebP.'
-              : 'Format not supported. Use JPG, PNG, or WebP.'),
-        'error',
-      )
-    }
+  // Add already-acceptable image files to the tray (cap enforced in the updater
+  // against the authoritative prev.length, not a stale closure).
+  const addAccepted = (incoming) => {
     if (!incoming.length) return
-    // ids built OUTSIDE the updater; the updater enforces the cap against the
-    // authoritative prev.length (not a stale closure).
     const candidates = incoming.map(f => ({ id: crypto.randomUUID(), file: f, thumb: null, status: 'pending', error: null }))
     setItems(prev => [...prev, ...candidates.slice(0, Math.max(0, MAX_FILES - prev.length))])
     if (items.length + incoming.length > MAX_FILES) {
@@ -71,9 +53,52 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
     }
   }
 
+  // iPhone HEIC/HEIF → JPEG (heic2any, lazy-loaded). Converts sequentially to
+  // avoid memory spikes, then adds the JPEGs to the tray.
+  const convertHeic = async (heicFiles) => {
+    setConverting(true)
+    toast?.(isRTL ? 'جارٍ تحويل الصورة…' : 'Converting photo…', 'info')
+    try {
+      const converted = []
+      for (const f of heicFiles) {
+        try {
+          converted.push(await convertHeicToJpeg(f))
+        } catch (err) {
+          console.error('[XrayUploadModal] HEIC convert failed:', f?.name, err)
+          toast?.(
+            isRTL
+              ? 'تعذّر تحويل صورة HEIC. احفظها بصيغة JPG من صور آيفون.'
+              : "Couldn't convert this HEIC photo. Try saving as JPG from iPhone Photos.",
+            'error',
+          )
+        }
+      }
+      addAccepted(converted)
+    } finally {
+      setConverting(false)
+    }
+  }
+
+  const addFiles = (fileList) => {
+    const all = Array.from(fileList || [])
+    if (!all.length) return
+    const incoming = all.filter(f => ACCEPT_MIME.includes(f.type))
+    const heic = all.filter(f => !ACCEPT_MIME.includes(f.type) && isHeic(f))
+    // Anything that's neither an accepted image nor HEIC → explicit reject toast.
+    const rejected = all.filter(f => !ACCEPT_MIME.includes(f.type) && !isHeic(f))
+    if (rejected.length) {
+      toast?.(
+        isRTL ? 'الصيغة غير مدعومة. استخدم JPG أو PNG أو WebP.' : 'Format not supported. Use JPG, PNG, or WebP.',
+        'error',
+      )
+    }
+    addAccepted(incoming)
+    if (heic.length) convertHeic(heic)
+  }
+
   const removeItem = (id) => setItems(prev => prev.filter(x => x.id !== id))
   const onPick = (e) => { addFiles(e.target.files); e.target.value = '' }
-  const onDrop = (e) => { e.preventDefault(); setDragging(false); if (!submitting) addFiles(e.dataTransfer?.files) }
+  const onDrop = (e) => { e.preventDefault(); setDragging(false); if (!submitting && !converting) addFiles(e.dataTransfer?.files) }
 
   const handleSubmit = async () => {
     if (!items.length || submitting) return
@@ -130,7 +155,7 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
         <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">{isRTL ? 'رفع أشعة' : 'Upload X-rays'}</h3>
 
         <div
-          onClick={() => !submitting && fileInputRef.current?.click()}
+          onClick={() => !submitting && !converting && fileInputRef.current?.click()}
           onDragOver={e => { e.preventDefault(); if (!dragging) setDragging(true) }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
@@ -145,7 +170,7 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
         >
           <div className="flex items-center justify-center gap-2 text-navy-500 text-sm">
             {Icons.plus ? Icons.plus(16) : '+'}
-            <span>{isRTL ? 'اسحب الصور هنا أو انقر للاختيار (JPG / PNG / WebP)' : 'Drag images here or click to choose (JPG / PNG / WebP)'}</span>
+            <span>{isRTL ? 'اسحب الصور هنا أو انقر للاختيار (JPG / PNG / WebP / HEIC)' : 'Drag images here or click to choose (JPG / PNG / WebP / iPhone HEIC)'}</span>
           </div>
           <input ref={fileInputRef} type="file" accept={ACCEPT_ATTR} multiple onChange={onPick} className="hidden" />
         </div>
@@ -185,7 +210,9 @@ export default function XrayUploadModal({ patientId, lang, dir, onClose, onUploa
 
         <div className="flex gap-2 justify-end mt-3">
           <Button variant="secondary" disabled={submitting} onClick={() => onClose?.()}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
-          <Button variant="primary" onClick={handleSubmit} disabled={submitting || items.length === 0}>{submitLabel}</Button>
+          <Button variant="primary" onClick={handleSubmit} disabled={submitting || converting || items.length === 0}>
+            {converting ? (isRTL ? 'جارٍ تحويل الصورة…' : 'Converting photo…') : submitLabel}
+          </Button>
         </div>
       </div>
     </Modal>
