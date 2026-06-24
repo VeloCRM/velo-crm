@@ -212,6 +212,9 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
             ref={viewerRef}
             {...handlers}
             onDoubleClick={reset}
+            // Close only on the dark backdrop (the container itself), never on the
+            // image: the image now receives pointer events, so a click on it has
+            // e.target === <img> (≠ currentTarget) and won't dismiss the viewer.
             onClick={e => { if (e.target === e.currentTarget && t.scale === 1 && !editing) onClose() }}
             className="absolute inset-0 overflow-hidden grid place-items-center select-none"
             style={{ touchAction: 'none', cursor: t.scale > 1 ? 'grab' : 'default' }}
@@ -227,8 +230,8 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
                 onLoad={() => setImgState('loaded')}
                 onError={onImgError}
                 draggable={false}
-                className="max-w-full max-h-full object-contain pointer-events-none"
-                style={{ transform: `translate(${t.x}px, ${t.y}px) scale(${t.scale})` }}
+                className="max-w-full max-h-full object-contain"
+                style={{ transform: `translate(${t.x}px, ${t.y}px) scale(${t.scale})`, cursor: t.scale > 1 ? 'grab' : 'default' }}
               />
             )}
             {imgState === 'loading' && !active.thumbnail_data_url && (
