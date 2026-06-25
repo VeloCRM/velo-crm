@@ -58,8 +58,13 @@ Three PRs merged + deployed today, and the prod DB migration applied:
   receptionist write; doctor/assistant read-only).
 - **PR #51** (merge f816ff2) — server invite allow-list: `api/invitations/create.js`
   INVITABLE_ROLES now accepts `xray_tech`.
-- **Enum + RLS APPLIED TO PRODUCTION** (per Ali; the SQL script is a manual run —
-  verification queries in the script footer). xray_tech is usable end-to-end.
+- **Enum + RLS APPLIED + VERIFIED ON PRODUCTION (2026-06-25).** Phase A (enum) and
+  Phase B (RLS) both run. ⚠️ A gap was caught: Phase B initially "ran" (SQL editor
+  showed success) but the actual policies needed **re-application** — confirmed only
+  by querying `pg_policies`. After re-applying, verified all **6 policies (3 xrays
+  table + 3 patient-xrays storage)** reference `xray_tech` with the correct
+  own-uploads-only (`uploaded_by` / storage `owner` = auth.uid()) restrictions.
+  xray_tech is genuinely usable end-to-end.
 
 **5 roles now:** owner, doctor, receptionist, **assistant (defined but UNUSED — 0
 production users)**, **xray_tech (new, live)**. NB: profiles.role DEFAULTs to
@@ -96,6 +101,11 @@ row reads as assistant. Helper to audit: `scripts/role-distribution-check.mjs`.
   current code/schema first.
 - **Storage RLS:** every new bucket needs all 4 op policies (SELECT/INSERT/UPDATE/DELETE)
   verified before declaring a migration complete (silent INSERT denial cost ~30 min, PR #38).
+- **Schema migrations need explicit `pg_policies` verification — NOT "Success. No rows
+  returned" from the SQL editor.** V1.5 Phase B "ran" cleanly but the policies weren't
+  actually in place; only a `SELECT … FROM pg_policies` check caught it, and they had to
+  be re-applied (2026-06-25). Always confirm the end state (policies/enum values exist
+  with the right predicates), not just that the statement returned without error.
 - **Merge ordering:** `gh pr merge --auto` doesn't enforce manual migration steps from the PR
   body — code can ship before SQL. Mitigate for migration PRs.
 - **Mandatory code-review on dental code earns its keep:** caught real concurrency bugs in
