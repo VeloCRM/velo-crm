@@ -283,7 +283,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
                     type="button"
                     onClick={() => { setMode('forgot'); setError(''); setMessage(''); setLockoutSeconds(0) }}
                     disabled={creatingTest}
-                    className="text-xs font-semibold text-accent-cyan-700 hover:text-accent-cyan-800 transition-colors disabled:opacity-50"
+                    className="text-xs font-semibold text-accent-cyan-700 hover:text-accent-cyan-800 transition-colors disabled:opacity-50 py-2 -my-2 inline-flex items-center"
                   >
                     {txt.forgotPassword}
                   </button>
