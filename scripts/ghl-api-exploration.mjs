@@ -13,7 +13,7 @@
  *    do not commit it, do not paste it into chat.
  *
  *  WHAT IT DOES:
- *    1. Fetches the first 5 contacts (NOT all 3,171).
+ *    1. Fetches the first 10 contacts (NOT all 3,171).
  *    2. For each contact: notes, tasks, documents.
  *    3. Probes the Opportunities + Payments/Orders endpoints to settle the
  *       single biggest unknown: does GHL hold STRUCTURED payment records, or
@@ -46,7 +46,7 @@
  *         node scripts/ghl-api-exploration.mjs
  *
  *       Optional flags:
- *         --contacts=5     how many sample contacts to pull (default 5)
+ *         --contacts=10    how many sample contacts to pull (default 10)
  *         --out=path.json  override the output path
  *
  *    3. Send the result back to the team:
@@ -88,7 +88,7 @@ function getConfig() {
   )
   const apiKey = process.env.GHL_API_KEY
   const locationId = process.env.GHL_LOCATION_ID
-  const sampleSize = parseInt(args['contacts']) || 5
+  const sampleSize = parseInt(args['contacts']) || 10
   const outPath = args['out'] || path.join(__dirname, 'ghl-sample-data.json')
 
   if (!apiKey || !locationId) {
