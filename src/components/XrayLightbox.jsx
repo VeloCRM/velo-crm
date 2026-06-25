@@ -199,7 +199,7 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
         <button type="button" onClick={() => setShowMeta(m => !m)} className="md:hidden px-2 py-1 rounded text-white/80 hover:bg-white/10" aria-label={isRTL ? 'تبديل العرض' : 'Toggle metadata'}>
           {showMeta ? (isRTL ? 'الصورة' : 'Image') : (isRTL ? 'التفاصيل' : 'Details')}
         </button>
-        <button ref={closeBtnRef} type="button" onClick={onClose} aria-label={isRTL ? 'إغلاق' : 'Close'} className="w-8 h-8 grid place-items-center rounded-full text-white/90 hover:bg-white/15">
+        <button ref={closeBtnRef} type="button" onClick={onClose} aria-label={isRTL ? 'إغلاق' : 'Close'} className="w-11 h-11 md:w-8 md:h-8 grid place-items-center rounded-full text-white/90 hover:bg-white/15">
           {Icons.x(18)}
         </button>
       </div>
@@ -247,14 +247,14 @@ export default function XrayLightbox({ list, index, canEdit, patientId, lang, di
 
           {/* Zoom controls */}
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1 bg-navy-900/70 rounded-full px-2 py-1">
-            <button type="button" onClick={() => zoomBy(0.8)} aria-label={isRTL ? 'تصغير' : 'Zoom out'} className="w-8 h-8 grid place-items-center text-white/90 hover:bg-white/10 rounded-full">−</button>
-            <button type="button" onClick={reset} aria-label={isRTL ? 'ملء الشاشة' : 'Fit'} className="px-2 h-8 text-white/90 hover:bg-white/10 rounded-full text-xs">{Math.round(t.scale * 100)}%</button>
-            <button type="button" onClick={() => zoomBy(1.25)} aria-label={isRTL ? 'تكبير' : 'Zoom in'} className="w-8 h-8 grid place-items-center text-white/90 hover:bg-white/10 rounded-full">+</button>
+            <button type="button" onClick={() => zoomBy(0.8)} aria-label={isRTL ? 'تصغير' : 'Zoom out'} className="w-11 h-11 md:w-8 md:h-8 grid place-items-center text-white/90 hover:bg-white/10 rounded-full">−</button>
+            <button type="button" onClick={reset} aria-label={isRTL ? 'ملء الشاشة' : 'Fit'} className="px-2 h-11 md:h-8 text-white/90 hover:bg-white/10 rounded-full text-xs">{Math.round(t.scale * 100)}%</button>
+            <button type="button" onClick={() => zoomBy(1.25)} aria-label={isRTL ? 'تكبير' : 'Zoom in'} className="w-11 h-11 md:w-8 md:h-8 grid place-items-center text-white/90 hover:bg-white/10 rounded-full">+</button>
           </div>
 
           {/* Prev / next */}
-          {hasPrev && <button type="button" onClick={goPrev} aria-label={isRTL ? 'السابق' : 'Previous'} className="absolute start-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">{isRTL ? '›' : '‹'}</button>}
-          {hasNext && <button type="button" onClick={goNext} aria-label={isRTL ? 'التالي' : 'Next'} className="absolute end-2 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">{isRTL ? '‹' : '›'}</button>}
+          {hasPrev && <button type="button" onClick={goPrev} aria-label={isRTL ? 'السابق' : 'Previous'} className="absolute start-2 top-1/2 -translate-y-1/2 w-11 h-11 md:w-10 md:h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">{isRTL ? '›' : '‹'}</button>}
+          {hasNext && <button type="button" onClick={goNext} aria-label={isRTL ? 'التالي' : 'Next'} className="absolute end-2 top-1/2 -translate-y-1/2 w-11 h-11 md:w-10 md:h-10 grid place-items-center rounded-full bg-navy-900/60 text-white hover:bg-navy-900/80">{isRTL ? '‹' : '›'}</button>}
         </div>
 
         {/* Metadata sidebar */}

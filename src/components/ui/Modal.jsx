@@ -77,7 +77,7 @@ export function Modal({
       role="dialog"
       aria-modal="true"
       aria-labelledby={title ? titleId : undefined}
-      className="fixed inset-0 z-[1000] flex items-center justify-center px-4 animate-fade-in"
+      className="fixed inset-0 z-[1000] flex items-center justify-center px-4 max-sm:items-end max-sm:px-0 animate-fade-in"
     >
       {/* Backdrop */}
       <div
@@ -92,6 +92,8 @@ export function Modal({
         className={[
           'relative w-full',
           SIZES[size] ?? SIZES.md,
+          // Mobile: full-width bottom sheet (flush bottom, scrollable) — M-16.
+          'max-sm:max-w-none max-sm:rounded-b-none max-sm:max-h-[90vh] max-sm:overflow-y-auto',
           'glass-card glass-card--strong rounded-glass-lg',
           'p-0 outline-none animate-glass-in',
           'shadow-glass-lg',
@@ -110,7 +112,7 @@ export function Modal({
                 type="button"
                 onClick={onClose}
                 aria-label={closeLabel}
-                className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-700 hover:bg-navy-50 transition-colors"
+                className="grid place-items-center w-11 h-11 sm:w-8 sm:h-8 rounded-md text-navy-500 hover:text-navy-700 hover:bg-navy-50 transition-colors"
               >
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -120,7 +122,7 @@ export function Modal({
           </header>
         ) : null}
 
-        <div className={['px-6 py-5 text-sm text-navy-700', bodyClassName].join(' ')}>
+        <div className={['px-4 sm:px-6 py-5 text-sm text-navy-700', bodyClassName].join(' ')}>
           {children}
         </div>
 
