@@ -135,7 +135,7 @@ async function ghlGet(apiKey, urlPath, params = {}, retries = 3) {
         },
       })
     } catch (err) {
-      return { ok: false, status: 0, data: null, error: `network: ${err.message}` }
+      return { ok: false, status: 0, data: null, error: `network: ${err.message}`, headers: null }
     }
 
     if (res.status === 429) {
@@ -149,12 +149,24 @@ async function ghlGet(apiKey, urlPath, params = {}, retries = 3) {
     let data = null
     try { data = text ? JSON.parse(text) : null } catch { data = { _raw: text.slice(0, 500) } }
 
+    const hdrs = {}
+    res.headers.forEach((v, k) => { hdrs[k] = v })
+
     if (!res.ok) {
-      return { ok: false, status: res.status, data, error: text.slice(0, 300) }
+      return { ok: false, status: res.status, data, error: text.slice(0, 300), headers: hdrs }
     }
-    return { ok: true, status: res.status, data, error: null }
+    return { ok: true, status: res.status, data, error: null, headers: hdrs }
   }
-  return { ok: false, status: 429, data: null, error: 'rate-limited after retries' }
+  return { ok: false, status: 429, data: null, error: 'rate-limited after retries', headers: null }
+}
+
+// Curated subset of response headers worth logging for diagnostics (no PII).
+function pickHeaders(h) {
+  if (!h) return null
+  const keep = ['content-type', 'traceid', 'x-trace-id', 'x-ratelimit-remaining', 'x-ratelimit-limit', 'x-ratelimit-interval-milliseconds', 'retry-after']
+  const out = {}
+  for (const k of keep) if (h[k] != null) out[k] = h[k]
+  return out
 }
 
 // Record an endpoint probe so the JSON documents exactly what we tried + got.
@@ -286,18 +298,36 @@ async function main() {
     oldestSummary: { probed: 0, withFileFields: 0, sampleUrlSigned: null },
   }
 
-  // 5a. Location media library
-  const mediaRes = await ghlGet(cfg.apiKey, '/medias/files', {
-    altType: 'location', altId: cfg.locationId,
-    sortBy: 'createdAt', sortOrder: 'desc', limit: 50, offset: 0,
-  })
-  out.documents.mediaLibrary = probe('medias.files', '/medias/files', mediaRes, 'altType=location')
+  // 5a. Location media library — the plain call 422'd, so try param variants
+  //     + an alternate endpoint, logging each 422 body (it states what's wrong).
+  const mediaAttempts = [
+    { label: 'altType+altId+sortBy=createdAt', path: '/medias/files', params: { altType: 'location', altId: cfg.locationId, sortBy: 'createdAt', sortOrder: 'desc', limit: 50, offset: 0 } },
+    { label: '+type=file',                     path: '/medias/files', params: { altType: 'location', altId: cfg.locationId, sortBy: 'createdAt', sortOrder: 'desc', limit: 50, offset: 0, type: 'file' } },
+    { label: 'sortBy=created_at',              path: '/medias/files', params: { altType: 'location', altId: cfg.locationId, sortBy: 'created_at', sortOrder: 'desc', limit: 50, offset: 0 } },
+    { label: 'minimal altType+altId',          path: '/medias/files', params: { altType: 'location', altId: cfg.locationId } },
+    { label: 'altId only (no altType)',        path: '/medias/files', params: { altId: cfg.locationId } },
+    { label: 'alt endpoint /locations/{id}/medias', path: `/locations/${cfg.locationId}/medias`, params: {} },
+  ]
+  out.documents.mediaAttempts = []
+  let mediaRes = { ok: false, status: 0, error: 'not attempted', data: null }
+  for (const a of mediaAttempts) {
+    const r = await ghlGet(cfg.apiKey, a.path, a.params)
+    out.documents.mediaAttempts.push({
+      label: a.label, path: a.path, params: a.params, status: r.status, ok: r.ok,
+      errorBody: r.ok ? null : (r.error || '').slice(0, 400),   // 422 body = the diagnostic we want
+      headers: pickHeaders(r.headers),
+    })
+    console.log(`  media [${a.label}] → HTTP ${r.status}${r.ok ? ' ✓' : ''}${!r.ok && r.error ? ' — ' + r.error.slice(0, 120) : ''}`)
+    await sleep(350)
+    if (r.ok) { mediaRes = r; break }
+  }
+  out.documents.mediaLibrary = probe('medias.files (first OK or last tried)', '/medias/files', mediaRes)
   out.probes.push(out.documents.mediaLibrary)
-  await sleep(400)
   const mediaFiles = mediaRes.ok ? (mediaRes.data?.files || mediaRes.data?.medias || mediaRes.data?.data || []) : []
   const mediaTotal = mediaRes.ok ? (mediaRes.data?.total ?? mediaRes.data?.totalCount ?? mediaFiles.length) : 0
-  console.log(`  media library: ${mediaRes.ok ? `✓ ${mediaFiles.length} returned (total ~${mediaTotal})` : '✗ ' + mediaRes.status}`)
-  if (mediaRes.status === 401) console.log('    ⚠ 401 — key may lack the medias/read scope')
+  if (mediaRes.ok) console.log(`  media library: ✓ ${mediaFiles.length} returned (total ~${mediaTotal})`)
+  else console.log('  media library: ✗ all variants failed — see documents.mediaAttempts (422 bodies) in the JSON')
+  if (out.documents.mediaAttempts.some(a => a.status === 401)) console.log('    ⚠ a 401 appeared — key may lack the medias/read scope (not just a param issue)')
 
   // 5b. Custom field definitions (look for FILE_UPLOAD-type fields)
   const cfDefRes = await ghlGet(cfg.apiKey, `/locations/${cfg.locationId}/customFields`)
@@ -352,14 +382,60 @@ async function main() {
   // ── 6. Oldest contacts — file custom-field probe ──────────────────────────
   console.log('\nStep 6 — Probing OLDEST contacts for file custom fields')
   if (cfg.sampleSize >= 10) {
-    // Oldest by dateAdded ascending. If the GET sort is ignored by this GHL
-    // tenant, pass --old-contact=<id> for a contact you KNOW has scans.
-    const oldRes = await ghlGet(cfg.apiKey, '/contacts/', {
-      locationId: cfg.locationId, limit: 5, sortBy: 'date_added', sortOrder: 'asc', order: 'asc',
-    })
-    out.probes.push(probe('contacts.oldest', '/contacts/?sortBy=date_added&sortOrder=asc', oldRes, 'limit=5 oldest'))
-    await sleep(400)
-    let oldContacts = oldRes.ok ? (oldRes.data?.contacts || []) : []
+    // The previous run returned 0 contacts from the sorted GET. Try several sort
+    // syntaxes (logging status + headers + error message — NOT the body, which
+    // holds PII), then fall back to paginating to the last page of the default
+    // (dateAdded desc) order, whose tail = the oldest contacts.
+    out.documents.oldestFetch = { method: null, attempts: [] }
+    let oldContacts = []
+    const sortVariants = [
+      { label: 'sortBy=date_added&sortOrder=asc', params: { locationId: cfg.locationId, limit: 5, sortBy: 'date_added', sortOrder: 'asc' } },
+      { label: 'sort=dateAdded:asc',              params: { locationId: cfg.locationId, limit: 5, sort: 'dateAdded:asc' } },
+      { label: 'sort_by=created_at_asc',          params: { locationId: cfg.locationId, limit: 5, sort_by: 'created_at_asc' } },
+      { label: 'sortBy=dateAdded&order=asc',      params: { locationId: cfg.locationId, limit: 5, sortBy: 'dateAdded', order: 'asc' } },
+    ]
+    for (const v of sortVariants) {
+      const r = await ghlGet(cfg.apiKey, '/contacts/', v.params)
+      const n = r.ok ? (r.data?.contacts || []).length : 0
+      out.documents.oldestFetch.attempts.push({
+        label: v.label, status: r.status, count: n,
+        error: r.ok ? null : (r.error || '').slice(0, 200),   // error message only, never the data body
+        headers: pickHeaders(r.headers),
+      })
+      console.log(`  sort [${v.label}] → HTTP ${r.status}, ${n} contacts${!r.ok && r.error ? ' — ' + r.error.slice(0, 100) : ''}`)
+      await sleep(350)
+      if (r.ok && n > 0) { oldContacts = r.data.contacts.slice(0, 5); out.documents.oldestFetch.method = 'sort:' + v.label; break }
+    }
+
+    // Fallback: paginate the default ordering to the last page. GHL needs BOTH
+    // startAfter (ms ts) and startAfterId to advance (per the meta.nextPageUrl shape).
+    if (!oldContacts.length) {
+      console.log('  sort variants yielded nothing — paginating to the last page (default order)')
+      let lastPage = [], pages = 0, sAfter = null, sAfterId = null
+      const MAX_PAGES = 40 // 40 × 100 = 4000 ≥ 3,261 contacts
+      while (pages < MAX_PAGES) {
+        const params = { locationId: cfg.locationId, limit: 100 }
+        if (sAfterId) { params.startAfterId = sAfterId; if (sAfter != null) params.startAfter = sAfter }
+        const r = await ghlGet(cfg.apiKey, '/contacts/', params)
+        await sleep(300)
+        if (!r.ok) { console.log(`\n  pagination stopped at page ${pages + 1}: HTTP ${r.status}${r.error ? ' — ' + r.error.slice(0, 100) : ''}`); break }
+        const page = r.data?.contacts || []
+        if (!page.length) break
+        lastPage = page
+        pages++
+        const meta = r.data?.meta || {}
+        sAfterId = meta.startAfterId || page[page.length - 1]?.id
+        sAfter = (meta.startAfter != null) ? meta.startAfter : (page[page.length - 1]?.dateAdded ? Date.parse(page[page.length - 1].dateAdded) : null)
+        process.stdout.write(`\r  paginated ${pages} page(s)…`)
+        if (!meta.nextPageUrl || page.length < 100) break
+      }
+      console.log('')
+      oldContacts = lastPage.slice(-5) // tail of last page = oldest under desc order
+      out.documents.oldestFetch.method = `pagination(last of ${pages} page(s))`
+      out.documents.oldestFetch.attempts.push({ label: 'pagination-fallback', pages, returned: oldContacts.length })
+    }
+
+    // Optional explicit OLD contact (hedge if both sort + pagination disappoint).
     if (cfg.oldContactId) {
       const oneRes = await ghlGet(cfg.apiKey, `/contacts/${cfg.oldContactId}`); await sleep(300)
       const one = oneRes.ok ? (oneRes.data?.contact || oneRes.data) : null
