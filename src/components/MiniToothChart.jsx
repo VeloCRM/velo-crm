@@ -33,7 +33,8 @@ export default function MiniToothChart({ value = [], onChange, lang = 'en' }) {
   }
 
   const row = (teeth) => (
-    <div dir="ltr" className="grid gap-1" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+    // Mobile: 8 cols (one quadrant per row) for ≥40px targets; 16-col arch ≥md.
+    <div dir="ltr" className="grid gap-1 grid-cols-8 md:[grid-template-columns:repeat(16,1fr)]">
       {teeth.map(n => {
         const on = selected.has(String(n))
         return (
@@ -44,7 +45,7 @@ export default function MiniToothChart({ value = [], onChange, lang = 'en' }) {
             aria-pressed={on}
             aria-label={`${isRTL ? 'سن' : 'Tooth'} ${n}${on ? (isRTL ? '، محدد' : ', selected') : ''}`}
             className={[
-              'aspect-square min-h-[26px] rounded-md border text-[10px] font-semibold',
+              'aspect-square min-h-[40px] md:min-h-[26px] rounded-md border text-[10px] font-semibold',
               'flex items-center justify-center transition-colors focus:outline-none focus-visible:ring-1 focus-visible:ring-accent-cyan-500',
               on
                 ? 'border-accent-cyan-500 bg-accent-cyan-500/10 text-navy-900'
