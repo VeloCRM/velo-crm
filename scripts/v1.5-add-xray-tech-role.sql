@@ -41,12 +41,21 @@ ALTER TYPE public.profile_role ADD VALUE IF NOT EXISTS 'xray_tech';
 -- ── xrays TABLE policies ─────────────────────────────────────────────────────
 
 -- INSERT: owner / doctor / xray_tech may insert for any patient in the org.
+-- xray_tech must stamp themselves as the uploader (uploaded_by = auth.uid()) so
+-- the row's attribution is consistent with the own-uploads UPDATE/DELETE gate
+-- below — they can't mislabel a record as another user's. owner/doctor keep the
+-- existing freedom to set any uploaded_by (they can edit any row anyway).
 DROP POLICY IF EXISTS xrays_insert_doctor_or_owner ON public.xrays;
 CREATE POLICY xrays_insert_doctor_or_owner ON public.xrays
   FOR INSERT WITH CHECK (
     org_id = public.current_org_id()
-    AND EXISTS (SELECT 1 FROM public.profiles
-                WHERE id = auth.uid() AND role IN ('owner','doctor','xray_tech'))
+    AND (
+      EXISTS (SELECT 1 FROM public.profiles
+              WHERE id = auth.uid() AND role IN ('owner','doctor'))
+      OR (uploaded_by = auth.uid()
+          AND EXISTS (SELECT 1 FROM public.profiles
+                      WHERE id = auth.uid() AND role = 'xray_tech'))
+    )
   );
 
 -- UPDATE: owner/doctor → any row; xray_tech → only rows they uploaded.
