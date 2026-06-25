@@ -19,7 +19,15 @@
  *       single biggest unknown: does GHL hold STRUCTURED payment records, or
  *       are payments only ever written as prose inside notes?
  *    4. Fetches all unique tags in the location (to surface tag variations).
- *    5. Writes everything (plus per-endpoint status/errors) to the JSON file.
+ *    5. DOCUMENT DISCOVERY (location-wide): media library (/medias/files),
+ *       custom-field definitions (flagging FILE_UPLOAD fields), and rules out
+ *       /contacts/{id}/files & /contacts/{id}/attachments; also scans fetched
+ *       note bodies for inline file URLs.
+ *    6. OLDEST contacts probe: fetches ~5 oldest contacts (where the scanned
+ *       setup files likely live) and inspects their customFields for file-type
+ *       values; HEADs one URL to confirm reachability + signed/expiring shape
+ *       (NEVER downloads file content).
+ *    7. Writes everything (plus per-endpoint status/errors) to the JSON file.
  *
  *  WHAT IT NEVER DOES:
  *    - It never connects to Supabase / Velo.
@@ -46,8 +54,11 @@
  *         node scripts/ghl-api-exploration.mjs
  *
  *       Optional flags:
- *         --contacts=10    how many sample contacts to pull (default 10)
- *         --out=path.json  override the output path
+ *         --contacts=10        how many sample contacts to pull (default 10)
+ *         --out=path.json      override the output path
+ *         --old-contact=<id>   probe this specific OLD contact for file fields
+ *                              (in addition to the oldest-5 heuristic). Also
+ *                              accepted via env GHL_OLD_CONTACT_ID.
  *
  *    3. Send the result back to the team:
  *         - The TERMINAL SUMMARY (safe to paste — it has counts, not patient data).
@@ -90,6 +101,7 @@ function getConfig() {
   const locationId = process.env.GHL_LOCATION_ID
   const sampleSize = parseInt(args['contacts']) || 10
   const outPath = args['out'] || path.join(__dirname, 'ghl-sample-data.json')
+  const oldContactId = args['old-contact'] || process.env.GHL_OLD_CONTACT_ID || null
 
   if (!apiKey || !locationId) {
     console.error(`
@@ -102,7 +114,7 @@ function getConfig() {
 `)
     process.exit(1)
   }
-  return { apiKey, locationId, sampleSize, outPath }
+  return { apiKey, locationId, sampleSize, outPath, oldContactId }
 }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
@@ -180,6 +192,7 @@ async function main() {
     tags: { source: null, all: [] },
     opportunities: null, // structured payments probe
     payments: null,      // alternate payments/orders probe
+    documents: null,     // Step 5/6 document-storage discovery
     summary: {},
   }
 
@@ -261,7 +274,162 @@ async function main() {
   }
   console.log(`  ${out.tags.all.length} unique tags (${out.tags.source})`)
 
-  // ── 5. Summary + write file ───────────────────────────────────────────────
+  // ── 5. Document storage discovery (location-wide) ─────────────────────────
+  console.log('\nStep 5 — Document storage discovery (media library / custom fields / file paths)')
+  out.documents = {
+    mediaLibrary: null,
+    customFieldDefs: null,
+    fileUploadFields: [],
+    contactFilePaths: [],
+    notesWithFileUrls: { count: 0, hosts: [], matchedContactIds: [] },
+    oldestContacts: [],
+    oldestSummary: { probed: 0, withFileFields: 0, sampleUrlSigned: null },
+  }
+
+  // 5a. Location media library
+  const mediaRes = await ghlGet(cfg.apiKey, '/medias/files', {
+    altType: 'location', altId: cfg.locationId,
+    sortBy: 'createdAt', sortOrder: 'desc', limit: 50, offset: 0,
+  })
+  out.documents.mediaLibrary = probe('medias.files', '/medias/files', mediaRes, 'altType=location')
+  out.probes.push(out.documents.mediaLibrary)
+  await sleep(400)
+  const mediaFiles = mediaRes.ok ? (mediaRes.data?.files || mediaRes.data?.medias || mediaRes.data?.data || []) : []
+  const mediaTotal = mediaRes.ok ? (mediaRes.data?.total ?? mediaRes.data?.totalCount ?? mediaFiles.length) : 0
+  console.log(`  media library: ${mediaRes.ok ? `✓ ${mediaFiles.length} returned (total ~${mediaTotal})` : '✗ ' + mediaRes.status}`)
+  if (mediaRes.status === 401) console.log('    ⚠ 401 — key may lack the medias/read scope')
+
+  // 5b. Custom field definitions (look for FILE_UPLOAD-type fields)
+  const cfDefRes = await ghlGet(cfg.apiKey, `/locations/${cfg.locationId}/customFields`)
+  out.documents.customFieldDefs = probe('location.customFields', '/locations/{id}/customFields', cfDefRes)
+  out.probes.push(out.documents.customFieldDefs)
+  await sleep(400)
+  const cfDefs = cfDefRes.ok ? (cfDefRes.data?.customFields || cfDefRes.data || []) : []
+  const fileFields = (Array.isArray(cfDefs) ? cfDefs : []).filter(f => {
+    const dt = String(f.dataType || f.type || '').toUpperCase()
+    return dt.includes('FILE') || dt.includes('UPLOAD') || dt.includes('SIGNATURE')
+  })
+  out.documents.fileUploadFields = fileFields.map(f => ({ id: f.id, name: f.name, fieldKey: f.fieldKey, dataType: f.dataType || f.type }))
+  console.log(`  custom field defs: ${cfDefRes.ok ? `✓ ${Array.isArray(cfDefs) ? cfDefs.length : 0} fields, ${fileFields.length} file-type` : '✗ ' + cfDefRes.status}`)
+  if (cfDefRes.status === 401) console.log('    ⚠ 401 — key may lack the locations/customFields scope')
+
+  // 5c. Rule out /contacts/{id}/files and /contacts/{id}/attachments (first sample contact)
+  if (contacts.length) {
+    const firstId = contacts[0].id
+    const filesRes = await ghlGet(cfg.apiKey, `/contacts/${firstId}/files`); await sleep(300)
+    const attRes   = await ghlGet(cfg.apiKey, `/contacts/${firstId}/attachments`); await sleep(300)
+    out.documents.contactFilePaths = [
+      probe('contact.files', '/contacts/{id}/files', filesRes),
+      probe('contact.attachments', '/contacts/{id}/attachments', attRes),
+    ]
+    out.probes.push(...out.documents.contactFilePaths)
+    console.log(`  /contacts/{id}/files → ${filesRes.status}; /contacts/{id}/attachments → ${attRes.status}`)
+    if (filesRes.status === 401 || attRes.status === 401) console.log('    ⚠ 401 — scope issue, not just a missing route')
+  }
+
+  // 5d. Scan already-fetched note bodies for inline file URLs
+  const URL_RE = /https?:\/\/[^\s"')]+/gi
+  const FILE_HINT = /(gohighlevel\.com|leadconnector|storage\.googleapis\.com|msgsndr|\.(pdf|jpe?g|png|gif|docx?|xlsx?|csv))/i
+  const noteHosts = new Set()
+  const noteMatchedIds = new Set()
+  for (const c of out.contacts) {
+    const notes = Array.isArray(c.notes.data) ? c.notes.data : []
+    let hit = false
+    for (const n of notes) {
+      const text = `${n.bodyText || ''} ${n.body || ''}`
+      for (const u of (text.match(URL_RE) || [])) {
+        if (FILE_HINT.test(u)) {
+          hit = true
+          try { noteHosts.add(new URL(u).host) } catch { noteHosts.add('(unparseable)') }
+        }
+      }
+    }
+    if (hit) noteMatchedIds.add(c.raw?.id)
+  }
+  out.documents.notesWithFileUrls = { count: noteMatchedIds.size, hosts: [...noteHosts], matchedContactIds: [...noteMatchedIds] }
+  console.log(`  notes with inline file URLs: ${noteMatchedIds.size} (hosts: ${[...noteHosts].join(', ') || 'none'})`)
+
+  // ── 6. Oldest contacts — file custom-field probe ──────────────────────────
+  console.log('\nStep 6 — Probing OLDEST contacts for file custom fields')
+  if (cfg.sampleSize >= 10) {
+    // Oldest by dateAdded ascending. If the GET sort is ignored by this GHL
+    // tenant, pass --old-contact=<id> for a contact you KNOW has scans.
+    const oldRes = await ghlGet(cfg.apiKey, '/contacts/', {
+      locationId: cfg.locationId, limit: 5, sortBy: 'date_added', sortOrder: 'asc', order: 'asc',
+    })
+    out.probes.push(probe('contacts.oldest', '/contacts/?sortBy=date_added&sortOrder=asc', oldRes, 'limit=5 oldest'))
+    await sleep(400)
+    let oldContacts = oldRes.ok ? (oldRes.data?.contacts || []) : []
+    if (cfg.oldContactId) {
+      const oneRes = await ghlGet(cfg.apiKey, `/contacts/${cfg.oldContactId}`); await sleep(300)
+      const one = oneRes.ok ? (oneRes.data?.contact || oneRes.data) : null
+      out.probes.push(probe('contacts.oldContactFlag', '/contacts/{id}', oneRes, 'explicit --old-contact'))
+      if (one) oldContacts = [one, ...oldContacts]
+    }
+
+    let withFileFields = 0
+    let sampleUrlSigned = null
+    for (let i = 0; i < oldContacts.length; i++) {
+      const c = oldContacts[i]
+      const id = c.id
+      // Re-fetch the single contact so customFields are complete.
+      const fullRes = await ghlGet(cfg.apiKey, `/contacts/${id}`); await sleep(300)
+      const full = fullRes.ok ? (fullRes.data?.contact || fullRes.data) : c
+      const cfs = Array.isArray(full?.customFields) ? full.customFields : []
+
+      // Detect file-like custom-field values: URL strings, arrays of URLs, or
+      // objects carrying a url/fileUrl/documentUrl, plus file-ish field keys.
+      const fileEntries = []
+      for (const cf of cfs) {
+        const v = cf.value ?? cf.fieldValue
+        const candidates = []
+        if (typeof v === 'string') candidates.push(v)
+        else if (Array.isArray(v)) v.forEach(x => candidates.push(typeof x === 'string' ? x : (x && (x.url || x.fileUrl || x.documentUrl)) || ''))
+        else if (v && typeof v === 'object') candidates.push(v.url || v.fileUrl || v.documentUrl || '')
+        let matchedUrl = null
+        for (const cand of candidates) {
+          if (typeof cand === 'string' && /^https?:\/\//i.test(cand)) { matchedUrl = cand; break }
+        }
+        if (matchedUrl) fileEntries.push({ fieldId: cf.id, fieldKey: cf.fieldKey, url: matchedUrl })
+        else if (/file|document|upload|attach|scan/i.test(`${cf.fieldKey || ''} ${cf.id || ''}`)) {
+          fileEntries.push({ fieldId: cf.id, fieldKey: cf.fieldKey, url: null, note: 'file-like key, non-URL value' })
+        }
+      }
+
+      // HEAD the FIRST resolvable URL across the whole oldest set, once, to
+      // confirm reachability + whether it is a signed/expiring URL. No download.
+      let headChecked = null
+      const firstUrl = fileEntries.find(e => e.url)?.url
+      if (firstUrl && sampleUrlSigned === null) {
+        let signParamNames = []
+        try { signParamNames = [...new URL(firstUrl).searchParams.keys()] } catch {}
+        const signed = /[?&](token|signature|expires|expiry|X-Amz-|GoogleAccessId|Signature|se=|sig=)/i.test(firstUrl)
+        let headStatus = null
+        try { headStatus = (await fetch(firstUrl, { method: 'HEAD' })).status }
+        catch (e) { headStatus = `HEAD failed: ${(e.message || '').slice(0, 60)}` }
+        headChecked = { signed, signParamNames, headStatus }   // param NAMES only, no values
+        sampleUrlSigned = signed
+      }
+
+      if (fileEntries.length) withFileFields++
+      out.documents.oldestContacts.push({
+        id,
+        dateAdded: full?.dateAdded || c?.dateAdded || null,
+        customFieldCount: cfs.length,
+        fileFieldsFound: fileEntries.length,
+        // store field identity + presence flags, not raw URL values (minimize PHI on disk)
+        fileEntries: fileEntries.map(e => ({ fieldId: e.fieldId, fieldKey: e.fieldKey, hasUrl: !!e.url, note: e.note || null })),
+        headChecked,
+      })
+      process.stdout.write(`\r  [${i + 1}/${oldContacts.length}] ${String(id).slice(0, 24).padEnd(24)} — ${fileEntries.length} file field(s)`)
+    }
+    out.documents.oldestSummary = { probed: oldContacts.length, withFileFields, sampleUrlSigned }
+    console.log(`\n  oldest contacts with file custom fields: ${withFileFields}/${oldContacts.length}; sample URL signed: ${sampleUrlSigned === null ? 'n/a' : (sampleUrlSigned ? 'yes' : 'no')}`)
+  } else {
+    console.log('  skipped (sampleSize < 10)')
+  }
+
+  // ── 7. Summary + write file ───────────────────────────────────────────────
   out.summary = {
     contactsFetched: contacts.length,
     contactsWithNotes: out.contacts.filter(c => Array.isArray(c.notes.data) && c.notes.data.length).length,
@@ -271,6 +439,14 @@ async function main() {
     opportunitiesEndpoint: out.opportunities.ok ? 'present' : `unavailable (${out.opportunities.status})`,
     paymentsOrdersEndpoint: out.payments.ok ? 'present' : `unavailable (${out.payments.status})`,
     structuredPaymentsLikely: out.opportunities.ok || out.payments.ok,
+    // Step 5/6 document discovery
+    mediaLibraryReturned: mediaFiles.length,
+    mediaLibraryTotal: mediaTotal,
+    fileUploadCustomFields: out.documents.fileUploadFields.length,
+    oldestContactsProbed: out.documents.oldestSummary.probed,
+    oldestContactsWithFileFields: out.documents.oldestSummary.withFileFields,
+    sampleFileUrlSigned: out.documents.oldestSummary.sampleUrlSigned === null ? 'n/a' : (out.documents.oldestSummary.sampleUrlSigned ? 'yes' : 'no'),
+    notesWithInlineFileUrls: out.documents.notesWithFileUrls.count,
   }
 
   fs.writeFileSync(cfg.outPath, JSON.stringify(out, null, 2), 'utf8')
@@ -286,6 +462,12 @@ async function main() {
   console.log(`│  Opportunities endpoint:  ${String(out.summary.opportunitiesEndpoint).padEnd(31)}│`)
   console.log(`│  Payments/orders endpoint:${String(out.summary.paymentsOrdersEndpoint).padEnd(31)}│`)
   console.log(`│  Structured payments?     ${String(out.summary.structuredPaymentsLikely ? 'LIKELY' : 'NOT FOUND — prose-in-notes?').padEnd(31)}│`)
+  console.log('├──────────────────────────── documents ──────────────────┤')
+  console.log(`│  Media library files:     ${String(out.summary.mediaLibraryReturned + ' (total ~' + out.summary.mediaLibraryTotal + ')').padEnd(31)}│`)
+  console.log(`│  File-upload cust. fields:${String(out.summary.fileUploadCustomFields).padEnd(31)}│`)
+  console.log(`│  Oldest w/ file fields:   ${String(out.summary.oldestContactsWithFileFields + '/' + out.summary.oldestContactsProbed).padEnd(31)}│`)
+  console.log(`│  Sample file URL signed:  ${String(out.summary.sampleFileUrlSigned).padEnd(31)}│`)
+  console.log(`│  Notes w/ inline file URL:${String(out.summary.notesWithInlineFileUrls).padEnd(31)}│`)
   console.log('└──────────────────────────────────────────────────────────┘')
   console.log(`\n  Wrote: ${path.relative(ROOT_DIR, cfg.outPath)}  (gitignored — keep local)`)
   console.log('  Safe to share: the summary box above. Do NOT paste the JSON file.\n')
