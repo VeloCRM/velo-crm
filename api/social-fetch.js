@@ -5,8 +5,14 @@ const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 let supabaseAdmin = null;
 if (supabaseUrl && supabaseServiceKey) {
-  supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
+  supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
+
+// Social-media management is an owner-only admin task. Service-role bypasses RLS
+// here, so this endpoint must self-enforce — same pattern as api/whatsapp/send.js.
+const SOCIAL_ROLES = new Set(['owner']);
 
 const extractNumber = (str) => {
   if (!str) return 0;
@@ -39,6 +45,22 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
+  // ── Auth + role gate (owner only) — BEFORE any input handling or work ──────
+  if (!supabaseAdmin) return res.status(500).json({ error: 'Server missing Supabase config' })
+  const authHeader = req.headers.authorization || ''
+  if (!authHeader.startsWith('Bearer ')) return res.status(401).json({ error: 'Missing auth token' })
+  const userToken = authHeader.slice('Bearer '.length).trim()
+  if (!userToken) return res.status(401).json({ error: 'Missing auth token' })
+  const { data: userData, error: authError } = await supabaseAdmin.auth.getUser(userToken)
+  if (authError || !userData?.user) return res.status(401).json({ error: 'Invalid auth token' })
+  const { data: profile, error: profileErr } = await supabaseAdmin
+    .from('profiles')
+    .select('org_id, role')
+    .eq('id', userData.user.id)
+    .single()
+  if (profileErr || !profile?.org_id) return res.status(403).json({ error: 'No org membership' })
+  if (!SOCIAL_ROLES.has(profile.role)) return res.status(403).json({ error: 'Not authorized' })
+
   const { platform, username, token } = req.body
 
   if (!platform || !username) {
@@ -52,13 +74,6 @@ export default async function handler(req, res) {
     'Cache-Control': 'no-cache',
     'Pragma': 'no-cache'
   }
-
-  if (!supabaseAdmin) return res.status(500).json({ error: 'Server missing Supabase config' });
-  const authHeader = req.headers.authorization;
-  if (!authHeader) return res.status(401).json({ error: 'Missing auth header' });
-  const userToken = authHeader.replace('Bearer ', '');
-  const { data: { user }, error: authError } = await supabaseAdmin.auth.getUser(userToken);
-  if (authError || !user) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
     let followers = 0;
