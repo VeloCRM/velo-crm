@@ -6,7 +6,7 @@
 // This is CLIENT-SIDE UX enforcement only — backend RLS policies are the
 // real security boundary. Keep the two in sync when roles change.
 
-export const ROLES = ['owner', 'doctor', 'receptionist', 'assistant']
+export const ROLES = ['owner', 'doctor', 'receptionist', 'assistant', 'xray_tech']
 
 // Map legacy role values to the closest new role so any pre-migration row
 // (or a stray 'admin' string from older client code) keeps working.
@@ -31,12 +31,14 @@ export const ROLE_LABELS = {
     doctor: 'Doctor',
     receptionist: 'Receptionist',
     assistant: 'Assistant',
+    xray_tech: 'X-Ray Technician',
   },
   ar: {
     owner: 'مالك',
     doctor: 'طبيب',
     receptionist: 'موظف استقبال',
     assistant: 'مساعد',
+    xray_tech: 'فني الأشعة',
   },
 }
 
@@ -46,12 +48,14 @@ export const ROLE_DESCRIPTIONS = {
     doctor: 'Patients, appointments, dental chart, treatment plans (read-only finance)',
     receptionist: 'Patients, appointments, payments, inbox (no clinical writes)',
     assistant: 'Read-only across the clinic; can add notes on patients',
+    xray_tech: 'Uploads X-rays to patient records. Cannot view clinical details.',
   },
   ar: {
     owner: 'صلاحيات كاملة — الإعدادات، الفريق، المالية، الإكلينيكي',
     doctor: 'المرضى، المواعيد، مخطط الأسنان، خطط العلاج (المالية للقراءة فقط)',
     receptionist: 'المرضى، المواعيد، المدفوعات، الرسائل (بدون كتابة إكلينيكية)',
     assistant: 'قراءة فقط في العيادة؛ يستطيع إضافة ملاحظات على المرضى',
+    xray_tech: 'يرفع صور الأشعة إلى ملفات المرضى. لا يمكنه عرض التفاصيل الإكلينيكية.',
   },
 }
 
@@ -96,6 +100,18 @@ const MATRIX = {
     forms: 'r',       social: 'r',     integrations: '',
     reports: 'r',     finance: '',     settings: 'r', team: '',
     dental_chart: 'r', treatment_plans: 'r', payments: 'r',
+  },
+  // X-Ray Technician — imaging only. Reads patient demographics + appointments
+  // to know who's coming in; uploads X-rays (gated by XraysTab EDIT_ROLES + RLS,
+  // no 'xrays' matrix key). NO clinical visibility (chart/plans/Rx/notes/docs/
+  // payments are hidden in PatientProfile and '' here). NOT read-only overall —
+  // can write X-rays — so it is intentionally absent from isReadOnlyRole().
+  xray_tech: {
+    dashboard: 'r',   contacts: 'r',   patients: 'r',  inbox: 'r',    calendar: 'r',
+    tasks: '',        goals: '',       docs: '',      automations: '',
+    forms: 'r',       social: '',      integrations: '',
+    reports: '',      finance: '',     settings: 'r', team: '',
+    dental_chart: '', treatment_plans: '', payments: '',
   },
 }
 
