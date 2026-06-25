@@ -2,7 +2,7 @@
  * Vercel Serverless Function — Create Invitation
  * Endpoint: POST /api/invitations/create
  *
- * Body: { email: string, role: 'doctor' | 'receptionist' | 'assistant' }
+ * Body: { email: string, role: 'doctor' | 'receptionist' | 'assistant' | 'xray_tech' }
  * Auth: Authorization: Bearer <supabase access_token>  (caller must be owner)
  *
  * Flow:
@@ -24,7 +24,7 @@ const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL
 const anonKey = process.env.VITE_SUPABASE_ANON_KEY
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
-const INVITABLE_ROLES = new Set(['doctor', 'receptionist', 'assistant'])
+const INVITABLE_ROLES = new Set(['doctor', 'receptionist', 'assistant', 'xray_tech'])
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default async function handler(req, res) {
