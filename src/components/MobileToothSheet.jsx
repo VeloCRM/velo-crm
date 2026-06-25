@@ -13,7 +13,7 @@
  * so RTL just flips text via `dir`. Read-only roles see findings, rows disabled.
  */
 import { Modal, Icons } from './shared'
-import { groupBySurface, SURFACE_LABELS } from '../lib/toothSurfaces'
+import { groupBySurface, surfaceLabelFor } from '../lib/toothSurfaces'
 import ToothLabel from './ToothLabel'
 
 // DB surface values in clinical order. 'occlusal' shows as "Incisal" for anterior
@@ -60,11 +60,6 @@ export default function MobileToothSheet({
 }) {
   const ar = locale === 'ar'
   const { bySurface, whole } = groupBySurface(findings)
-  const isAnterior = (fdi % 10) <= 3
-  const surfaceLabel = (surf) => {
-    const key = surf === 'occlusal' && isAnterior ? 'incisal' : surf
-    return ar ? SURFACE_LABELS[key].ar : SURFACE_LABELS[key].en
-  }
 
   return (
     <Modal onClose={onClose} dir={dir} width={420}>
@@ -94,7 +89,7 @@ export default function MobileToothSheet({
           {SURFACE_ORDER.map(surf => (
             <SurfaceRow
               key={surf}
-              label={surfaceLabel(surf)}
+              label={surfaceLabelFor(surf, fdi, locale)}
               entry={bySurface[surf]}
               canEdit={canEdit}
               ar={ar}

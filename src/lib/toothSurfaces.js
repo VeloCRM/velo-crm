@@ -30,6 +30,17 @@ export const SURFACE_LABELS = {
   incisal:  { en: 'Incisal',  ar: 'قاطعة' },
 }
 
+// Single source of truth for displaying a stored surface value: the central
+// 'occlusal' surface reads as "Incisal" for anterior teeth (FDI position 1-3),
+// while staying 'occlusal' in the DB. Used by the wedge chart, the add-finding
+// dropdown, and the mobile sheet so the anterior rule never drifts.
+export function surfaceLabelFor(surface, fdi, locale = 'en') {
+  const key = surface === 'occlusal' && (Number(fdi) % 10) <= 3 ? 'incisal' : surface
+  const entry = SURFACE_LABELS[key] || SURFACE_LABELS[surface]
+  if (!entry) return surface
+  return locale === 'ar' ? entry.ar : entry.en
+}
+
 // Five wedge polygons that exactly tile a 100×100 box (4 trapezoids + a centre
 // square). Shared edges → no gaps, no overlaps. Keyed by SVG position.
 export const WEDGE_POLYGONS = {

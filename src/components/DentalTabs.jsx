@@ -17,7 +17,7 @@ import { GlassCard, Button } from './ui'
 import ToothLabel from './ToothLabel'
 import ToothSurfaces from './ToothSurfaces'
 import MobileToothSheet from './MobileToothSheet'
-import { WHOLE_TOOTH_FINDINGS, groupBySurface } from '../lib/toothSurfaces'
+import { WHOLE_TOOTH_FINDINGS, groupBySurface, surfaceLabelFor } from '../lib/toothSurfaces'
 import useMyToothNotation from '../hooks/useMyToothNotation'
 import {
   fetchPatientMedicalHistory,
@@ -447,13 +447,12 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
 
   const closeForm = () => { setShowForm(false); setActiveTooth(null); setPrefillSurface(null) }
 
-  // Anterior teeth (FDI position 1-3) label the central surface "Incisal"
-  // while still storing it as 'occlusal' (no schema/data change).
-  const isAnterior = activeTooth != null && (activeTooth % 10) <= 3
-  const surfaceOptionLabel = (s) => {
-    if (s.id === 'occlusal' && isAnterior) return isRTL ? 'قاطعة' : 'Incisal'
-    return isRTL ? s.ar : s.en
-  }
+  // Surface dropdown labels. Real surfaces go through the shared surfaceLabelFor
+  // (the single anterior occlusal→"Incisal" rule); the empty "Whole tooth" id
+  // keeps its own label.
+  const surfaceOptionLabel = (s) => (
+    s.id ? surfaceLabelFor(s.id, activeTooth, lang) : (isRTL ? s.ar : s.en)
+  )
 
   // Whole-tooth finding types cover the entire tooth → force/lock surface to
   // "Whole tooth" regardless of how the modal was opened (hybrid rule).

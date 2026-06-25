@@ -112,7 +112,10 @@ export default function ToothSurfaces({
         )}
       </svg>
       {/* Tooth-number label doubles as the interactive entry point for
-          whole-tooth findings (surface dropdown stays open in the modal). */}
+          whole-tooth findings (surface dropdown stays open in the modal). Its
+          px/py widen the whole-tooth tap target for touch (M-03); this wedge
+          label renders only >=md (iPad/desktop) — the full 44px target is in the
+          iPhone MobileToothSheet — so a modest bump avoids bloating the desktop arch. */}
       {disabled ? (
         <span className="text-[10px] leading-none text-navy-600 font-semibold tabular-nums">
           <ToothLabel fdi={fdi} notation={notation} locale={locale} />
@@ -121,10 +124,6 @@ export default function ToothSurfaces({
         <span
           {...interactive(() => onAddClick?.())}
           aria-label={ar ? `سن ${toLocaleDigits(fdi, 'ar')}، إضافة معاينة` : `Tooth ${fdi}, add finding`}
-          // px/py widen the whole-tooth tap target for touch (M-03). The full
-          // 44px target lives in the iPhone MobileToothSheet; this wedge label
-          // renders only ≥md (iPad/desktop), where a bigger pad would bloat the
-          // arch on desktop, so it gets a modest bump here.
           className="inline-flex items-center justify-center min-h-[24px] px-2 py-1 text-[10px] leading-none text-navy-600 font-semibold tabular-nums cursor-pointer rounded hover:text-accent-cyan-700 active:text-accent-cyan-700 focus:outline-none focus-visible:text-accent-cyan-700"
         >
           <ToothLabel fdi={fdi} notation={notation} locale={locale} />
