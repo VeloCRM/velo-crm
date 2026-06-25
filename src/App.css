@@ -83,7 +83,7 @@
     border-radius: 14px 14px 0 0 !important;
     max-height: 85vh !important; padding: 20px 16px !important;
   }
-  button { min-height: 36px; }
+  button { min-height: 44px; }
   table { display: block; overflow-x: auto; white-space: nowrap; }
   thead, tbody, tr { display: table; width: 100%; table-layout: auto; }
 }

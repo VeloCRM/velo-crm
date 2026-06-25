@@ -235,7 +235,7 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
               style={inputStyle('ltr')}
             />
             {showDropdown && searchQuery.length >= 2 && !showNewPatient && (
-              <div className="absolute top-full inset-x-0 z-10 mt-1 max-h-[250px] overflow-y-auto rounded-glass bg-white/95 backdrop-blur-glass-sm border border-navy-100 shadow-glass-lg">
+              <div className="absolute top-full inset-x-0 z-10 mt-1 max-h-[min(250px,40vh)] overflow-y-auto rounded-glass bg-white/95 backdrop-blur-glass-sm border border-navy-100 shadow-glass-lg">
                 {searchResults.length > 0 ? searchResults.map(p => (
                   <div
                     key={p.id}
@@ -297,7 +297,7 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
         )}
       </FormField>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
         <FormField label="Type">
           <select value={form.type} onChange={e => set('type', e.target.value)} style={selectStyle('ltr')}>
             {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -310,7 +310,7 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
         </FormField>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
         <FormField label="Date">
           <input type="date" value={form.date} onChange={e => set('date', e.target.value)} style={inputStyle('ltr')} />
         </FormField>
@@ -322,7 +322,7 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
         </FormField>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 12px' }}>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-3">
         {editAppointment && (
           <FormField label="Status">
             <select value={form.status} onChange={e => set('status', e.target.value)} style={selectStyle('ltr')}>

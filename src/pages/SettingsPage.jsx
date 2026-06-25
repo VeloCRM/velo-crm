@@ -67,13 +67,13 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
       <h1 className="text-[28px] font-semibold text-navy-800 m-0 mb-6 leading-tight tracking-tight">
         {t.settings}
       </h1>
-      <div className="flex gap-6 items-start">
-        {/* Sidebar tabs */}
+      <div className="flex flex-col md:flex-row gap-6 md:items-start">
+        {/* Sidebar tabs — stacks above content on mobile, sticky rail ≥md. */}
         <GlassCard
           as="nav"
           padding="sm"
           aria-label={lang === 'ar' ? 'أقسام الإعدادات' : 'Settings sections'}
-          className="w-[220px] shrink-0 sticky top-6"
+          className="w-full md:w-[220px] shrink-0 static md:sticky md:top-6"
         >
           <ul className="flex flex-col gap-0.5 list-none m-0 p-0">
             {visibleTabs.map(tb => {
