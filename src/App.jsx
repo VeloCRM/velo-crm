@@ -1469,7 +1469,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
                           onClick={e => { e.stopPropagation(); setEditingPatient(p); setShowForm(true) }}
                           aria-label={isRTL ? 'تعديل' : 'Edit'}
                           title={isRTL ? 'تعديل' : 'Edit'}
-                          className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+                          className="grid place-items-center w-11 h-11 md:w-8 md:h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
                         >
                           {Icons.edit(14)}
                         </button>
@@ -1478,7 +1478,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
                           onClick={e => { e.stopPropagation(); setConfirmDeleteId(p.id) }}
                           aria-label={isRTL ? 'حذف' : 'Delete'}
                           title={isRTL ? 'حذف' : 'Delete'}
-                          className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                          className="grid place-items-center w-11 h-11 md:w-8 md:h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                         >
                           {Icons.trash(14)}
                         </button>
@@ -1625,7 +1625,7 @@ function PatientFormModal({ t, dir, isRTL, patient, currentUserId, currentUserRo
             type="button"
             onClick={onClose}
             aria-label={isRTL ? 'إغلاق' : 'Close'}
-            className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
+            className="grid place-items-center w-11 h-11 md:w-8 md:h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
           >
             {Icons.x(18)}
           </button>
@@ -2182,7 +2182,7 @@ function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL, currentU
                       type="button"
                       onClick={() => setConfirmDeletePayment(p.id)}
                       aria-label={isRTL ? 'حذف' : 'Delete'}
-                      className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                      className="grid place-items-center w-11 h-11 md:w-8 md:h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                     >
                       {Icons.trash(14)}
                     </button>
