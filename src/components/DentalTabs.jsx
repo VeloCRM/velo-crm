@@ -223,7 +223,7 @@ export function MedicalHistoryTab({ patient, lang, dir, toast }) {
                     type="button"
                     onClick={() => removeAllergy(a)}
                     aria-label={isRTL ? 'إزالة' : 'Remove'}
-                    className="text-rose-700 hover:text-rose-900 transition-colors inline-flex"
+                    className="text-rose-700 hover:text-rose-900 transition-colors inline-flex items-center justify-center min-w-[24px] min-h-[24px] -my-1"
                   >
                     {Icons.x(12)}
                   </button>
@@ -950,7 +950,7 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
                       type="button"
                       onClick={() => setConfirmDeleteId(plan.id)}
                       aria-label={isRTL ? 'حذف الخطة' : 'Delete plan'}
-                      className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                      className="grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                     >
                       {Icons.trash(14)}
                     </button>
@@ -995,11 +995,14 @@ export function TreatmentPlanTab({ patient, lang, dir, toast }) {
                             </td>
                             <td className="px-3.5 py-1.5">
                               {canEdit ? (
+                                // min-h 44 on mobile (tap target); font-size forced to 16 on
+                                // mobile by the global anti-zoom rule. Compact (26px/11px) ≥md.
                                 <select
                                   value={item.status}
                                   onChange={e => handleItemStatus(plan.id, item.id, e.target.value)}
+                                  className="min-h-[44px] md:min-h-[26px]"
                                   style={{
-                                    ...selectStyle(dir), width: 'auto', padding: '2px 8px', height: 26,
+                                    ...selectStyle(dir), width: 'auto', padding: '2px 8px',
                                     background: ic.bg, color: ic.color, border: `1px solid ${ic.color}55`,
                                     fontSize: 11, fontWeight: 700,
                                   }}
@@ -1164,7 +1167,7 @@ function NewTreatmentPlanModal({ patientId, dir, isRTL, onCancel, onSaved, onErr
             {isRTL ? 'البنود' : 'Line items'}
           </div>
           <div className="flex flex-col gap-1.5 mb-2">
-            <div className="grid grid-cols-[60px_90px_1fr_110px_32px] gap-2 items-center text-[11px] text-navy-500 font-semibold">
+            <div className="hidden md:grid grid-cols-[60px_90px_1fr_110px_32px] gap-2 items-center text-[11px] text-navy-500 font-semibold">
               <span>{isRTL ? 'السن' : 'Tooth'}</span>
               <span>{isRTL ? 'السطح' : 'Surface'}</span>
               <span>{isRTL ? 'الإجراء' : 'Procedure'}</span>
@@ -1174,7 +1177,7 @@ function NewTreatmentPlanModal({ patientId, dir, isRTL, onCancel, onSaved, onErr
             {items.map((it, idx) => {
               const toothInvalid = it.tooth_number !== '' && it.tooth_number != null && !isValidFdiTooth(it.tooth_number)
               return (
-                <div key={idx} className="grid grid-cols-[60px_90px_1fr_110px_32px] gap-2 items-start">
+                <div key={idx} className="flex flex-col gap-2 md:grid md:grid-cols-[60px_90px_1fr_110px_32px] md:gap-2 md:items-start">
                   <div>
                     <input
                       value={it.tooth_number}
@@ -1218,7 +1221,7 @@ function NewTreatmentPlanModal({ patientId, dir, isRTL, onCancel, onSaved, onErr
                     aria-label={isRTL ? 'إزالة الصف' : 'Remove row'}
                     disabled={items.length === 1}
                     className={[
-                      'grid place-items-center w-7 h-7 rounded-md transition-colors',
+                      'grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md transition-colors',
                       items.length === 1
                         ? 'text-navy-300 cursor-default'
                         : 'text-navy-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer',
@@ -1374,7 +1377,7 @@ export function PrescriptionsTab({ patient, lang, dir, toast }) {
                         type="button"
                         onClick={() => setConfirmDeleteId(rx.id)}
                         aria-label={isRTL ? 'حذف' : 'Delete'}
-                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                        className="grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                       >
                         {Icons.trash(14)}
                       </button>
@@ -1600,7 +1603,7 @@ function PrescriptionEntryModal({ patientId, existing, dir, isRTL, onCancel, onS
             {isRTL ? 'الأدوية' : 'Medications'}
           </div>
           <div className="flex flex-col gap-1.5 mb-2">
-            <div className="grid grid-cols-[1.5fr_80px_100px_80px_1fr_32px] gap-2 items-center text-[11px] text-navy-500 font-semibold">
+            <div className="hidden md:grid grid-cols-[1.5fr_80px_100px_80px_1fr_32px] gap-2 items-center text-[11px] text-navy-500 font-semibold">
               <span>{isRTL ? 'الدواء' : 'Drug'}</span>
               <span>{isRTL ? 'الجرعة' : 'Dosage'}</span>
               <span>{isRTL ? 'التكرار' : 'Frequency'}</span>
@@ -1609,7 +1612,7 @@ function PrescriptionEntryModal({ patientId, existing, dir, isRTL, onCancel, onS
               <span />
             </div>
             {items.map((it, idx) => (
-              <div key={idx} className="grid grid-cols-[1.5fr_80px_100px_80px_1fr_32px] gap-2 items-start">
+              <div key={idx} className="flex flex-col gap-2 md:grid md:grid-cols-[1.5fr_80px_100px_80px_1fr_32px] md:gap-2 md:items-start">
                 <input
                   value={it.drug_name}
                   onChange={e => updateItem(idx, 'drug_name', e.target.value)}
@@ -1650,7 +1653,7 @@ function PrescriptionEntryModal({ patientId, existing, dir, isRTL, onCancel, onS
                   aria-label={isRTL ? 'إزالة الصف' : 'Remove row'}
                   disabled={items.length === 1}
                   className={[
-                    'grid place-items-center w-7 h-7 rounded-md transition-colors',
+                    'grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md transition-colors',
                     items.length === 1
                       ? 'text-navy-300 cursor-default'
                       : 'text-navy-500 hover:text-rose-700 hover:bg-rose-50 cursor-pointer',
@@ -2197,7 +2200,7 @@ export function DocumentsTab({ patient, lang, dir, toast }) {
                         type="button"
                         onClick={() => setConfirmDeleteId(doc.id)}
                         aria-label={isRTL ? 'حذف' : 'Delete'}
-                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                        className="grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                       >
                         {Icons.trash(14)}
                       </button>
@@ -2361,7 +2364,7 @@ export function NotesTab({ patient, lang, dir, toast }) {
                         aria-label={note.pinned ? (isRTL ? 'إلغاء التثبيت' : 'Unpin') : (isRTL ? 'تثبيت' : 'Pin')}
                         title={note.pinned ? (isRTL ? 'إلغاء التثبيت' : 'Unpin') : (isRTL ? 'تثبيت' : 'Pin')}
                         className={[
-                          'grid place-items-center w-7 h-7 rounded-md transition-colors',
+                          'grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md transition-colors',
                           note.pinned
                             ? 'text-accent-cyan-700 hover:bg-accent-cyan-50'
                             : 'text-navy-500 hover:text-accent-cyan-700 hover:bg-accent-cyan-50/60',
@@ -2373,7 +2376,7 @@ export function NotesTab({ patient, lang, dir, toast }) {
                         type="button"
                         onClick={() => openEdit(note)}
                         aria-label={isRTL ? 'تعديل' : 'Edit'}
-                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-accent-cyan-700 hover:bg-accent-cyan-50/60 transition-colors"
+                        className="grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md text-navy-500 hover:text-accent-cyan-700 hover:bg-accent-cyan-50/60 transition-colors"
                       >
                         {Icons.edit(14)}
                       </button>
@@ -2381,7 +2384,7 @@ export function NotesTab({ patient, lang, dir, toast }) {
                         type="button"
                         onClick={() => setConfirmDeleteId(note.id)}
                         aria-label={isRTL ? 'حذف' : 'Delete'}
-                        className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                        className="grid place-items-center w-11 h-11 md:w-7 md:h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                       >
                         {Icons.trash(14)}
                       </button>
