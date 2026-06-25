@@ -1,7 +1,7 @@
 /**
  * XraysTab — patient-profile X-rays tab. Loads the patient's X-rays, renders the
- * grid, gates upload by role (owner/doctor; receptionists read-only — RLS also
- * enforces). A thumbnail click opens the in-place XrayLightbox (PR-B2) over the
+ * grid, gates upload by role (owner/doctor/xray_tech; receptionists read-only —
+ * RLS also enforces). A thumbnail click opens the in-place XrayLightbox (PR-B2) over the
  * grid's current filtered set; the lightbox handles zoom/pan + edit + delete.
  */
 import { useState, useEffect, useCallback } from 'react'
@@ -11,7 +11,7 @@ import XrayLightbox from './XrayLightbox'
 import useMyRole from '../hooks/useMyRole'
 import { fetchXrays } from '../lib/xrays'
 
-const EDIT_ROLES = new Set(['owner', 'doctor'])
+const EDIT_ROLES = new Set(['owner', 'doctor', 'xray_tech'])
 
 export default function XraysTab({ patient, lang, dir, toast }) {
   const isRTL = lang === 'ar'

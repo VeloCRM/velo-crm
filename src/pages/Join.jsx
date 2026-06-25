@@ -120,6 +120,7 @@ const ROLE_LABEL = {
   doctor:       { en: 'Doctor',       ar: 'طبيب' },
   receptionist: { en: 'Receptionist', ar: 'موظف استقبال' },
   assistant:    { en: 'Assistant',    ar: 'مساعد' },
+  xray_tech:    { en: 'X-Ray Technician', ar: 'فني الأشعة' },
 }
 
 // Map role → Badge tone (matches the design system).
@@ -128,6 +129,7 @@ const ROLE_TONE = {
   doctor:       'cyan',
   receptionist: 'success',
   assistant:    'neutral',
+  xray_tech:    'cyan',
 }
 
 function daysUntil(iso) {
