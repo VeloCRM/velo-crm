@@ -1,5 +1,5 @@
 # Velo CRM — Session State
-## Last updated: 2026-06-24
+## Last updated: 2026-06-25
 
 ## Current branch: master (working tree clean)
 
@@ -13,7 +13,7 @@
   - **Has paid.** Explicit expectation: **"better than GHL"** (they're migrating off GoHighLevel).
   - GHL data to import: **3,171 contacts**, already **tagged per doctor (Saif vs Hawkar)**,
     with notes / payments / documents attached.
-  - Saif was **told tonight (2026-06-24)** about the timeline shift to late July — accepted.
+  - Saif **messaged ~2026-06-22 (3 days ago)** confirming a **mid-July** onboarding timeline — accepted.
 
 ## V1 dental features: ALL SHIPPED ✅ (PRs #36–#46)
 - Palmer notation toggle (per-doctor FDI/Palmer) — PR #36
@@ -39,30 +39,52 @@
 - xrays table + patient-xrays bucket (25 MB, jpeg/png/webp, 4 storage RLS incl. INSERT hotfix)
 - dental_finding enum extended with 'fracture' + 'wear' (surface-required, app-enforced)
 - prescriptions + prescription_items (doctor-role enforced via trigger)
-- profile_role enum currently: owner | doctor | receptionist | assistant
+- profile_role enum: owner | doctor | receptionist | assistant | **xray_tech** (V1.5)
 
-# ── V1.5 PLAN (next cycle — Saif onboarding prep) ──────────────────────────
+# ── V1.5 (Saif onboarding prep) ────────────────────────────────────────────
 
-## Scope (3 workstreams)
-1. **Role-scoped patient ownership** — 4 roles with **separate views**:
-   owner / doctor / **xray_tech (NEW role)** / receptionist.
-   - Doctors see their own caseload (Saif's vs Hawkar's patients, driven by the
-     per-doctor GHL tags); reception sees all; xray_tech scoped to imaging.
-   - New `xray_tech` role → profile_role enum migration + permissions + RLS + UI gating.
-2. **Mobile responsive pass** — **both phone AND tablet** (clinic reception + chairside).
-3. **GHL import pipeline** — 3,171 contacts, preserve per-doctor tags → primary_doctor_id,
-   plus notes / payments / documents. Route to categorized tabs via external_id/external_source.
+## Workstream 1 — xray_tech role + role gating: ✅ COMPLETE (live on production, 2026-06-25)
+Three PRs merged + deployed today, and the prod DB migration applied:
+- **PR #49** (merge bd724b9) — backend: `ALTER TYPE profile_role ADD VALUE 'xray_tech'`
+  (two-phase) + xrays table/storage RLS (xray_tech INSERT any patient, UPDATE/DELETE
+  own uploads only via uploaded_by / storage owner) + hardened `api/ai/chat.js`
+  (owner/doctor/receptionist) and `api/social-fetch.js` (owner-only) with the
+  PR #47 auth pattern. Script: `scripts/v1.5-add-xray-tech-role.sql`.
+- **PR #50** (merge 1dc068e) — frontend: permissions.js xray_tech (ROLES/MATRIX/labels/
+  descriptions), PatientProfile hides clinical/financial tabs from xray_tech
+  (Overview + Appointments[read-only] + X-rays only; defaults to X-rays), XraysTab
+  EDIT_ROLES, Settings invite dropdown, Join labels. **PaymentsTab latent-bug fix**:
+  Add/Delete were ungated for all roles → now `can(role,'payments','w')` (owner+
+  receptionist write; doctor/assistant read-only).
+- **PR #51** (merge f816ff2) — server invite allow-list: `api/invitations/create.js`
+  INVITABLE_ROLES now accepts `xray_tech`.
+- **Enum + RLS APPLIED TO PRODUCTION** (per Ali; the SQL script is a manual run —
+  verification queries in the script footer). xray_tech is usable end-to-end.
 
-## Decisions locked (2026-06-24)
-- Separate role-specific views (not one shared view with hide/show).
-- New `xray_tech` role (4 roles total).
-- Mobile = phone + tablet both.
-- Late-July onboarding is acceptable to Saif.
+**5 roles now:** owner, doctor, receptionist, **assistant (defined but UNUSED — 0
+production users)**, **xray_tech (new, live)**. NB: profiles.role DEFAULTs to
+'assistant' and normalizeRole falls back to it — so any future stray/defaulted
+row reads as assistant. Helper to audit: `scripts/role-distribution-check.mjs`.
 
-## Timeline — 4 weeks
-- **Week 1–2:** V1.5 architecture — role-scoped ownership + xray_tech role + RLS/permissions.
-- **Week 3:** Mobile responsive pass (phone + tablet).
-- **Week 4:** GHL import (3,171 contacts w/ doctor tags) + Saif Dental onboarding.
+> ⚠️ **V1.5 receptionist clinical hiding + xray_tech tab hiding are UI-ENFORCED only.**
+> Core clinical tables (dental_chart/treatment_plans/prescriptions/notes/payments)
+> RLS stays org-only — a non-owner with API access can still read/write clinical
+> rows the UI hides. Only `xrays` has role-aware RLS. DB-enforced PHI separation
+> (the `patient_clinical` split) is deferred to V2. Documented in the security audit.
+
+## Remaining V1.5 workstreams
+2. **Mobile responsive pass (Week 2)** — phone + tablet. Diagnostic done:
+   `scripts/mobile-ux-audit-2026-06-24.md` (1 CRITICAL: dental-chart wedge tap
+   targets ~4px iPhone / ~14px iPad; 8 HIGH). Quick wins already shipped (PR #48:
+   iOS input-zoom fix + lazy HEIC→JPG). The chart-interaction redesign (M-01) is
+   the open scope decision.
+3. **GHL import + Saif onboarding (Week 3)** — 3,171 contacts, per-doctor tags
+   (Saif vs Hawkar) → primary_doctor_id, + notes/payments/documents via
+   external_id/external_source. GHL export format still UNKNOWN (separate diagnostic).
+
+## Decisions locked
+- Separate role-specific views (not one shared hide/show). xray_tech = 5th role.
+- Mobile = phone + tablet both. Mid-July onboarding accepted by Saif.
 
 ## V2 restructure: DEFERRED
 - ARCH-V2-PLATFORM.md on master (deferred banner); PR #31 (Phase 1A SQL draft) closed,
@@ -81,6 +103,12 @@
 - **Runtime-dep discipline preserved** (PR #40: 70-LOC custom zoom/pan over a library).
 - **Supabase `.update()` matching 0 rows under RLS returns NO error** — cross-user writes
   silently no-op; use SECURITY DEFINER RPC or check rows-affected.
+
+## V1.5 diagnostics on master (recoverable reference)
+- `scripts/v1.5-architecture-diagnostic.md` — full RLS/ownership plan (V2 PHI split lives here).
+- `scripts/v1.5-roles-permissions-diagnostic.md` — role-check inventory + the xray_tech plan.
+- `scripts/mobile-ux-audit-2026-06-24.md` — mobile findings (workstream 2).
+- `scripts/security-audit-2026-06-24.md` — security perimeter audit.
 
 ## Backlog (filed)
 - DentalTabs' inline useMyRole → shared src/hooks/useMyRole.js (small refactor)
