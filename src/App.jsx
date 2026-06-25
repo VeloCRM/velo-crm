@@ -1277,7 +1277,10 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
   const [editingPatient, setEditingPatient] = useState(null)
   const [_selectedPatientId, _setSelectedPatientId] = useState(urlPatientId || null)
   const [confirmDeleteId, setConfirmDeleteId] = useState(null)
-  const [profileTab, setProfileTab] = useState('overview')
+  // xray_tech works in the X-rays tab, so default them there; everyone else
+  // lands on Overview.
+  const defaultProfileTab = currentUserRole === 'xray_tech' ? 'xrays' : 'overview'
+  const [profileTab, setProfileTab] = useState(defaultProfileTab)
 
   // Sync URL param to state. The special value "new" is an intent from the
   // dashboard's "New Patient" quick action — open the create form and clear
@@ -1324,7 +1327,8 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
         t={t} dir={dir} isRTL={isRTL} lang={lang}
         patient={p}
         profileTab={profileTab} setProfileTab={setProfileTab}
-        onBack={() => { setSelectedPatient(null); setProfileTab('overview') }}
+        currentUserRole={currentUserRole}
+        onBack={() => { setSelectedPatient(null); setProfileTab(defaultProfileTab) }}
         onEdit={() => { setEditingPatient(p); setShowForm(true); setSelectedPatient(null) }}
         onDelete={() => showConfirm(
           isRTL ? 'حذف المريض؟' : 'Delete this patient?',
@@ -1689,9 +1693,15 @@ function fieldValue(value, isRTL) {
   return value
 }
 
-function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTab, onBack, onEdit, onDelete, toast }) {
+// xray_tech sees only demographics + appointments (read-only) + X-rays (their
+// work area). All clinical/financial tabs are hidden from them in the UI; RLS is
+// the real boundary. Other roles see every tab (read/edit gated per-component).
+const XRAY_TECH_TABS = new Set(['overview', 'appointments', 'xrays'])
+
+function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTab, currentUserRole, onBack, onEdit, onDelete, toast }) {
   void t
   void lang
+  const isXrayTech = currentUserRole === 'xray_tech'
   // Payments state — pulled lazily when the Payments tab is opened or on mount.
   const [payments, setPayments] = useState([])
   const [paymentsLoading, setPaymentsLoading] = useState(true)
@@ -1756,6 +1766,13 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
     { id: 'notes',        label: isRTL ? 'الملاحظات'     : 'Notes' },
     { id: 'documents',    label: isRTL ? 'الوثائق'       : 'Documents' },
   ]
+  const visibleTabs = isXrayTech ? tabs.filter(tab => XRAY_TECH_TABS.has(tab.id)) : tabs
+
+  // Keep xray_tech off any clinical/financial tab they can't see (e.g. a tab id
+  // persisted from a prior role/session) — redirect to their X-rays work area.
+  useEffect(() => {
+    if (isXrayTech && !XRAY_TECH_TABS.has(profileTab)) setProfileTab('xrays')
+  }, [isXrayTech, profileTab, setProfileTab])
 
   // Heavy tabs (Payments, Medical, Dental Chart, Treatments) keep their existing
   // implementations for now — Phase 2.2 only redesigns Overview + Appointments
@@ -1879,7 +1896,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
         {/* ── Tab bar ────────────────────────────────────────────────── */}
         <div className="border-b border-navy-100/80 overflow-x-auto -mx-1 px-1">
           <div className="flex items-end gap-1 min-w-max">
-            {tabs.map(tab => {
+            {visibleTabs.map(tab => {
               const active = profileTab === tab.id
               return (
                 <button
@@ -1940,9 +1957,12 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
                 <h3 className="text-base font-semibold text-navy-900 m-0">
                   {isRTL ? 'المواعيد' : 'Appointments'}
                 </h3>
-                <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowBook(true)}>
-                  {isRTL ? 'حجز موعد' : 'Book Appointment'}
-                </Button>
+                {/* xray_tech sees appointments read-only (no booking). */}
+                {!isXrayTech && (
+                  <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowBook(true)}>
+                    {isRTL ? 'حجز موعد' : 'Book Appointment'}
+                  </Button>
+                )}
               </div>
               {apptsLoading ? <DentalSpinner isRTL={isRTL} /> :
               appointments.length === 0 ? (
@@ -2001,7 +2021,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
               {profileTab === 'payments' && (
                 paymentsLoading
                   ? <DentalSpinner isRTL={isRTL} />
-                  : <PaymentsTab payments={payments} addPayment={addPayment} deletePayment={deletePayment} dir={dir} isRTL={isRTL} />
+                  : <PaymentsTab payments={payments} addPayment={addPayment} deletePayment={deletePayment} dir={dir} isRTL={isRTL} currentUserRole={currentUserRole} />
               )}
               {profileTab === 'medical' && (
                 <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
@@ -2072,10 +2092,13 @@ const PAYMENT_METHODS = [
   { id: 'other',       en: 'Other',       ar: 'أخرى',        icon: '🔖' },
 ]
 
-function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL }) {
+function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL, currentUserRole }) {
   const [showForm, setShowForm] = useState(false)
   const [confirmDeletePayment, setConfirmDeletePayment] = useState(null)
   const [form, setForm] = useState({ amount: '', currency: 'IQD', method: 'cash', notes: '' })
+  // Write gate (owner + receptionist per the matrix). doctor/assistant see the
+  // tab read-only; xray_tech never reaches it (tab hidden). RLS is the real boundary.
+  const canWrite = can(currentUserRole, 'payments', 'w')
 
   // Sum totals per currency. Don't sum across currencies (per CLAUDE.md).
   const totals = payments.reduce((acc, p) => {
@@ -2121,9 +2144,11 @@ function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL }) {
           <h3 className="text-base font-semibold text-navy-900 m-0">
             {isRTL ? 'المدفوعات' : 'Payments'} ({payments.length})
           </h3>
-          <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowForm(true)}>
-            {isRTL ? 'إضافة دفعة' : 'Record Payment'}
-          </Button>
+          {canWrite && (
+            <Button variant="primary" size="sm" iconStart={Icons.plus} onClick={() => setShowForm(true)}>
+              {isRTL ? 'إضافة دفعة' : 'Record Payment'}
+            </Button>
+          )}
         </div>
 
         {payments.length === 0 ? (
@@ -2152,14 +2177,16 @@ function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL }) {
                       {p.notes && <> &middot; {p.notes}</>}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setConfirmDeletePayment(p.id)}
-                    aria-label={isRTL ? 'حذف' : 'Delete'}
-                    className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
-                  >
-                    {Icons.trash(14)}
-                  </button>
+                  {canWrite && (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeletePayment(p.id)}
+                      aria-label={isRTL ? 'حذف' : 'Delete'}
+                      className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                    >
+                      {Icons.trash(14)}
+                    </button>
+                  )}
                 </li>
               )
             })}

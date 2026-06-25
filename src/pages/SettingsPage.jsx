@@ -417,7 +417,7 @@ function ProfileTab({ t, lang, dir, isRTL, user, toast }) {
 // Roles a clinic owner can invite. Owners can never invite other owners
 // (one owner per org). Operators can flip ownership through dedicated
 // operator endpoints.
-const INVITABLE_ROLES = ['doctor', 'receptionist', 'assistant']
+const INVITABLE_ROLES = ['doctor', 'receptionist', 'assistant', 'xray_tech']
 
 function TeamTab({ t, lang, dir, isRTL, toast }) {
   // Identity gating: only owners see the invite form. Everyone in the org
