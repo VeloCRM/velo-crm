@@ -28,7 +28,8 @@ const WEDGE_POSITIONS = ['top', 'bottom', 'left', 'right', 'center']
 const EMPTY_FILL = 'rgba(148,163,184,0.16)' // faint neutral so the 5 zones are always visible
 // Visible hover/focus highlight: a cyan accent stroke (CSS overrides the base
 // stroke attribute). Replaces the old opacity dim, which made faint wedges fainter.
-const WEDGE_CLASS = 'cursor-pointer transition-all duration-100 hover:[stroke:#06b6d4] hover:[stroke-width:2.5] focus:outline-none focus-visible:[stroke:#06b6d4] focus-visible:[stroke-width:2.5]'
+// active: gives a touch press cue (hover never fires on touch — M-02).
+const WEDGE_CLASS = 'cursor-pointer transition-all duration-100 hover:[stroke:#06b6d4] hover:[stroke-width:2.5] active:[stroke:#06b6d4] active:[stroke-width:2.5] focus:outline-none focus-visible:[stroke:#06b6d4] focus-visible:[stroke-width:2.5]'
 
 export default function ToothSurfaces({
   fdi, findings, findingStyles, onSurfaceClick, onAddClick,
@@ -61,7 +62,10 @@ export default function ToothSurfaces({
 
   return (
     <div className="flex flex-col items-center gap-1">
-      <svg viewBox="0 0 100 100" className="w-full h-auto" style={{ maxWidth: 46 }}>
+      {/* Per-tooth size cap. Responsive (not inline maxWidth) so iPad enlarges
+          the wedges: ~46px desktop/portrait → up to ~60/72px on wider/landscape
+          viewports (cell width permitting in the 16-col arch). M-01 iPad path. */}
+      <svg viewBox="0 0 100 100" className="w-full h-auto max-w-[46px] md:max-w-[60px] lg:max-w-[72px]">
         {wholeTinted ? (
           <polygon
             points="0,0 100,0 100,100 0,100"
@@ -108,7 +112,10 @@ export default function ToothSurfaces({
         )}
       </svg>
       {/* Tooth-number label doubles as the interactive entry point for
-          whole-tooth findings (surface dropdown stays open in the modal). */}
+          whole-tooth findings (surface dropdown stays open in the modal). Its
+          px/py widen the whole-tooth tap target for touch (M-03); this wedge
+          label renders only >=md (iPad/desktop) — the full 44px target is in the
+          iPhone MobileToothSheet — so a modest bump avoids bloating the desktop arch. */}
       {disabled ? (
         <span className="text-[10px] leading-none text-navy-600 font-semibold tabular-nums">
           <ToothLabel fdi={fdi} notation={notation} locale={locale} />
@@ -117,7 +124,7 @@ export default function ToothSurfaces({
         <span
           {...interactive(() => onAddClick?.())}
           aria-label={ar ? `سن ${toLocaleDigits(fdi, 'ar')}، إضافة معاينة` : `Tooth ${fdi}, add finding`}
-          className="text-[10px] leading-none text-navy-600 font-semibold tabular-nums cursor-pointer rounded hover:text-accent-cyan-700 focus:outline-none focus-visible:text-accent-cyan-700"
+          className="inline-flex items-center justify-center min-h-[24px] px-2 py-1 text-[10px] leading-none text-navy-600 font-semibold tabular-nums cursor-pointer rounded hover:text-accent-cyan-700 active:text-accent-cyan-700 focus:outline-none focus-visible:text-accent-cyan-700"
         >
           <ToothLabel fdi={fdi} notation={notation} locale={locale} />
         </span>

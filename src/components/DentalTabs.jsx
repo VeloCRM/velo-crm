@@ -16,7 +16,8 @@ import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import { GlassCard, Button } from './ui'
 import ToothLabel from './ToothLabel'
 import ToothSurfaces from './ToothSurfaces'
-import { WHOLE_TOOTH_FINDINGS } from '../lib/toothSurfaces'
+import MobileToothSheet from './MobileToothSheet'
+import { WHOLE_TOOTH_FINDINGS, groupBySurface, surfaceLabelFor } from '../lib/toothSurfaces'
 import useMyToothNotation from '../hooks/useMyToothNotation'
 import {
   fetchPatientMedicalHistory,
@@ -397,6 +398,8 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
   // When set, the modal was opened from a specific surface wedge → surface
   // dropdown is locked. null → interactive (whole-tooth / any surface) entry.
   const [prefillSurface, setPrefillSurface] = useState(null)
+  // iPhone (<md): the tooth whose surface-sheet is open (null = closed).
+  const [sheetTooth, setSheetTooth] = useState(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -444,13 +447,12 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
 
   const closeForm = () => { setShowForm(false); setActiveTooth(null); setPrefillSurface(null) }
 
-  // Anterior teeth (FDI position 1-3) label the central surface "Incisal"
-  // while still storing it as 'occlusal' (no schema/data change).
-  const isAnterior = activeTooth != null && (activeTooth % 10) <= 3
-  const surfaceOptionLabel = (s) => {
-    if (s.id === 'occlusal' && isAnterior) return isRTL ? 'قاطعة' : 'Incisal'
-    return isRTL ? s.ar : s.en
-  }
+  // Surface dropdown labels. Real surfaces go through the shared surfaceLabelFor
+  // (the single anterior occlusal→"Incisal" rule); the empty "Whole tooth" id
+  // keeps its own label.
+  const surfaceOptionLabel = (s) => (
+    s.id ? surfaceLabelFor(s.id, activeTooth, lang) : (isRTL ? s.ar : s.en)
+  )
 
   // Whole-tooth finding types cover the entire tooth → force/lock surface to
   // "Whole tooth" regardless of how the modal was opened (hybrid rule).
@@ -527,6 +529,31 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
     />
   )
 
+  // iPhone compact arch: each tooth is one ≥44px button (number + a finding-color
+  // dot) that opens the per-tooth sheet. Viewing is allowed for all roles, so the
+  // button is never disabled — the sheet itself gates editing by canEdit.
+  const renderCompactTooth = (num) => {
+    const { bySurface, whole } = groupBySurface(entriesByTooth[num] || [])
+    const lead = whole || Object.values(bySurface)[0]
+    const dot = lead ? (FINDING_STYLES[lead.finding] || FINDING_STYLES.healthy).color : null
+    return (
+      <button
+        key={num}
+        type="button"
+        onClick={() => setSheetTooth(num)}
+        aria-label={isRTL ? `سن ${num}` : `Tooth ${num}`}
+        className="relative flex items-center justify-center min-h-[44px] rounded-md border border-navy-100 bg-white/70 text-[11px] font-semibold text-navy-700 tabular-nums active:bg-accent-cyan-50 transition-colors"
+      >
+        <ToothLabel fdi={num} notation={notation} locale={lang} />
+        {dot && <span aria-hidden="true" className="absolute top-1 end-1 w-1.5 h-1.5 rounded-full" style={{ background: dot }} />}
+      </button>
+    )
+  }
+
+  // Sheet → finding modal: close the sheet FIRST so two bottom-sheets never stack.
+  const sheetSelectSurface = (surface) => { const n = sheetTooth; setSheetTooth(null); openSurface(n, surface) }
+  const sheetSelectWhole = () => { const n = sheetTooth; setSheetTooth(null); openTooth(n) }
+
   return (
     <div className="ds-root flex flex-col gap-3">
       {/* Legend */}
@@ -564,13 +591,30 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
                 : (isRTL ? 'الفك العلوي (18-11 / 21-28)' : 'Upper jaw (18-11 / 21-28)')}
             </div>
             {/* dir=ltr pins the arch order (patient-right on the viewer's left)
-                regardless of UI language — a dental chart is conventionally LTR. */}
-            <div dir="ltr" className="grid grid-cols-16 gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
-              {UPPER_TEETH.map(renderTooth)}
+                regardless of UI language — a dental chart is conventionally LTR
+                and must NOT mirror in Arabic. */}
+            {/* Wedge arch — iPad + desktop (≥md). Hidden on iPhone (wedges are
+                ~4px there); the compact arch + sheet below take over. */}
+            <div className="hidden md:block">
+              <div dir="ltr" className="grid gap-1.5 mb-4" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+                {UPPER_TEETH.map(renderTooth)}
+              </div>
+              <div className="h-px bg-navy-100/80 my-1.5 mb-4" />
+              <div dir="ltr" className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
+                {LOWER_TEETH.map(renderTooth)}
+              </div>
             </div>
-            <div className="h-px bg-navy-100/80 my-1.5 mb-4" />
-            <div dir="ltr" className="grid grid-cols-16 gap-1.5" style={{ gridTemplateColumns: 'repeat(16, 1fr)' }}>
-              {LOWER_TEETH.map(renderTooth)}
+            {/* Compact arch — iPhone (<md). 8 cols/row (one quadrant per row, the
+                16-tooth array splits at the midline) → ≥44px tooth buttons. Still
+                dir=ltr (anatomical). Tapping a tooth opens MobileToothSheet. */}
+            <div className="md:hidden">
+              <div dir="ltr" className="grid grid-cols-8 gap-1.5 mb-4">
+                {UPPER_TEETH.map(renderCompactTooth)}
+              </div>
+              <div className="h-px bg-navy-100/80 my-1.5 mb-4" />
+              <div dir="ltr" className="grid grid-cols-8 gap-1.5">
+                {LOWER_TEETH.map(renderCompactTooth)}
+              </div>
             </div>
             <div className="text-[11px] font-semibold text-navy-500 mt-2 text-center uppercase tracking-wider">
               {notation === 'palmer'
@@ -601,30 +645,37 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
               const style = FINDING_STYLES[e.finding] || FINDING_STYLES.healthy
               const when = e.recorded_at ? new Date(e.recorded_at).toLocaleString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : ''
               const recName = e.recorder?.full_name || (isRTL ? 'غير معروف' : 'Unknown')
+              // Two-line on phone (tooth+finding / meta), one row ≥md — M-04.
               return (
-                <li key={e.id} className="flex items-center gap-2.5 px-2.5 py-2 rounded-md bg-navy-50/40">
-                  <span
-                    className="min-w-[36px] text-xs font-bold tabular-nums"
-                    style={{ color: style.color }}
-                  >
-                    <ToothLabel fdi={e.tooth_number} notation={notation} locale={lang} hash />
-                  </span>
-                  <span
-                    className="text-[11px] font-bold px-2 py-0.5 rounded"
-                    style={{ background: style.bg, color: style.color, border: `1px solid ${style.color}33` }}
-                  >
-                    {findingLabel(e.finding, isRTL)}
-                  </span>
-                  {e.surface && <span className="text-[11px] text-navy-600 capitalize">{e.surface}</span>}
-                  {e.notes && <span className="text-[11px] text-navy-500 flex-1 truncate">{e.notes}</span>}
-                  <span className="text-[11px] text-navy-400 ms-auto tabular-nums">{when}</span>
-                  <span className="text-[11px] text-navy-400">· {recName}</span>
+                <li key={e.id} className="flex items-start gap-2.5 px-2.5 py-2 rounded-md bg-navy-50/40">
+                  <div className="flex-1 min-w-0 flex flex-col gap-1 md:flex-row md:items-center md:gap-2.5">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className="min-w-[36px] text-xs font-bold tabular-nums"
+                        style={{ color: style.color }}
+                      >
+                        <ToothLabel fdi={e.tooth_number} notation={notation} locale={lang} hash />
+                      </span>
+                      <span
+                        className="text-[11px] font-bold px-2 py-0.5 rounded"
+                        style={{ background: style.bg, color: style.color, border: `1px solid ${style.color}33` }}
+                      >
+                        {findingLabel(e.finding, isRTL)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap min-w-0 md:flex-1">
+                      {e.surface && <span className="text-[11px] text-navy-600 capitalize">{e.surface}</span>}
+                      {e.notes && <span className="text-[11px] text-navy-500 truncate">{e.notes}</span>}
+                      <span className="text-[11px] text-navy-400 tabular-nums md:ms-auto">{when}</span>
+                      <span className="text-[11px] text-navy-400">· {recName}</span>
+                    </div>
+                  </div>
                   {canEdit && (
                     <button
                       type="button"
                       onClick={() => handleDeleteEntry(e.id)}
                       aria-label={isRTL ? 'حذف' : 'Delete'}
-                      className="grid place-items-center w-7 h-7 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                      className="grid place-items-center w-9 h-9 shrink-0 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors md:w-7 md:h-7"
                     >
                       {Icons.trash(13)}
                     </button>
@@ -635,6 +686,22 @@ export function DentalChartTab({ patient, lang, dir, toast }) {
           </ul>
         )}
       </GlassCard>
+
+      {/* iPhone per-tooth surface sheet (opens the add-finding modal on select) */}
+      {sheetTooth != null && (
+        <MobileToothSheet
+          fdi={sheetTooth}
+          findings={entriesByTooth[sheetTooth] || []}
+          findingStyles={FINDING_STYLES}
+          notation={notation}
+          locale={lang}
+          dir={dir}
+          canEdit={canEdit}
+          onSurfaceSelect={sheetSelectSurface}
+          onWholeToothSelect={sheetSelectWhole}
+          onClose={() => setSheetTooth(null)}
+        />
+      )}
 
       {/* Add-finding modal */}
       {showForm && activeTooth && (
