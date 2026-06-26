@@ -17,8 +17,28 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const EXPORT_DIR = path.join(__dirname, '..', 'export')
 const CONTACTS_DIR = path.join(EXPORT_DIR, 'contacts')
 
-// ── Config (edit these if not using CLI args) ────────────────────────────────
-const API_KEY = process.env.GHL_API_KEY || 'pit-96a0b8e5-1df6-4469-85a7-9c3cf620fa69'
+// ── Load .env.local (gitignored — never commit credentials) ──────────────────
+function loadEnvLocal() {
+  const envPath = path.join(__dirname, '..', '.env.local')
+  if (!fs.existsSync(envPath)) return
+  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+    const t = line.trim()
+    if (!t || t.startsWith('#')) continue
+    const eq = t.indexOf('=')
+    if (eq === -1) continue
+    const k = t.slice(0, eq).trim()
+    const v = t.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
+    if (!process.env[k]) process.env[k] = v
+  }
+}
+loadEnvLocal()
+
+// ── Config ───────────────────────────────────────────────────────────────────
+const API_TOKEN = process.env.GHL_API_TOKEN
+if (!API_TOKEN) {
+  console.error('Missing GHL_API_TOKEN in .env.local')
+  process.exit(1)
+}
 const CSV_PATH = process.env.GHL_CSV || path.join('C:', 'Users', 'madma', 'Downloads', 'Export_Contacts_undefined_Apr_2026_12_54_AM.csv')
 
 function getExportedCount() {
@@ -77,13 +97,16 @@ async function main() {
 
     // Run the export script as a child process with 3-minute timeout
     try {
+      // Pass the token via the child's ENV (GHL_API_KEY), never on argv — argv
+      // is visible in the OS process list / shell history.
       const result = execSync(
-        `node scripts/ghl-fetch-notes.mjs --api-key=${API_KEY} "--csv=${CSV_PATH}"`,
+        `node scripts/ghl-fetch-notes.mjs "--csv=${CSV_PATH}"`,
         {
           cwd: path.join(__dirname, '..'),
           timeout: 180000, // 3 minutes
           stdio: ['pipe', 'pipe', 'pipe'],
           maxBuffer: 10 * 1024 * 1024,
+          env: { ...process.env, GHL_API_KEY: API_TOKEN },
         }
       )
       // If it exits cleanly, it might be done

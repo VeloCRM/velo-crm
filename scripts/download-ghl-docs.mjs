@@ -29,18 +29,20 @@ const EXPORT_DIR = path.join(ROOT_DIR, 'export')
 const DOCS_DIR = path.join(EXPORT_DIR, 'documents')
 const PROGRESS_FILE = path.join(EXPORT_DIR, 'doc-download-progress.json')
 
-// ─── Load .env ──────────────────────────────────────────────────────────────
+// ─── Load .env.local (preferred) then .env (gitignored — never commit creds) ──
 function loadEnv() {
-  const envPath = path.join(ROOT_DIR, '.env')
-  if (!fs.existsSync(envPath)) return
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith('#')) continue
-    const eq = trimmed.indexOf('=')
-    if (eq === -1) continue
-    const key = trimmed.slice(0, eq).trim()
-    const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
-    if (!process.env[key]) process.env[key] = val
+  for (const file of ['.env.local', '.env']) {
+    const envPath = path.join(ROOT_DIR, file)
+    if (!fs.existsSync(envPath)) continue
+    for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      const eq = trimmed.indexOf('=')
+      if (eq === -1) continue
+      const key = trimmed.slice(0, eq).trim()
+      const val = trimmed.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
+      if (!process.env[key]) process.env[key] = val
+    }
   }
 }
 loadEnv()
@@ -51,11 +53,16 @@ const args = Object.fromEntries(
     .map(a => { const [k, ...rest] = a.slice(2).split('='); return [k, rest.join('=') || true] })
 )
 
-const LOCATION_ID = process.env.GHL_LOCATION_ID || 'i7xxTT5qM4l9N3fjZZSU'
+const LOCATION_ID = process.env.GHL_LOCATION_ID
 const LIMIT = parseInt(args['limit']) || 0
 const RESUME = args['resume'] === true || args['resume'] === 'true'
 const SINGLE_CONTACT = args['contact'] || ''
 const DEBUG_PORT = parseInt(args['port']) || 9222
+
+if (!LOCATION_ID) {
+  console.error('Missing GHL_LOCATION_ID in .env.local')
+  process.exit(1)
+}
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function sanitizeName(name) {
