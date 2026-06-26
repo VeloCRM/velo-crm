@@ -141,12 +141,14 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave, isOper
   // (who hold the orgs UPDATE policy) get an editable, working save path.
   const readOnly = !isOperator
   const operatorNote = lang === 'ar' ? 'يُدار بواسطة مشغّل Velo الخاص بك.' : 'Managed by your Velo operator.'
-  // Only fields backed by real `orgs` columns live here. `industry` and
-  // `primary_color` were removed (SB-8): they have no column on `orgs`, so the
-  // save silently dropped them. name / currency / timezone are real columns.
+  // Only fields backed by real `orgs` columns live here. `industry` +
+  // `primary_color` were removed (SB-8, no column). `currency` was also removed:
+  // currency is now chosen per-charge/per-payment (see scripts/billing-design.md),
+  // so a single org-level currency is the wrong model — the `orgs.currency` column
+  // is left intact (may serve as a future default) but is no longer a Settings UI
+  // field. name / timezone remain real, editable columns.
   const [form, setForm] = useState({
     name: orgSettings.name || '',
-    currency: orgSettings.currency || 'USD',
     timezone: orgSettings.timezone || 'America/New_York',
   })
   const [saved, setSaved] = useState(false)
@@ -196,16 +198,8 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave, isOper
           </div>
         </div>
 
-        {/* Currency + Timezone */}
+        {/* Timezone (currency removed — now per-charge/per-payment) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Select
-            label={lang === 'ar' ? 'العملة' : 'Currency'}
-            value={form.currency}
-            onChange={e => set('currency', e.target.value)}
-            disabled={readOnly}
-            helper={readOnly ? operatorNote : undefined}
-            options={CURRENCIES.map(c => ({ value: c.id, label: c.label }))}
-          />
           <Select
             label={lang === 'ar' ? 'المنطقة الزمنية' : 'Timezone'}
             value={form.timezone}
