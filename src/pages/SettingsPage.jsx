@@ -115,7 +115,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
 
         {/* Tab content */}
         <div className="flex-1 min-w-0 fade-in" key={tab}>
-          {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
+          {tab === 'organization' && <OrganizationTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} onSave={onSaveOrgSettings} isOperator={isOperator} />}
           {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} toast={toast} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
@@ -131,10 +131,16 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
   )
 }
 
-function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
+function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave, isOperator }) {
   void t
   void dir
   void isRTL
+  // SB-8 close (Direction B): org settings are operator-managed. The `orgs`
+  // table has no owner UPDATE RLS policy, so a non-operator's save always hits
+  // 0 rows and throws. Render read-only for clinic members; only operators
+  // (who hold the orgs UPDATE policy) get an editable, working save path.
+  const readOnly = !isOperator
+  const operatorNote = lang === 'ar' ? 'يُدار بواسطة مشغّل Velo الخاص بك.' : 'Managed by your Velo operator.'
   // Only fields backed by real `orgs` columns live here. `industry` and
   // `primary_color` were removed (SB-8): they have no column on `orgs`, so the
   // save silently dropped them. name / currency / timezone are real columns.
@@ -157,6 +163,13 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
 
   return (
     <div className="space-y-5">
+      {readOnly && (
+        <div className="bg-navy-50 border border-navy-100 rounded-glass px-4 py-3 text-[13px] text-navy-600">
+          {lang === 'ar'
+            ? 'تُدار إعدادات المؤسسة بواسطة مشغّل Velo الخاص بك. الحقول أدناه للعرض فقط — تواصل مع المشغّل لتغييرها.'
+            : 'Organization settings are managed by your Velo operator. The fields below are read-only — contact your operator to change them.'}
+        </div>
+      )}
       <GlassCard padding="lg">
         <h2 className="text-lg font-semibold text-navy-800 m-0 mb-5">
           {lang === 'ar' ? 'معلومات المؤسسة' : 'Organization Info'}
@@ -176,6 +189,8 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
               label={lang === 'ar' ? 'اسم الشركة' : 'Company Name'}
               value={form.name}
               onChange={e => set('name', e.target.value)}
+              disabled={readOnly}
+              helper={readOnly ? operatorNote : undefined}
               placeholder={lang === 'ar' ? 'اسم شركتك' : 'Your company name'}
             />
           </div>
@@ -187,28 +202,34 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
             label={lang === 'ar' ? 'العملة' : 'Currency'}
             value={form.currency}
             onChange={e => set('currency', e.target.value)}
+            disabled={readOnly}
+            helper={readOnly ? operatorNote : undefined}
             options={CURRENCIES.map(c => ({ value: c.id, label: c.label }))}
           />
           <Select
             label={lang === 'ar' ? 'المنطقة الزمنية' : 'Timezone'}
             value={form.timezone}
             onChange={e => set('timezone', e.target.value)}
+            disabled={readOnly}
+            helper={readOnly ? operatorNote : undefined}
             options={TIMEZONES.map(tz => ({ value: tz, label: tz.replace(/_/g, ' ') }))}
           />
         </div>
       </GlassCard>
 
-      <div className="flex justify-end">
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          iconStart={saved ? Icons.check : undefined}
-        >
-          {saved
-            ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!')
-            : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className="flex justify-end">
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            iconStart={saved ? Icons.check : undefined}
+          >
+            {saved
+              ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!')
+              : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
