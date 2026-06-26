@@ -79,7 +79,7 @@ No test framework is configured. (Tech debt — adding Vitest is roadmap work.)
 - Reference: `src/pages/AgencyDashboard.jsx`, `src/pages/agency/`.
 
 **Currency: minor units + currency code.**
-- IQD in fils, USD in cents. Never store decimals.
+- IQD stored in whole dinars (amount_minor = whole IQD, no fils in practice; divisor 1). USD stored in cents (divisor 100, 2 decimals). Matches src/lib/money.js CURRENCY_DIVISOR — do not "correct" IQD back to fils. Never store fractional minor units.
 - Every monetary column has a sibling currency column.
 - Never sum across currencies without explicit conversion.
 
