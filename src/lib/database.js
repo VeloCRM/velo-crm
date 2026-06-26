@@ -23,6 +23,7 @@ import {
   sanitizeEmail,
   sanitizePhone,
   sanitizeNotes,
+  sanitizeSearch,
   toSafeNumber,
 } from './sanitize'
 import { requireUser, getCurrentOrgId } from './auth_session'
@@ -77,6 +78,52 @@ export async function fetchPatients(offset = 0, limit = PATIENTS_PAGE_SIZE, { pr
     .select('*', { count: 'exact' })
     .eq('org_id', orgId)
   // "My patients" filter (PR #6) — convenience only, not a security boundary.
+  if (primaryDoctorId) query = query.eq('primary_doctor_id', primaryDoctorId)
+  const { data, error, count } = await query
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1)
+  if (error) throw error
+  const rows = (data || []).map(mapPatient)
+  const total = count ?? rows.length
+  return { rows, total, hasMore: offset + rows.length < total }
+}
+
+// Server-side patient search (SB-2). Matches `full_name` and `phone` with
+// ILIKE '%term%' across the WHOLE org, not just the rows already paged in.
+// Returns the SAME shape as fetchPatients: { rows, total, hasMore }.
+//
+// Phone is normalized the same way the patients UI does (+964 / 964 / leading-0
+// → stripped to bare significant digits). Because the match is a substring,
+// those digits appear inside the stored number regardless of its prefix format.
+//
+// `orgId` override lets the operator-impersonation path search a foreign org
+// (mirrors fetchPatientsForOrg); defaults to the caller's own org. Backed by the
+// pg_trgm GIN indexes in scripts/patient-search-migration.sql.
+export async function searchPatients(term, { offset = 0, limit = PATIENTS_PAGE_SIZE, primaryDoctorId, orgId } = {}) {
+  await requireUser()
+  const scopeOrgId = orgId || await getCurrentOrgId()
+
+  // Neutralize PostgREST .or() / ILIKE metacharacters so a search term can never
+  // break out of the filter or inject wildcards: drop , ( ) % _ * \ and trim.
+  const nameTerm = sanitizeSearch(term || '').replace(/[%_,()*\\]/g, ' ').trim()
+  // Phone term → bare significant digits (mirrors App.jsx normalizePhoneSearch).
+  const phoneDigits = String(term || '')
+    .replace(/[\s\-()]/g, '')
+    .replace(/^\+964/, '0')
+    .replace(/^964/, '0')
+    .replace(/^0+/, '')
+    .replace(/\D/g, '')
+
+  const orParts = []
+  if (nameTerm) orParts.push(`full_name.ilike.%${nameTerm}%`)
+  if (phoneDigits.length >= 3) orParts.push(`phone.ilike.%${phoneDigits}%`)
+  if (orParts.length === 0) return { rows: [], total: 0, hasMore: false }
+
+  let query = supabase
+    .from('patients')
+    .select('*', { count: 'exact' })
+    .eq('org_id', scopeOrgId)
+    .or(orParts.join(','))
   if (primaryDoctorId) query = query.eq('primary_doctor_id', primaryDoctorId)
   const { data, error, count } = await query
     .order('created_at', { ascending: false })

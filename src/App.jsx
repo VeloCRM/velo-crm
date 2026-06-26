@@ -65,7 +65,7 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
-import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, sanitizeSearch, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
+import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
 import { todayLocal } from './lib/date'
@@ -1241,9 +1241,68 @@ export default function App() {
 function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMorePatients, patientsLoadingMore = false, addPatient, updatePatient, deletePatient, setPage, toast, showConfirm, urlPatientId, navigate, isOperator, impersonation, orgId, currentUserId, currentUserRole, patientFilterDoctorId, setPatientFilterDoctorId }) {
   void t
   void lang
-  void toast
   void orgId
   const [search, setSearch] = useState('')
+
+  // ── Server-side patient search (SB-2) ─────────────────────────────────────
+  // A debounced term of >= SEARCH_MIN_CHARS switches the list from the browse
+  // pages (parent `patients`, capped per page) to a server query that spans ALL
+  // of the org's patients. Below the threshold we fall back to browse mode and
+  // the parent's paginated list — no client-side filtering of a partial array.
+  const SEARCH_MIN_CHARS = 3
+  const SEARCH_DEBOUNCE_MS = 300
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [searchResults, setSearchResults] = useState({ rows: [], total: 0, hasMore: false })
+  const [searchLoading, setSearchLoading] = useState(false)
+  const [searchLoadingMore, setSearchLoadingMore] = useState(false)
+  const searchActive = debouncedSearch.trim().length >= SEARCH_MIN_CHARS
+
+  // Debounce the raw input into `debouncedSearch` (300ms) so we don't hit the
+  // DB on every keystroke.
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedSearch(search), SEARCH_DEBOUNCE_MS)
+    return () => clearTimeout(id)
+  }, [search])
+
+  // Run (or reset) the server search when the debounced term, doctor filter, or
+  // impersonated org changes. Below min-chars → clear results (browse mode).
+  useEffect(() => {
+    const term = debouncedSearch.trim()
+    if (term.length < SEARCH_MIN_CHARS) {
+      setSearchResults({ rows: [], total: 0, hasMore: false })
+      setSearchLoading(false)
+      return
+    }
+    let cancelled = false
+    setSearchLoading(true)
+    db.searchPatients(term, { primaryDoctorId: patientFilterDoctorId || undefined, orgId: impersonation?.orgId })
+      .then(res => { if (!cancelled) setSearchResults(res) })
+      .catch(err => {
+        if (!cancelled) { console.error('Patient search error:', err); setSearchResults({ rows: [], total: 0, hasMore: false }) }
+      })
+      .finally(() => { if (!cancelled) setSearchLoading(false) })
+    return () => { cancelled = true }
+  }, [debouncedSearch, patientFilterDoctorId, impersonation])
+
+  // "Load more" within search results — pages the search set, never the browse
+  // list, so the two can't mix.
+  const loadMoreSearch = async () => {
+    if (searchLoadingMore || !searchResults.hasMore) return
+    setSearchLoadingMore(true)
+    try {
+      const page = await db.searchPatients(debouncedSearch.trim(), {
+        offset: searchResults.rows.length,
+        primaryDoctorId: patientFilterDoctorId || undefined,
+        orgId: impersonation?.orgId,
+      })
+      setSearchResults(prev => ({ rows: [...prev.rows, ...page.rows], total: page.total, hasMore: page.hasMore }))
+    } catch (err) {
+      console.error('Load more search error:', err)
+      toast?.(isRTL ? 'فشل تحميل المزيد' : 'Failed to load more', 'error')
+    } finally {
+      setSearchLoadingMore(false)
+    }
+  }
 
   // ── "My patients" filter (PR #6) ──────────────────────────────────────────
   // Binary toggle: all / mine. Role-defaulted (doctor ON, others OFF), then
@@ -1317,19 +1376,16 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
     return <AgencyEmptyState isRTL={isRTL} setPage={setPage} />
   }
 
-  const normalizePhoneSearch = (p) => (p || '').replace(/[\s\-()]/g, '').replace(/^\+964/, '0').replace(/^964/, '0').replace(/^0+/, '')
-  const safeSearch = sanitizeSearch(search)
   const fullNameOf = (p) => p.full_name || p.fullName || ''
-  const filtered = patients.filter(p => {
-    const q = safeSearch.toLowerCase().trim()
-    if (!q) return true
-    const qDigits = normalizePhoneSearch(safeSearch)
-    return fullNameOf(p).toLowerCase().includes(q)
-      || (qDigits.length >= 3 && normalizePhoneSearch(p.phone).includes(qDigits))
-  })
+  // SB-2: in search mode the rows come from the server (searchPatients across the
+  // whole org); in browse mode it's the parent's paginated list. No client filter.
+  const filtered = searchActive ? searchResults.rows : patients
 
   if (selectedPatientId) {
+    // Look in the browse list AND the search results — a patient opened from a
+    // search hit may not be in the loaded browse page.
     const p = patients.find(x => x.id === selectedPatientId)
+      || searchResults.rows.find(x => x.id === selectedPatientId)
     if (!p) { setSelectedPatient(null); return null }
     return (
       <PatientProfile
@@ -1350,11 +1406,17 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
     )
   }
 
-  const countLabel = patientsTotal > patients.length
-    ? (isRTL
-        ? `عرض ${patients.length} من أصل ${patientsTotal}`
-        : `Showing ${patients.length} of ${patientsTotal} patients`)
-    : `${filtered.length} ${isRTL ? 'مريض' : (filtered.length === 1 ? 'patient' : 'patients')}`
+  const countLabel = searchActive
+    ? (searchLoading
+        ? (isRTL ? 'جارٍ البحث…' : 'Searching…')
+        : (isRTL
+            ? `${searchResults.total} نتيجة`
+            : `${searchResults.total} ${searchResults.total === 1 ? 'result' : 'results'}`))
+    : (patientsTotal > patients.length
+        ? (isRTL
+            ? `عرض ${patients.length} من أصل ${patientsTotal}`
+            : `Showing ${patients.length} of ${patientsTotal} patients`)
+        : `${filtered.length} ${isRTL ? 'مريض' : (filtered.length === 1 ? 'patient' : 'patients')}`)
 
   return (
     <div
@@ -1420,15 +1482,22 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
 
         {/* ── Patient list ─────────────────────────────────────────── */}
         {filtered.length === 0 ? (
+          searchActive && searchLoading ? (
+            <GlassCard padding="lg">
+              <p className="text-sm text-navy-500 text-center py-6 m-0">
+                {isRTL ? 'جارٍ البحث…' : 'Searching…'}
+              </p>
+            </GlassCard>
+          ) : (
           <GlassCard padding="lg">
             <UIEmptyState
-              title={patients.length === 0
+              title={!searchActive && patients.length === 0
                 ? (isRTL ? 'لا يوجد مرضى بعد' : 'No patients yet')
                 : (isRTL ? 'لا توجد نتائج' : 'No matching patients')}
-              description={patients.length === 0
+              description={!searchActive && patients.length === 0
                 ? (isRTL ? 'أضف أول مريض لبدء إدارة العيادة' : 'Add your first patient to start managing the clinic')
                 : (isRTL ? 'جرب تعديل مصطلح البحث' : 'Try adjusting your search')}
-              action={patients.length === 0
+              action={!searchActive && patients.length === 0
                 ? (
                   <Button
                     variant="primary"
@@ -1441,6 +1510,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
                 : null}
             />
           </GlassCard>
+          )
         ) : (
           <GlassCard padding="none" className="overflow-hidden">
             <ul className="flex flex-col">
@@ -1501,22 +1571,41 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
           </GlassCard>
         )}
 
-        {/* ── Load more (pagination) ───────────────────────────────── */}
-        {patientsTotal > patients.length && (
-          <div className="flex justify-center mt-2">
-            <Button
-              variant="secondary"
-              onClick={() => loadMorePatients && loadMorePatients()}
-              loading={patientsLoadingMore}
-              disabled={patientsLoadingMore}
-            >
-              {patientsLoadingMore
-                ? (isRTL ? 'جار التحميل...' : 'Loading…')
-                : (isRTL
-                    ? `تحميل المزيد (${patients.length} من ${patientsTotal})`
-                    : `Load more (${patients.length} of ${patientsTotal})`)}
-            </Button>
-          </div>
+        {/* ── Load more (pagination) — pages the active set by mode ─── */}
+        {searchActive ? (
+          searchResults.hasMore && (
+            <div className="flex justify-center mt-2">
+              <Button
+                variant="secondary"
+                onClick={loadMoreSearch}
+                loading={searchLoadingMore}
+                disabled={searchLoadingMore}
+              >
+                {searchLoadingMore
+                  ? (isRTL ? 'جار التحميل...' : 'Loading…')
+                  : (isRTL
+                      ? `تحميل المزيد (${searchResults.rows.length} من ${searchResults.total})`
+                      : `Load more (${searchResults.rows.length} of ${searchResults.total})`)}
+              </Button>
+            </div>
+          )
+        ) : (
+          patientsTotal > patients.length && (
+            <div className="flex justify-center mt-2">
+              <Button
+                variant="secondary"
+                onClick={() => loadMorePatients && loadMorePatients()}
+                loading={patientsLoadingMore}
+                disabled={patientsLoadingMore}
+              >
+                {patientsLoadingMore
+                  ? (isRTL ? 'جار التحميل...' : 'Loading…')
+                  : (isRTL
+                      ? `تحميل المزيد (${patients.length} من ${patientsTotal})`
+                      : `Load more (${patients.length} of ${patientsTotal})`)}
+              </Button>
+            </div>
+          )
         )}
       </div>
 
