@@ -116,6 +116,46 @@ Two scenarios, resolved by the exploration probe (`opportunities`/`payments-orde
 5. GHL tasks — become Velo notes, tasks, or dropped?
 6. Multi-doctor-tagged contacts — primary doctor rule (see edge cases).
 7. Payments — scenario A or B/(a,b,c) above.
-8. IQD multiplier — ×1 or ×1000 (blocking).
+8. IQD multiplier — ×1 or ×1000 (blocking). → **RESOLVED in Stage 1 corrections below: ×1.**
 9. Appointment history — migrate or not?
 10. Add `external_id` to `patients` (and a dedupe key to `payments`) before import? (recommend yes)
+
+---
+
+## 8. Stage 1 corrections (locked 2026-06-26)
+
+Findings from the Stage 1 GHL exploration run. These **supersede** the open `(DECISION)`/`(VERIFY)` items they touch above.
+
+### 8.1 Currency scaling — LOCKED (resolves §6 IQD-multiplier blocker)
+
+Matches `src/lib/money.js` `CURRENCY_DIVISOR` (the source of truth):
+
+| Currency | GHL stored as | Velo `amount_minor` | Multiplier | Example |
+|---|---|---|---|---|
+| **IQD** | whole dinars | whole dinars (passthrough, no fils) | **×1** | `"160000 paid"` → `160000` |
+| **USD** | whole dollars | cents | **×100** | `"endo by 250$"` → `25000` |
+
+- The IQD multiplier is **×1, not ×1000.** The `*_minor` column name is a misnomer for IQD — it holds whole dinars. Do **not** "correct" IQD back to fils anywhere in the import.
+- **Note-prose parser MUST currency-detect BEFORE scaling:**
+  - `$` or `USD` present → ×100 (cents).
+  - `IQD`, `دينار`, or a bare number with no currency token → ×1 (whole dinars).
+- **Ambiguous bare numbers are FLAGGED for manual review, never silently scaled.** A bare integer with no `$`/`USD`/`IQD`/`دينار` token and no surrounding context goes to a review queue — the importer never guesses its currency or magnitude.
+
+### 8.2 Payments live in note prose, not structured records (resolves §4 scenario A vs B → **B**)
+
+- Structured GHL payments are **tiny (~6 rows for the whole location)** — the opportunities/orders probe is effectively empty.
+- **Real payment history lives in note `bodyText` prose** (the "X paid", "endo by 250$" lines). Treat §4 as **scenario B**: extract from prose via the currency-aware parser in §8.1, with ambiguous rows flagged (§8.1) and zero/"paid nothing" rows dropped (`amount_minor CHECK > 0`).
+- `bodyText` is **available as plaintext** from the API — no HTML stripping needed for the payment parser (the HTML-vs-text note-body decision in §2 still applies to note storage itself).
+
+### 8.3 Documents — UI-only, fetch via Puppeteer (refines §3 discovery)
+
+- GHL documents have **no public API** — they are UI-only. Download them with the Puppeteer helper **`download-ghl-docs.mjs`**, not an API endpoint. The expiring-signed-URL rule (§3, edge-cases §5) still holds: download during the run, store only the Storage path.
+
+### 8.4 Data-quality corrections (refine §1 patients mapping)
+
+- **DOBs are synthetic/placeholder** — GHL `dateOfBirth` values are not real. Map to `dob` if present but **do not trust as clinical data**; never drive clinical logic off them.
+- **`+974` (Qatar) phone numbers appear** — these are data-entry artifacts, not real Qatari patients. **Flag** during phone normalization (§1 phone row), don't silently canonicalize them as valid `+964` Iraq numbers.
+- **Parenthetical names** in contact name fields (e.g. `Ahmed (brother of Ali)`) need a **normalization rule** before populating `full_name` — strip/relocate the parenthetical to a note rather than embedding it in the name.
+- **`customFields` is empty in modern contacts** — confirms no hidden clinical data lurking in custom fields for current records (relaxes the §1 row-42 / edge-cases §7 "could change scope" risk for modern contacts; still enumerate for legacy ones).
+- **GHL author IDs on notes** → map to a **migration-source marker**, not a Velo user. Keep storing the raw GHL `userId` in `external_user_id` (§2); it is provenance, never an `auth.users` FK.
+- **Test transactions must be filtered out before import** — exclude obvious test/dummy payment rows from the prose extraction so they don't land in `payments`.

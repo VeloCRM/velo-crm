@@ -84,3 +84,40 @@ Patient idempotency currently = `UNIQUE(org_id, phone)`, so phone hygiene is cri
 - **BLOCKING:** payments scenario + IQD multiplier (§6); patient idempotency / phone canonicalization (§2, §10).
 - **HIGH:** doctor-tag normalization & multi-tag rule (§1); document expiring URLs + MIME allowlist (§5); custom-fields-with-clinical-data (§7).
 - **MEDIUM:** empty names/phones handling (§2,§3); tasks→notes decision (§4); appointment-history scope (§9).
+
+---
+
+## 11. Stage 1 corrections (locked 2026-06-26)
+
+Findings from the Stage 1 GHL exploration run. These **resolve or refine** the open items above.
+
+### 11.1 Currency / IQD multiplier — RESOLVED (closes §6 IQD-1000× blocker)
+
+- **IQD multiplier is ×1 (passthrough), NOT ×1000.** GHL whole dinars → Velo `amount_minor` whole dinars 1:1 (`"160000 paid"` → `160000`). Matches `src/lib/money.js` `CURRENCY_DIVISOR.IQD = 1`. The `*_minor` name is a misnomer for IQD — do **not** restore fils.
+- **USD multiplier is ×100** (whole dollars → cents): `"endo by 250$"` → `25000`.
+- **Currency-detect BEFORE scaling.** The prose parser must read the currency token first: `$`/`USD` → ×100; `IQD`/`دينار`/bare number → ×1. The old "`X 000id` = ×1000" assumption is **retired** — it would inflate every IQD payment 1000×.
+- **Ambiguous bare numbers → manual-review queue, never silently scaled.** No `$`/`USD`/`IQD`/`دينار` token and no disambiguating context ⇒ flag, don't guess.
+- **Filter test transactions out** before the prose extraction writes to `payments`.
+
+### 11.2 Payments are prose, not structured (confirms §6 → scenario B)
+
+- Structured payments are **tiny (~6 rows for the whole location)** — the opportunities/orders probe is effectively empty. **Real payment history lives in note `bodyText` prose.** Proceed as scenario B (regex/parse from prose).
+- **`bodyText` is available as plaintext** from the API — the payment parser reads it directly, no HTML stripping required (HTML→text still applies to note *storage* per §4).
+
+### 11.3 Documents — UI-only, Puppeteer download (refines §5)
+
+- GHL documents have **no public API**; they are UI-only. Download via **`download-ghl-docs.mjs`** (Puppeteer), not an API endpoint. The expiring-signed-URL rule (§5) still governs: download during the run, store only the Storage path.
+
+### 11.4 Data-quality flags (new traps for the §2/§3/§7 handlers)
+
+- **DOBs are synthetic/placeholder** — GHL `dateOfBirth` is not real data. Import if present but **never treat as clinical truth**.
+- **`+974` (Qatar) phone numbers seen** — data-entry artifacts, not real Qatari patients. **Flag in phone normalization (§2)**; do not silently treat as valid Iraq numbers.
+- **Parenthetical names** in name fields (e.g. `Ahmed (brother of Ali)`) need a **normalization rule** (§3) — strip/relocate the parenthetical to a note, don't embed in `full_name`.
+- **`customFields` empty in modern contacts** — **relaxes §7** for current records (no hidden clinical data there); still enumerate for legacy contacts before assuming clean.
+- **GHL author IDs on notes** → map to a **migration-source marker**, not a Velo user (keep raw `userId` in `external_user_id` as provenance — §4; never an `auth.users` FK).
+
+### Updated severity
+- **RESOLVED:** IQD multiplier (was BLOCKING) → ×1, locked.
+- **Still BLOCKING:** patient idempotency / phone canonicalization (§2, §10).
+- **New HIGH:** currency-detect-before-scale + ambiguous-number flagging in the prose payment parser (§11.1); filter test transactions (§11.1).
+- **New MEDIUM:** parenthetical-name normalization (§11.4); `+974` phone flagging (§11.4).
