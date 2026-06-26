@@ -739,15 +739,25 @@ export default function App() {
     }
   }
 
+  // Returns true only when the save is genuinely persisted (or accepted in demo
+  // mode); false on failure. Callers gate their "Saved!" state on this so the UI
+  // never claims success for a write that did not happen (SB-8 honesty fix).
   const saveOrgSettings = async (updates) => {
-    setOrgSettings(prev => ({ ...prev, ...updates }))
-    if (!isSupabaseConfigured() || !orgSettings.id) return
+    if (!isSupabaseConfigured() || !orgSettings.id) {
+      setOrgSettings(prev => ({ ...prev, ...updates }))
+      return true
+    }
     try {
       const { updateOrgSettings } = await import('./lib/orgs')
-      await updateOrgSettings(orgSettings.id, updates)
+      const saved = await updateOrgSettings(orgSettings.id, updates)
+      // Reflect what the DB actually persisted (sanitized row), not the
+      // optimistic payload — dropped fields never linger in local state.
+      setOrgSettings(prev => ({ ...prev, ...(saved || updates) }))
+      return true
     } catch (err) {
       console.error('Save org settings error:', err)
       addToast(isRTL ? 'فشل حفظ إعدادات المؤسسة' : 'Failed to save org settings', 'error')
+      return false
     }
   }
 

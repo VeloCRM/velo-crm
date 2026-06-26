@@ -24,7 +24,8 @@ const TABS = [
   { id: 'profile', icon: Icons.user },
   { id: 'team', icon: Icons.users },
   { id: 'notifications', icon: Icons.bell },
-  { id: 'ai', icon: Icons.zap },
+  // AI Agent tab hidden (SB-8): its fields (ai_*) have no backing columns, so
+  // saving silently dropped everything. Component kept on disk, unreachable.
   { id: 'integrations', icon: Icons.link },
   { id: 'billing', icon: Icons.creditCard },
   { id: 'apikeys', icon: Icons.key },
@@ -119,7 +120,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} toast={toast} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
           {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} toast={toast} />}
-          {tab === 'ai' && <AISettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
+          {/* AI Agent tab hidden (SB-8) — ai_* fields are unbacked; see TABS note. */}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
           {tab === 'billing' && <BillingTab t={t} lang={lang} dir={dir} />}
           {tab === 'apikeys' && <ApiKeysTab lang={lang} />}
@@ -134,19 +135,22 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
   void t
   void dir
   void isRTL
+  // Only fields backed by real `orgs` columns live here. `industry` and
+  // `primary_color` were removed (SB-8): they have no column on `orgs`, so the
+  // save silently dropped them. name / currency / timezone are real columns.
   const [form, setForm] = useState({
     name: orgSettings.name || '',
-    industry: orgSettings.industry || 'general',
-    primary_color: orgSettings.primary_color || '#00FFB2',
     currency: orgSettings.currency || 'USD',
     timezone: orgSettings.timezone || 'America/New_York',
   })
   const [saved, setSaved] = useState(false)
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  const handleSave = () => {
-    if (onSave) onSave({ ...form, name: sanitizeName(form.name) })
-    setSaved(true); setTimeout(() => setSaved(false), 2000)
+  const handleSave = async () => {
+    if (!onSave) return
+    const ok = await onSave({ ...form, name: sanitizeName(form.name) })
+    // Only claim "Saved!" when the write genuinely persisted.
+    if (ok) { setSaved(true); setTimeout(() => setSaved(false), 2000) }
   }
 
   const TIMEZONES = ['America/New_York','America/Chicago','America/Los_Angeles','Europe/London','Asia/Dubai','Asia/Riyadh','Asia/Baghdad','Asia/Seoul']
@@ -162,7 +166,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
         <div className="flex items-center gap-5 mb-6">
           <div
             className="grid place-items-center w-16 h-16 rounded-glass-lg text-white text-[26px] font-bold shrink-0 shadow-glass-sm"
-            style={{ background: `linear-gradient(135deg, ${form.primary_color}, #103562)` }}
+            style={{ background: 'linear-gradient(135deg, #00FFB2, #103562)' }}
             aria-hidden="true"
           >
             {(form.name || 'V').charAt(0).toUpperCase()}
@@ -174,33 +178,6 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
               onChange={e => set('name', e.target.value)}
               placeholder={lang === 'ar' ? 'اسم شركتك' : 'Your company name'}
             />
-          </div>
-        </div>
-
-        {/* Brand Color */}
-        <div className="mb-5">
-          <div className="text-xs font-semibold text-navy-600 mb-2">
-            {lang === 'ar' ? 'لون العلامة التجارية' : 'Brand Color'}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {BRAND_COLORS.map(c => {
-              const active = form.primary_color === c
-              return (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => set('primary_color', c)}
-                  aria-label={c}
-                  aria-pressed={active}
-                  className={[
-                    'w-8 h-8 rounded-md cursor-pointer p-0',
-                    'transition-shadow duration-fast',
-                    active ? 'ring-2 ring-offset-2 ring-navy-800' : 'ring-0',
-                  ].join(' ')}
-                  style={{ background: c }}
-                />
-              )
-            })}
           </div>
         </div>
 
@@ -220,18 +197,6 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave }) {
           />
         </div>
       </GlassCard>
-
-      {/* Industry note */}
-      {form.industry === 'dental' && (
-        <GlassCard padding="md" className="bg-accent-cyan-50/60 border-accent-cyan-200">
-          <p className="text-[13px] text-accent-cyan-800 leading-relaxed m-0">
-            🦷{' '}
-            {lang === 'ar'
-              ? 'وضع عيادة الأسنان مفعّل — ستظهر "المرضى" بدلاً من "جهات الاتصال" مع تبويبات المخطط الطبي والعلاجات والأشعة.'
-              : 'Dental mode active — "Patients" replaces "Contacts" with Medical History, Dental Chart, Treatments, Prescriptions, and X-Rays tabs.'}
-          </p>
-        </GlassCard>
-      )}
 
       <div className="flex justify-end">
         <Button
@@ -1078,21 +1043,23 @@ function AISettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
 function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
   void t
   void dir
+  // No save action in this tab (SB-8): every field here is an operator-managed
+  // secret kept in `org_secrets` (operator-only by RLS), not on `orgs`. The
+  // client cannot persist these, so inputs are read-only and there is no Save
+  // button — nothing is ever submitted from this tab. `onSave` is intentionally
+  // unused.
+  void onSave
+  const operatorNote = lang === 'ar' ? 'يُدار بواسطة مشغّل Velo الخاص بك.' : 'Managed by your Velo operator.'
   // Math.random() is impure during render; pin it to a useState lazy
   // initializer so the secret is generated exactly once per mount.
   const [defaultSecret] = useState(() => orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10))
-  const [wa, setWa] = useState({ phone_id: orgSettings.whatsapp_phone_id || '', token: orgSettings.whatsapp_access_token || '', secret: orgSettings.whatsapp_webhook_secret || defaultSecret, waba_id: orgSettings.whatsapp_waba_id || '' })
-  const [gmail, setGmail] = useState({ email: orgSettings.gmail_email || '' })
-  const [meta, setMeta] = useState({ token: orgSettings.meta_access_token || '' })
+  // Read-only mirrors of operator-managed secrets — no setters (inputs disabled).
+  const [wa] = useState({ phone_id: orgSettings.whatsapp_phone_id || '', token: orgSettings.whatsapp_access_token || '', secret: orgSettings.whatsapp_webhook_secret || defaultSecret, waba_id: orgSettings.whatsapp_waba_id || '' })
+  const [gmail] = useState({ email: orgSettings.gmail_email || '' })
+  const [meta] = useState({ token: orgSettings.meta_access_token || '' })
   const [waStep, setWaStep] = useState(1)
   const [waTestResult, setWaTestResult] = useState(null)
-  const [saved, setSaved] = useState(false)
   const webhookUrl = typeof window !== 'undefined' ? `${window.location.origin}/api/webhooks/whatsapp` : ''
-
-  const handleSave = () => {
-    if (onSave) onSave({ whatsapp_phone_id: wa.phone_id, whatsapp_access_token: wa.token, whatsapp_webhook_secret: wa.secret, whatsapp_waba_id: wa.waba_id, gmail_email: gmail.email, meta_access_token: meta.token })
-    setSaved(true); setTimeout(() => setSaved(false), 2000)
-  }
 
   const testWhatsApp = async () => {
     setWaTestResult('testing')
@@ -1139,7 +1106,9 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
   return (
     <div className="space-y-5">
       <div className="bg-navy-50 border border-navy-100 rounded-glass px-4 py-3 text-[13px] text-navy-600">
-        {lang === 'ar' ? 'أدر عمليات الدمج من صفحة عمليات الدمج.' : 'Manage integrations from the Integrations page.'}
+        {lang === 'ar'
+          ? 'يُدار اتصال WhatsApp و Meta و Gmail بواسطة مشغّل Velo الخاص بك. الحقول أدناه للعرض فقط.'
+          : 'WhatsApp, Meta, and Gmail credentials are managed by your Velo operator. The fields below are read-only.'}
       </div>
       {/* WhatsApp — Step by step */}
       <Section title="WhatsApp Cloud API" icon="💬">
@@ -1166,14 +1135,14 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
           <Input
             label="Phone Number ID"
             value={wa.phone_id}
-            onChange={e => setWa(p => ({ ...p, phone_id: e.target.value }))}
+            disabled
+            helper={operatorNote}
             placeholder="123456789012345"
           />
           <Button
             variant="primary"
             size="sm"
             onClick={() => setWaStep(3)}
-            disabled={!wa.phone_id}
           >
             {lang === 'ar' ? 'التالي' : 'Next'}
           </Button>
@@ -1184,14 +1153,14 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
             label="Permanent Access Token"
             type="password"
             value={wa.token}
-            onChange={e => setWa(p => ({ ...p, token: e.target.value }))}
+            disabled
+            helper={operatorNote}
             placeholder="EAAx..."
           />
           <Button
             variant="primary"
             size="sm"
             onClick={() => setWaStep(4)}
-            disabled={!wa.token}
           >
             {lang === 'ar' ? 'التالي' : 'Next'}
           </Button>
@@ -1201,7 +1170,8 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
           <Input
             label="WhatsApp Business Account ID"
             value={wa.waba_id}
-            onChange={e => setWa(p => ({ ...p, waba_id: e.target.value }))}
+            disabled
+            helper={operatorNote}
             placeholder="123456789012345"
           />
           <Button variant="primary" size="sm" onClick={() => setWaStep(5)}>
@@ -1273,7 +1243,8 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
             label="Meta Access Token"
             type="password"
             value={meta.token}
-            onChange={e => setMeta({ token: e.target.value })}
+            disabled
+            helper={operatorNote}
             placeholder="EAAx..."
           />
         </div>
@@ -1285,23 +1256,12 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
           <Input
             label={lang === 'ar' ? 'بريد Gmail' : 'Connected Gmail'}
             value={gmail.email}
-            onChange={e => setGmail({ email: e.target.value })}
+            disabled
+            helper={operatorNote}
             placeholder="your@gmail.com"
           />
         </div>
       </Section>
-
-      <div className="flex justify-end">
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          iconStart={saved ? Icons.check : undefined}
-        >
-          {saved
-            ? (lang === 'ar' ? 'تم الحفظ!' : 'Saved!')
-            : (lang === 'ar' ? 'حفظ الإعدادات' : 'Save Settings')}
-        </Button>
-      </div>
     </div>
   )
 }
