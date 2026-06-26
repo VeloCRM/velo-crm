@@ -29,7 +29,7 @@ const TABS = [
   { id: 'integrations', icon: Icons.link },
   { id: 'billing', icon: Icons.creditCard },
   { id: 'apikeys', icon: Icons.key },
-  { id: 'agencyai', icon: Icons.zap, operatorOnly: true },
+  { id: 'agencyai', icon: Icons.shield, operatorOnly: true },
 ]
 
 const CURRENCIES = [
@@ -60,7 +60,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
   const visibleTabs = TABS.filter(tb => !tb.operatorOnly || isOperator)
 
   const tabLabels = {
-    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', clinic: lang === 'ar' ? 'العيادة' : 'Clinic', profile: t.profile, team: t.team, notifications: t.notifications, ai: lang === 'ar' ? 'الذكاء الاصطناعي' : 'AI Agent', integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
+    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', clinic: lang === 'ar' ? 'العيادة' : 'Clinic', profile: t.profile, team: t.team, notifications: t.notifications, integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
   }
 
   return (
