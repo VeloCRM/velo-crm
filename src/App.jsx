@@ -788,10 +788,7 @@ export default function App() {
     { label: t.tools, items: [
       { id: 'goals', icon: Icons.trendUp, label: isRTL ? 'الأهداف' : 'Goals' },
       { id: 'docs', icon: Icons.file, label: isRTL ? 'المستندات' : 'Docs' },
-      { id: 'automations', icon: Icons.automations, label: t.automations },
-      { id: 'forms', icon: Icons.file, label: isRTL ? 'النماذج' : 'Forms' },
       { id: 'social', icon: Icons.globe, label: isRTL ? 'صفحات التواصل' : 'Social Pages' },
-      { id: 'integrations', icon: Icons.integrations, label: t.integrations },
       { id: 'reports', icon: Icons.reports, label: t.reports },
       { id: 'finance', icon: Icons.dollar, label: isRTL ? 'المالية' : 'Finance' },
       { id: 'inventory', icon: Icons.package, label: isRTL ? 'المخزون' : 'Inventory' },
@@ -1136,10 +1133,7 @@ export default function App() {
                   { id:'agency-profile', icon: Icons.user, label: isRTL?'ملف الوكالة':'Agency Profile' },
                 ] : [
                   { id:'tasks', icon: Icons.check, label: isRTL?'المهام':'Tasks' },
-                  { id:'automations', icon: Icons.automations, label: t.automations },
-                  { id:'forms', icon: Icons.file, label: isRTL?'النماذج':'Forms' },
                   { id:'social', icon: Icons.globe, label: isRTL?'صفحات التواصل':'Social Pages' },
-                  { id:'integrations', icon: Icons.integrations, label: t.integrations },
                   { id:'reports', icon: Icons.reports, label: t.reports },
                   { id:'finance', icon: Icons.dollar, label: isRTL?'المالية':'Finance' },
                   { id:'inventory', icon: Icons.package, label: isRTL?'المخزون':'Inventory' },
