@@ -193,12 +193,18 @@ export default async function handler(req, res) {
 
           // Try to match a patient by phone in this org. Meta gives the phone
           // without a leading "+"; clinics may store either format.
+          // Phone is no longer unique per org (SB-1 dropped UNIQUE(org_id,phone)
+          // for GHL import), so shared phones (families) can match multiple
+          // patients. Order deterministically — most-recently-active first
+          // (updated_at), then newest (created_at) — so attribution is stable.
           const phoneWithPlus = '+' + senderPhone.replace(/\D/g, '')
           const { data: patient } = await admin
             .from('patients')
             .select('id')
             .eq('org_id', orgId)
             .or(`phone.eq.${phoneWithPlus},phone.eq.${senderPhone}`)
+            .order('updated_at', { ascending: false })
+            .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
           if (!patient) {
