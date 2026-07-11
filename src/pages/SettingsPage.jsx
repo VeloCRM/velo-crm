@@ -17,12 +17,14 @@ import { getCurrentOrgId } from '../lib/auth_session'
 
 import { ROLE_LABELS, ROLE_DESCRIPTIONS } from '../lib/permissions'
 import { SAMPLE_DENTAL_DOCTORS } from '../sampleData'
+import ActivityLogTab from './settings/ActivityLogTab'
 
 const TABS = [
   { id: 'organization', icon: Icons.building || Icons.globe },
   { id: 'clinic', icon: Icons.calendar },
   { id: 'profile', icon: Icons.user },
   { id: 'team', icon: Icons.users },
+  { id: 'activity', icon: Icons.clock },
   { id: 'notifications', icon: Icons.bell },
   // AI Agent tab hidden (SB-8): its fields (ai_*) have no backing columns, so
   // saving silently dropped everything. Component kept on disk, unreachable.
@@ -60,7 +62,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
   const visibleTabs = TABS.filter(tb => !tb.operatorOnly || isOperator)
 
   const tabLabels = {
-    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', clinic: lang === 'ar' ? 'العيادة' : 'Clinic', profile: t.profile, team: t.team, notifications: t.notifications, integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
+    organization: lang === 'ar' ? 'المؤسسة' : 'Organization', clinic: lang === 'ar' ? 'العيادة' : 'Clinic', profile: t.profile, team: t.team, activity: lang === 'ar' ? 'سجل النشاط' : 'Activity Log', notifications: t.notifications, integrations: lang === 'ar' ? 'التكاملات' : 'Integrations', billing: t.billing, apikeys: lang === 'ar' ? 'مفاتيح API' : 'API Keys', agencyai: lang === 'ar' ? 'AI الوكالة' : 'Agency AI',
   }
 
   return (
@@ -119,6 +121,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} toast={toast} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
+          {tab === 'activity' && <ActivityLogTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} />}
           {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} toast={toast} />}
           {/* AI Agent tab hidden (SB-8) — ai_* fields are unbacked; see TABS note. */}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}
