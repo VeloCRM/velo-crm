@@ -261,6 +261,11 @@ function mapPayment(row) {
     recordedBy: row.recorded_by || null,
     notes: row.notes || '',
     createdAt: row.created_at,
+    // Ledger columns (V1.5 billing Slice 2/3): surfaced additively so the
+    // Payments tab can net active rows and render reversals distinctly. Callers
+    // that don't select these get the defaults and ignore them.
+    kind: row.kind || 'payment',
+    reversesId: row.reverses_id || null,
   }
 }
 
@@ -355,7 +360,7 @@ export async function insertPayment(p) {
 
   const { data, error } = await supabase
     .from('payments')
-    .insert({ ...sanitized, org_id: orgId, recorded_by: userId })
+    .insert({ ...sanitized, org_id: orgId, recorded_by: userId, kind: 'payment' })
     .select()
     .single()
   if (error) throw error
