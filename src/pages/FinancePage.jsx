@@ -25,6 +25,8 @@ import { fetchTreatmentPlansForPatient } from '../lib/dental'
 import { formatMoney, toMinor } from '../lib/money'
 import { sanitizeNotes } from '../lib/sanitize'
 import { fetchMyProfile } from '../lib/profiles'
+import { getClinicLedgerTotals } from '../lib/billing'
+import { getImpersonationContext } from '../lib/auth_session'
 import { can } from '../lib/permissions'
 import { GlassCard, Button, Input, Select, Badge, EmptyState } from '../components/ui'
 import { KPICard } from '../components/ds/KPICard'
@@ -91,18 +93,49 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   const [loading, setLoading] = useState(true)
   const [showRecord, setShowRecord] = useState(false)
 
+  // Clinic-wide ledger totals (getClinicLedgerTotals → the finance_ledger_totals view).
+  const [totals, setTotals] = useState({})
+  const [totalsLoading, setTotalsLoading] = useState(true)
+  const [totalsError, setTotalsError] = useState(null)
+
   // Filters
   const [dateFrom, setDateFrom] = useState(defaultDateFrom)
   const [dateTo, setDateTo] = useState(defaultDateTo)
   const [methodFilter, setMethodFilter] = useState('')
   const [patientQuery, setPatientQuery] = useState('')
 
+  // Finance is per-clinic. A clinic user always sees it; an operator only when
+  // impersonating a clinic (then getCurrentOrgId() resolves to the impersonated org,
+  // so the clinic reads run in that context). A no-org operator gets the fallback.
+  const impersonating = getImpersonationContext()?.orgId || null
+  const showClinicView = !isOperator || !!impersonating
+
   useEffect(() => {
-    if (isOperator) return
+    if (!showClinicView) return
     let cancelled = false
     fetchMyProfile().then(p => { if (!cancelled) setRole(p?.role || null) }).catch(() => {})
     return () => { cancelled = true }
-  }, [isOperator])
+  }, [showClinicView])
+
+  // Load the clinic-wide ledger totals (all-time; independent of the date filters,
+  // which scope the payment list below). Loads once for the clinic view.
+  useEffect(() => {
+    if (!showClinicView) { setTotalsLoading(false); return }
+    if (!isSupabaseConfigured()) { setTotals({}); setTotalsLoading(false); return }
+    let cancelled = false
+    setTotalsLoading(true)
+    setTotalsError(null)
+    getClinicLedgerTotals()
+      .then(t => { if (!cancelled) { setTotals(t || {}); setTotalsLoading(false) } })
+      .catch(err => {
+        if (!cancelled) {
+          console.error('[FinancePage] totals load failed:', err)
+          setTotalsError(err)
+          setTotalsLoading(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [showClinicView])
 
   const reload = async () => {
     if (!isSupabaseConfigured()) {
@@ -129,7 +162,7 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   }
 
   // Re-fetch when server-side filters change. Patient text-filter is client-only.
-  useEffect(() => { if (isOperator) return; reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateFrom, dateTo, methodFilter, isOperator])
+  useEffect(() => { if (!showClinicView) return; reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateFrom, dateTo, methodFilter, showClinicView])
 
   // Apply the patient-name client filter on top of the server-side rows.
   const filteredRows = useMemo(() => {
@@ -154,20 +187,21 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   const txnCount = filteredRows.length
   const presentCurrencies = Object.keys(totalsByCurrency)
 
-  // Operator (agency) view — payments from the operator side are managed by
-  // OperatorConsole, not this page. Show a pointer. The early return must
-  // come AFTER all hook calls above so we don't break rules-of-hooks.
-  if (isOperator) {
+  // No-org operator (not impersonating any clinic): finance is per-clinic, so there is
+  // nothing to aggregate. An operator IMPERSONATING a clinic falls through to the real
+  // clinic view (getClinicLedgerTotals runs in the impersonated org context). The early
+  // return must come AFTER all hook calls above so we don't break rules-of-hooks.
+  if (!showClinicView) {
     return (
       <div dir={dir} className="ds-root min-h-full p-6 md:p-8">
         <GlassCard padding="lg" className="max-w-xl mx-auto text-center">
           <h2 className="text-lg font-semibold text-navy-800 m-0 mb-2">
-            {isRTL ? 'الاشتراكات والإيرادات الشهرية' : 'Subscriptions & MRR'}
+            {isRTL ? 'المالية على مستوى العيادة' : 'Clinic finance'}
           </h2>
           <p className="text-sm text-navy-600 m-0">
             {isRTL
-              ? 'تتبع إيرادات الوكالة قريبًا.'
-              : 'Agency revenue tracking is coming soon.'}
+              ? 'اختر عيادة (انتحال) لعرض بياناتها المالية. تُدار إيرادات الوكالة في وحدة تحكم المشغّل.'
+              : 'Impersonate a clinic to view its finance. Agency revenue is managed in the Operator Console.'}
           </p>
         </GlassCard>
       </div>
@@ -213,6 +247,11 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
           </Button>
         )}
       </div>
+
+      {/* Clinic-wide ledger headline (getClinicLedgerTotals → finance_ledger_totals
+          view): Billed / Collected / Outstanding (net), per currency, never blended.
+          All-time clinic totals. Modals render at page root (below), never inside this. */}
+      <LedgerTotalsHeader totals={totals} loading={totalsLoading} error={totalsError} isRTL={isRTL} />
 
       {/* KPI row — currency totals are shown SEPARATELY (never summed). */}
       <div className="grid gap-4 mb-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
@@ -337,6 +376,86 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   )
 }
 
+
+// ─── Clinic-wide ledger totals header ──────────────────────────────────────
+// Billed / Collected / Outstanding (net) per currency. Never blends currencies.
+// "Outstanding (net)" is the net receivable — patient credits reduce it — distinct
+// from the (later) collections worklist's gross "to collect".
+function Stat({ label, value, hint, emphasis }) {
+  return (
+    <div>
+      <div className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-navy-500 mb-1">{label}</div>
+      <div
+        className={emphasis ? 'text-xl font-bold text-navy-900' : 'text-lg font-semibold text-navy-800'}
+        style={{ fontVariantNumeric: 'tabular-nums lining-nums' }}
+      >
+        {value}
+      </div>
+      {hint && <div className="text-[10px] text-navy-400 mt-0.5">{hint}</div>}
+    </div>
+  )
+}
+
+function LedgerTotalsHeader({ totals, loading, error, isRTL }) {
+  const currencies = Object.keys(totals || {})
+
+  if (loading) {
+    return (
+      <GlassCard padding="lg" className="mb-6">
+        <div className="text-sm text-navy-500">{isRTL ? 'جاري تحميل الإجماليات...' : 'Loading totals...'}</div>
+      </GlassCard>
+    )
+  }
+  if (error) {
+    return (
+      <GlassCard padding="lg" className="mb-6">
+        <div className="text-sm text-rose-600">
+          {isRTL ? 'تعذّر تحميل إجماليات الفوترة' : 'Could not load billing totals'}
+        </div>
+      </GlassCard>
+    )
+  }
+  if (currencies.length === 0) {
+    return (
+      <GlassCard padding="lg" className="mb-6 text-center">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-navy-500 mb-2">
+          {isRTL ? 'نظرة عامة على الفوترة' : 'Billing overview'}
+        </div>
+        <div className="text-sm text-navy-500">{isRTL ? 'لا يوجد نشاط فوترة بعد' : 'No billing activity yet'}</div>
+      </GlassCard>
+    )
+  }
+
+  return (
+    <div className={`grid gap-4 mb-6 ${currencies.length > 1 ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-1'}`}>
+      {currencies.map(cur => {
+        const t = totals[cur] || { billed: 0, collected: 0, outstanding: 0 }
+        return (
+          <GlassCard key={cur} padding="lg">
+            <div className="flex items-center justify-between mb-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-navy-500">
+                {isRTL ? 'الفوترة' : 'Billing'}
+              </div>
+              <span className="text-xs font-semibold text-navy-600 border border-navy-200 rounded-full px-2.5 py-0.5">
+                {cur}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Stat label={isRTL ? 'مفوتر' : 'Billed'} value={formatMoney(t.billed, cur)} />
+              <Stat label={isRTL ? 'محصّل' : 'Collected'} value={formatMoney(t.collected, cur)} />
+              <Stat
+                label={isRTL ? 'المتبقّي (صافي)' : 'Outstanding (net)'}
+                value={formatMoney(t.outstanding, cur)}
+                hint={isRTL ? 'صافٍ بعد أرصدة المرضى الدائنة' : 'net of patient credits'}
+                emphasis
+              />
+            </div>
+          </GlassCard>
+        )
+      })}
+    </div>
+  )
+}
 
 // ─── Payments table ────────────────────────────────────────────────────────
 function PaymentsTable({ rows, isRTL }) {

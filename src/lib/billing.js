@@ -448,15 +448,19 @@ const PAYMENT_METHOD_VALUES = ['cash', 'fib', 'zaincash', 'asia_hawala', 'card',
 
 /**
  * Clinic-wide totals per currency, from the finance_ledger_totals view. The view is
- * security_invoker, so RLS scopes the rows to the caller's org automatically — no
- * params, no org filter. Returns { IQD: { billed, collected, outstanding }, USD: {…} }
- * — one entry per currency with ledger activity, never blended; {} if none.
+ * security_invoker, so a clinic user's RLS scopes it to their org. We ALSO filter by
+ * getCurrentOrgId() so an OPERATOR (whose is_operator() RLS can see every org, and who
+ * may be impersonating a clinic) gets exactly the effective org — not all orgs blended.
+ * Returns { IQD: { billed, collected, outstanding }, USD: {…} } — one entry per currency
+ * with ledger activity, never blended; {} if none. Throws for a no-org caller.
  */
 export async function getClinicLedgerTotals() {
   await requireUser()
+  const orgId = await getCurrentOrgId()
   const { data, error } = await supabase
     .from('finance_ledger_totals')
     .select('currency, billed, collected, outstanding')
+    .eq('org_id', orgId)
   if (error) throw error
   const out = {}
   for (const r of data || []) {
