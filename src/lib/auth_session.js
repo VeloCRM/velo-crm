@@ -24,27 +24,44 @@ import { supabase } from './supabase'
 let _orgIdCache = { userId: null, orgId: null }
 
 /**
- * Resolve the currently authenticated Supabase user. Throws if no session
- * (callers shouldn't catch — let the failure bubble to the toast pipeline).
+ * Read the current user from the LOCAL session — no network. supabase.auth
+ * getSession() reads the in-memory / localStorage session and only round-trips
+ * to the auth server when the access token is expired and needs a refresh (not
+ * on the hot path). Contrast getUser(), which ALWAYS makes a network call.
+ *
+ * Security is unchanged: the client knowing its own user id locally grants
+ * nothing. Every real query sends the signed JWT and RLS evaluates auth.uid()
+ * from the server-verified token — a forged local session produces an invalid
+ * JWT that PostgREST rejects. The old getUser() pre-check was a redundant extra
+ * round-trip re-validating a token that every subsequent query re-validates anyway.
+ */
+async function sessionUser() {
+  if (!supabase) return null
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.user || null
+}
+
+/**
+ * Resolve the currently authenticated Supabase user (local session read). Throws
+ * if there is no session — including the token-expired-and-unrefreshable case,
+ * where getSession() yields null (treated as unauthenticated, same as before).
+ * Callers shouldn't catch — let the failure bubble to the toast pipeline.
  */
 export async function requireUser() {
   if (!supabase) throw new Error('Not authenticated (Supabase is not configured)')
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error) throw new Error(`Not authenticated: ${error.message}`)
+  const user = await sessionUser()
   if (!user) throw new Error('Not authenticated')
   return user
 }
 
 /**
- * Best-effort current user lookup. Returns null when not signed in instead
- * of throwing. Use only for read paths that are OK with no-op fallbacks
- * (most read paths should still call requireUser).
+ * Best-effort current user lookup (local session read). Returns null when not
+ * signed in instead of throwing. Use only for read paths that are OK with no-op
+ * fallbacks (most read paths should still call requireUser).
  */
 export async function getCurrentUser() {
-  if (!supabase) return null
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    return user || null
+    return await sessionUser()
   } catch {
     return null
   }
@@ -55,7 +72,11 @@ export async function getCurrentUser() {
  * missing org membership. Cached per-session.
  */
 export async function getCurrentOrgId() {
-  const user = await requireUser()
+  // Resolve the session ONCE here (local read) rather than delegating to
+  // requireUser() — callers already pair requireUser() + getCurrentOrgId(), so
+  // this avoids a second nested session read on every lib call.
+  const user = await sessionUser()
+  if (!user) throw new Error('Not authenticated')
   // Operator impersonation: when an operator is acting on a tenant, the
   // effective org context comes from the impersonation record, not from
   // profiles.org_id (operators don't belong to a clinic org). Bypass cache —
