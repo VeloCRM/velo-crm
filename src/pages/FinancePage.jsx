@@ -16,20 +16,16 @@
 import { useState, useEffect, useMemo } from 'react'
 import { Icons, Modal } from '../components/shared'
 import { isSupabaseConfigured } from '../lib/supabase'
-import {
-  fetchPaymentsWithJoins,
-  insertPayment,
-} from '../lib/database'
+import { insertPayment } from '../lib/database'
 import PatientPicker from '../components/PatientPicker'
 import { fetchTreatmentPlansForPatient } from '../lib/dental'
 import { formatMoney, toMinor } from '../lib/money'
 import { sanitizeNotes } from '../lib/sanitize'
 import { fetchMyProfile } from '../lib/profiles'
-import { getClinicLedgerTotals } from '../lib/billing'
+import { getClinicLedgerTotals, fetchAllCharges, fetchAllPayments } from '../lib/billing'
 import { getImpersonationContext } from '../lib/auth_session'
 import { can } from '../lib/permissions'
 import { GlassCard, Button, Input, Select, Badge, EmptyState } from '../components/ui'
-import { KPICard } from '../components/ds/KPICard'
 
 const PAYMENT_METHODS = [
   { id: 'cash',        en: 'Cash',        ar: 'نقداً',      icon: '💵' },
@@ -39,6 +35,15 @@ const PAYMENT_METHODS = [
   { id: 'card',        en: 'Card',        ar: 'بطاقة',       icon: '💳' },
   { id: 'other',       en: 'Other',       ar: 'أخرى',        icon: '🔖' },
 ]
+
+// Income categories — values MUST match the charges_category_check DB constraint.
+const CHARGE_CATEGORY_OPTIONS = [
+  { value: 'clinical', en: 'Clinical', ar: 'علاجي' },
+  { value: 'product', en: 'Product', ar: 'منتج' },
+  { value: 'consultation', en: 'Consultation', ar: 'استشارة' },
+  { value: 'other', en: 'Other', ar: 'أخرى' },
+]
+const CATEGORY_LABEL = Object.fromEntries(CHARGE_CATEGORY_OPTIONS.map(c => [c.value, c]))
 
 const methodLabel = (id, isRTL) => {
   const m = PAYMENT_METHODS.find(x => x.id === id)
@@ -89,19 +94,29 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   void lang
 
   const [role, setRole] = useState(null)
-  const [rows, setRows] = useState([])
-  const [loading, setLoading] = useState(true)
   const [showRecord, setShowRecord] = useState(false)
+  const [activeTab, setActiveTab] = useState('charges')
 
   // Clinic-wide ledger totals (getClinicLedgerTotals → the finance_ledger_totals view).
   const [totals, setTotals] = useState({})
   const [totalsLoading, setTotalsLoading] = useState(true)
   const [totalsError, setTotalsError] = useState(null)
 
-  // Filters
+  // Ledger tabs (fetchAllCharges / fetchAllPayments — org-wide, surface kind/reversesId).
+  const [charges, setCharges] = useState([])
+  const [chargesLoading, setChargesLoading] = useState(true)
+  const [chargesError, setChargesError] = useState(null)
+  const [payments, setPayments] = useState([])
+  const [paymentsLoading, setPaymentsLoading] = useState(true)
+  const [paymentsError, setPaymentsError] = useState(null)
+  // Bumped after a mutation (e.g. Record Payment) to refetch totals + ledger.
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  // Filters — shared: date range + patient search; tab-specific: category / method.
   const [dateFrom, setDateFrom] = useState(defaultDateFrom)
   const [dateTo, setDateTo] = useState(defaultDateTo)
   const [methodFilter, setMethodFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState('')
   const [patientQuery, setPatientQuery] = useState('')
 
   // Finance is per-clinic. A clinic user always sees it; an operator only when
@@ -117,75 +132,73 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
     return () => { cancelled = true }
   }, [showClinicView])
 
-  // Load the clinic-wide ledger totals (all-time; independent of the date filters,
-  // which scope the payment list below). Loads once for the clinic view.
+  // Clinic-wide ledger totals — all-time (getClinicLedgerTotals scopes by org). Refetched
+  // on refreshKey (after a mutation). Not affected by the date/tab filters.
   useEffect(() => {
-    if (!showClinicView) { setTotalsLoading(false); return }
-    if (!isSupabaseConfigured()) { setTotals({}); setTotalsLoading(false); return }
     let cancelled = false
-    setTotalsLoading(true)
-    setTotalsError(null)
-    getClinicLedgerTotals()
-      .then(t => { if (!cancelled) { setTotals(t || {}); setTotalsLoading(false) } })
-      .catch(err => {
-        if (!cancelled) {
-          console.error('[FinancePage] totals load failed:', err)
-          setTotalsError(err)
-          setTotalsLoading(false)
-        }
-      })
+    const run = async () => {
+      if (!showClinicView) { if (!cancelled) setTotalsLoading(false); return }
+      if (!isSupabaseConfigured()) { if (!cancelled) { setTotals({}); setTotalsLoading(false) } return }
+      if (!cancelled) { setTotalsLoading(true); setTotalsError(null) }
+      try {
+        const t = await getClinicLedgerTotals()
+        if (!cancelled) { setTotals(t || {}); setTotalsLoading(false) }
+      } catch (err) {
+        if (!cancelled) { console.error('[FinancePage] totals load failed:', err); setTotalsError(err); setTotalsLoading(false) }
+      }
+    }
+    run()
     return () => { cancelled = true }
-  }, [showClinicView])
+  }, [showClinicView, refreshKey])
 
-  const reload = async () => {
-    if (!isSupabaseConfigured()) {
-      setRows([])
-      setLoading(false)
-      return
+  // All Charges tab — org-wide, date range + category filter (patient filter is client-side).
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!showClinicView) { if (!cancelled) setChargesLoading(false); return }
+      if (!isSupabaseConfigured()) { if (!cancelled) { setCharges([]); setChargesLoading(false) } return }
+      if (!cancelled) { setChargesLoading(true); setChargesError(null) }
+      try {
+        const b = toIsoBounds(dateFrom, dateTo)
+        const rows = await fetchAllCharges({ from: b.from, to: b.to, category: categoryFilter || undefined, limit: 200 })
+        if (!cancelled) { setCharges(rows || []); setChargesLoading(false) }
+      } catch (err) {
+        if (!cancelled) { console.error('[FinancePage] charges load failed:', err); setChargesError(err); setChargesLoading(false) }
+      }
     }
-    setLoading(true)
-    try {
-      const bounds = toIsoBounds(dateFrom, dateTo)
-      const data = await fetchPaymentsWithJoins({
-        from: bounds.from,
-        to: bounds.to,
-        method: methodFilter || undefined,
-        limit: 200,
-      })
-      setRows(data)
-    } catch (err) {
-      console.error('[FinancePage] load failed:', err)
-      toast?.(err.message || (isRTL ? 'فشل تحميل المدفوعات' : 'Failed to load payments'), 'error')
-    } finally {
-      setLoading(false)
+    run()
+    return () => { cancelled = true }
+  }, [showClinicView, dateFrom, dateTo, categoryFilter, refreshKey])
+
+  // All Payments tab — org-wide, date range + method filter. Surfaces kind/reversesId so
+  // reversal corrections render struck and are excluded from the active total.
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!showClinicView) { if (!cancelled) setPaymentsLoading(false); return }
+      if (!isSupabaseConfigured()) { if (!cancelled) { setPayments([]); setPaymentsLoading(false) } return }
+      if (!cancelled) { setPaymentsLoading(true); setPaymentsError(null) }
+      try {
+        const b = toIsoBounds(dateFrom, dateTo)
+        const rows = await fetchAllPayments({ from: b.from, to: b.to, method: methodFilter || undefined, limit: 200 })
+        if (!cancelled) { setPayments(rows || []); setPaymentsLoading(false) }
+      } catch (err) {
+        if (!cancelled) { console.error('[FinancePage] payments load failed:', err); setPaymentsError(err); setPaymentsLoading(false) }
+      }
     }
-  }
+    run()
+    return () => { cancelled = true }
+  }, [showClinicView, dateFrom, dateTo, methodFilter, refreshKey])
 
-  // Re-fetch when server-side filters change. Patient text-filter is client-only.
-  useEffect(() => { if (!showClinicView) return; reload() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateFrom, dateTo, methodFilter, showClinicView])
-
-  // Apply the patient-name client filter on top of the server-side rows.
-  const filteredRows = useMemo(() => {
+  // Client-side patient-name filter across both tabs (server already scoped by date/etc.).
+  const visibleCharges = useMemo(() => {
     const q = patientQuery.trim().toLowerCase()
-    if (!q) return rows
-    return rows.filter(r => (r.patient?.full_name || '').toLowerCase().includes(q))
-  }, [rows, patientQuery])
-
-  // Currency-aware totals + counts. Per CLAUDE.md never sum across currencies.
-  const totalsByCurrency = useMemo(() => {
-    const out = {}
-    for (const r of filteredRows) {
-      const cur = r.currency || 'IQD'
-      const slot = out[cur] || { sum: 0, count: 0 }
-      slot.sum += Number(r.amount_minor || 0)
-      slot.count += 1
-      out[cur] = slot
-    }
-    return out
-  }, [filteredRows])
-
-  const txnCount = filteredRows.length
-  const presentCurrencies = Object.keys(totalsByCurrency)
+    return q ? charges.filter(c => (c.patientName || '').toLowerCase().includes(q)) : charges
+  }, [charges, patientQuery])
+  const visiblePayments = useMemo(() => {
+    const q = patientQuery.trim().toLowerCase()
+    return q ? payments.filter(p => (p.patientName || '').toLowerCase().includes(q)) : payments
+  }, [payments, patientQuery])
 
   // No-org operator (not impersonating any clinic): finance is per-clinic, so there is
   // nothing to aggregate. An operator IMPERSONATING a clinic falls through to the real
@@ -211,16 +224,6 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   // Permission gate: can the current role record a new payment?
   // Owner + receptionist + assistant-with-payments-w. Doctor reads only.
   const canRecord = !role || can(role, 'payments', 'w') || can(role, 'finance', 'w')
-
-  const dateRangeLabel = (() => {
-    const fmt = (ymd) => {
-      if (!ymd) return ''
-      try {
-        return new Date(ymd + 'T00:00:00').toLocaleDateString(isRTL ? 'ar-IQ' : undefined, { month: 'short', day: 'numeric' })
-      } catch { return ymd }
-    }
-    return `${fmt(dateFrom)} – ${fmt(dateTo)}`
-  })()
 
   return (
     <div dir={dir} className="ds-root min-h-full p-6 md:p-8">
@@ -253,56 +256,8 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
           All-time clinic totals. Modals render at page root (below), never inside this. */}
       <LedgerTotalsHeader totals={totals} loading={totalsLoading} error={totalsError} isRTL={isRTL} />
 
-      {/* KPI row — currency totals are shown SEPARATELY (never summed). */}
-      <div className="grid gap-4 mb-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
-        {presentCurrencies.length === 0 ? (
-          <GlassCard padding="md" className="sm:col-span-2 lg:col-span-4 text-center">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-navy-500 mb-2">
-              {isRTL ? 'الإيرادات' : 'Revenue'}
-            </div>
-            <div className="text-sm text-navy-500">
-              {isRTL ? 'لا توجد مدفوعات في النطاق المحدد' : 'No payments in the selected range'}
-            </div>
-          </GlassCard>
-        ) : (
-          <>
-            {/* One revenue card per currency present. Sum + count + avg ticket. */}
-            {presentCurrencies.map(cur => {
-              const t = totalsByCurrency[cur]
-              const avg = t.count > 0 ? Math.round(t.sum / t.count) : 0
-              return (
-                <KPICard
-                  key={cur}
-                  icon={Icons.dollar}
-                  label={isRTL ? `الإيرادات (${cur})` : `Revenue (${cur})`}
-                  value={
-                    <span
-                      className={t.sum === 0 ? 'text-2xl text-navy-400 font-medium' : 'text-2xl'}
-                      style={{ fontVariantNumeric: 'tabular-nums lining-nums' }}
-                    >
-                      {formatMoney(t.sum, cur)}
-                    </span>
-                  }
-                  hint={
-                    isRTL
-                      ? `${t.count} دفعة • معدل ${formatMoney(avg, cur)}`
-                      : `${t.count} ${t.count === 1 ? 'payment' : 'payments'} • avg ${formatMoney(avg, cur)}`
-                  }
-                />
-              )
-            })}
-            {/* Transactions card — total count across both currencies (count is currency-agnostic). */}
-            <KPICard
-              icon={Icons.barChart}
-              label={isRTL ? 'المعاملات' : 'Transactions'}
-              value={txnCount.toLocaleString(isRTL ? 'ar-IQ' : undefined)}
-              hint={dateRangeLabel}
-            />
-          </>
-        )}
-      </div>
-
-      {/* Filters */}
+      {/* Shared filters: date range + patient search (always); plus a tab-specific
+          filter — category on Charges, method on Payments. */}
       <GlassCard padding="none" className="p-4 mb-5">
         <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
           <Input
@@ -317,16 +272,6 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
             value={dateTo}
             onChange={e => setDateTo(e.target.value)}
           />
-          <Select
-            label={isRTL ? 'طريقة الدفع' : 'Method'}
-            value={methodFilter}
-            onChange={e => setMethodFilter(e.target.value)}
-          >
-            <option value="">{isRTL ? 'كل الطرق' : 'All methods'}</option>
-            {PAYMENT_METHODS.map(m => (
-              <option key={m.id} value={m.id}>{isRTL ? m.ar : m.en}</option>
-            ))}
-          </Select>
           <Input
             label={isRTL ? 'بحث المريض' : 'Patient search'}
             placeholder={isRTL ? 'الاسم...' : 'Name...'}
@@ -334,31 +279,47 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
             onChange={e => setPatientQuery(e.target.value)}
             iconStart={Icons.search}
           />
+          {activeTab === 'charges' ? (
+            <Select
+              label={isRTL ? 'الفئة' : 'Category'}
+              value={categoryFilter}
+              onChange={e => setCategoryFilter(e.target.value)}
+            >
+              <option value="">{isRTL ? 'كل الفئات' : 'All categories'}</option>
+              {CHARGE_CATEGORY_OPTIONS.map(c => (
+                <option key={c.value} value={c.value}>{isRTL ? c.ar : c.en}</option>
+              ))}
+            </Select>
+          ) : (
+            <Select
+              label={isRTL ? 'طريقة الدفع' : 'Method'}
+              value={methodFilter}
+              onChange={e => setMethodFilter(e.target.value)}
+            >
+              <option value="">{isRTL ? 'كل الطرق' : 'All methods'}</option>
+              {PAYMENT_METHODS.map(m => (
+                <option key={m.id} value={m.id}>{isRTL ? m.ar : m.en}</option>
+              ))}
+            </Select>
+          )}
         </div>
       </GlassCard>
 
-      {/* Payments table */}
+      {/* Ledger tabs */}
+      <div className="flex items-center gap-1 mb-4" role="tablist">
+        <LedgerTab active={activeTab === 'charges'} onClick={() => setActiveTab('charges')}>
+          {isRTL ? 'كل الرسوم' : 'All Charges'}
+        </LedgerTab>
+        <LedgerTab active={activeTab === 'payments'} onClick={() => setActiveTab('payments')}>
+          {isRTL ? 'كل المدفوعات' : 'All Payments'}
+        </LedgerTab>
+      </div>
+
       <GlassCard padding="none" className="overflow-hidden">
-        {loading ? (
-          <div className="py-16 text-center text-sm text-navy-500">
-            {isRTL ? 'جاري التحميل...' : 'Loading...'}
-          </div>
-        ) : filteredRows.length === 0 ? (
-          <EmptyState
-            title={isRTL ? 'لا توجد مدفوعات' : 'No payments'}
-            description={
-              isRTL
-                ? 'لا توجد مدفوعات تطابق الفلاتر الحالية. جرّب توسيع نطاق التاريخ.'
-                : 'No payments match the current filters. Try widening the date range.'
-            }
-            action={canRecord ? (
-              <Button variant="primary" iconStart={Icons.plus} onClick={() => setShowRecord(true)}>
-                {isRTL ? 'تسجيل دفعة' : 'Record Payment'}
-              </Button>
-            ) : null}
-          />
+        {activeTab === 'charges' ? (
+          <ChargesLedger charges={visibleCharges} loading={chargesLoading} error={chargesError} isRTL={isRTL} />
         ) : (
-          <PaymentsTable rows={filteredRows} isRTL={isRTL} />
+          <PaymentsLedger payments={visiblePayments} loading={paymentsLoading} error={paymentsError} isRTL={isRTL} />
         )}
       </GlassCard>
 
@@ -367,7 +328,7 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
           dir={dir}
           isRTL={isRTL}
           onClose={() => setShowRecord(false)}
-          onSaved={() => { setShowRecord(false); reload() }}
+          onSaved={() => { setShowRecord(false); setRefreshKey(k => k + 1) }}
           onError={(msg) => toast?.(msg, 'error')}
           onSuccess={(msg) => toast?.(msg, 'success')}
         />
@@ -457,86 +418,199 @@ function LedgerTotalsHeader({ totals, loading, error, isRTL }) {
   )
 }
 
-// ─── Payments table ────────────────────────────────────────────────────────
-function PaymentsTable({ rows, isRTL }) {
-  const headers = [
-    { key: 'date',     label: isRTL ? 'التاريخ' : 'Date' },
-    { key: 'patient',  label: isRTL ? 'المريض' : 'Patient' },
-    { key: 'amount',   label: isRTL ? 'المبلغ' : 'Amount', align: 'end' },
-    { key: 'method',   label: isRTL ? 'طريقة الدفع' : 'Method' },
-    { key: 'plan',     label: isRTL ? 'خطة العلاج' : 'Treatment plan' },
-    { key: 'notes',    label: isRTL ? 'ملاحظات' : 'Notes' },
-  ]
+// ─── Ledger tabs (All Charges / All Payments) ───────────────────────────────
+// Correction-aware clinic ledger. Mirrors the patient Billing tab: void/reversal
+// rows and the originals they cancel render struck + badged, and are EXCLUDED from
+// the per-currency "active" total (active-row rule: a positive row counts only while
+// its id is not referenced by any reverses_id).
 
+const TH = 'px-4 py-3 text-[10.5px] font-semibold text-navy-600 uppercase tracking-[0.08em] border-b border-navy-100'
+const TD = 'px-4 py-3 border-b border-navy-50'
+
+function fmtDate(iso, isRTL) {
+  return iso ? new Date(iso).toLocaleString(isRTL ? 'ar-IQ' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' }) : '—'
+}
+
+// Σ active rows per currency (never blended). positiveKind = 'charge' | 'payment'.
+function activeSumByCurrency(rows, positiveKind) {
+  const reversed = new Set((rows || []).map(r => r.reversesId).filter(Boolean))
+  const out = {}
+  for (const r of rows || []) {
+    if ((r.kind || positiveKind) !== positiveKind) continue // void/reversal never positive
+    if (reversed.has(r.id)) continue                        // a cancelled original drops out
+    const cur = r.currency || 'IQD'
+    out[cur] = (out[cur] || 0) + Number(r.amountMinor || 0)
+  }
+  return out
+}
+
+function CorrectionBadge({ type, isRTL }) {
+  const MAP = {
+    void:     { en: 'Void',     ar: 'إبطال',      cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+    voided:   { en: 'Voided',   ar: 'مُبطلة',     cls: 'bg-navy-100 text-navy-500 border-navy-200' },
+    reversal: { en: 'Reversal', ar: 'قيد تصحيح', cls: 'bg-rose-50 text-rose-700 border-rose-200' },
+    reversed: { en: 'Reversed', ar: 'معكوسة',    cls: 'bg-navy-100 text-navy-500 border-navy-200' },
+  }
+  const m = MAP[type]
+  if (!m) return null
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm border-separate" style={{ borderSpacing: 0 }}>
-        <thead>
-          <tr className="bg-navy-50/60 backdrop-blur-glass-sm">
-            {headers.map(h => (
-              <th
-                key={h.key}
-                className="px-4 py-3 text-[10.5px] font-semibold text-navy-600 uppercase tracking-[0.08em] border-b border-navy-100"
-                style={{ textAlign: h.align === 'end' ? 'end' : 'start' }}
-              >
-                {h.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r, i) => {
-            const dateStr = r.recorded_at
-              ? new Date(r.recorded_at).toLocaleString(isRTL ? 'ar-IQ' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })
-              : '—'
-            const amount = Number(r.amount_minor || 0)
-            const cur = r.currency || 'IQD'
-            const isZero = amount === 0
-            // FINANCE-AUDIT: existing schema stores only positive payments (no
-            // refunds/negatives in the current data model). If a refund concept
-            // is added later, render negatives in `text-rose-700` here and
-            // prefix the formatted string with the locale-correct minus sign.
-            const moneyCls = isZero
-              ? 'text-navy-400 font-medium'
-              : 'text-navy-900 font-semibold'
+    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${m.cls}`}>
+      {isRTL ? m.ar : m.en}
+    </span>
+  )
+}
 
-            return (
-              <tr
-                key={r.id}
-                className={`${i % 2 === 1 ? 'bg-white/40' : 'bg-transparent'} hover:bg-accent-cyan-50/40 transition-colors`}
-              >
-                <td
-                  className="px-4 py-3 text-navy-700 whitespace-nowrap border-b border-navy-50"
-                  style={{ fontVariantNumeric: 'tabular-nums' }}
-                >
-                  {dateStr}
-                </td>
-                <td className="px-4 py-3 text-navy-900 font-medium border-b border-navy-50">
-                  {r.patient?.full_name || '—'}
-                </td>
-                <td
-                  className={`px-4 py-3 ${moneyCls} whitespace-nowrap border-b border-navy-50`}
-                  style={{ fontVariantNumeric: 'tabular-nums lining-nums', textAlign: 'end' }}
-                >
-                  {formatMoney(r.amount_minor, cur)}
-                </td>
-                <td className="px-4 py-3 border-b border-navy-50">
-                  <Badge tone={methodTone(r.method)} size="sm">
-                    {methodLabel(r.method, isRTL)}
-                  </Badge>
-                </td>
-                <td className="px-4 py-3 text-navy-600 text-[12.5px] border-b border-navy-50 max-w-[220px] truncate">
-                  {r.plan ? (r.plan.notes || (isRTL ? 'خطة' : 'Plan')) : '—'}
-                </td>
-                <td className="px-4 py-3 text-navy-500 text-[12.5px] border-b border-navy-50 max-w-[220px] truncate">
-                  {r.notes || '—'}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+// Per-currency active total strip above each ledger table (corrections excluded).
+function ActiveTotalStrip({ label, totals }) {
+  const currencies = Object.keys(totals)
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-navy-100 bg-navy-50/40">
+      <span className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-navy-500">{label}</span>
+      {currencies.length === 0 ? (
+        <span className="text-xs text-navy-400">—</span>
+      ) : currencies.map(cur => (
+        <span key={cur} className="inline-flex items-center gap-1.5 rounded-md border border-navy-200 bg-white/70 px-2 py-0.5 text-xs font-semibold text-navy-800 tabular-nums">
+          {formatMoney(totals[cur], cur)} <span className="text-navy-400 font-medium">{cur}</span>
+        </span>
+      ))}
     </div>
+  )
+}
+
+function LedgerTab({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`px-4 py-2 text-sm font-semibold rounded-glass transition-colors ${
+        active ? 'bg-white text-navy-900 shadow-glass-sm' : 'text-navy-500 hover:text-navy-800 hover:bg-white/50'
+      }`}
+    >
+      {children}
+    </button>
+  )
+}
+
+// Shared loading / error / empty wrapper for a ledger tab.
+function LedgerState({ loading, error, empty, isRTL, children }) {
+  if (loading) return <div className="py-16 text-center text-sm text-navy-500">{isRTL ? 'جاري التحميل...' : 'Loading...'}</div>
+  if (error) return <div className="py-16 text-center text-sm text-rose-600">{isRTL ? 'تعذّر تحميل السجل' : 'Could not load the ledger'}</div>
+  if (empty) {
+    return (
+      <div className="py-16">
+        <EmptyState
+          title={isRTL ? 'لا توجد سجلات' : 'Nothing here'}
+          description={isRTL ? 'لا توجد سجلات تطابق الفلاتر الحالية. جرّب توسيع نطاق التاريخ.' : 'No records match the current filters. Try widening the date range.'}
+        />
+      </div>
+    )
+  }
+  return children
+}
+
+// ─── All Charges ────────────────────────────────────────────────────────────
+function ChargesLedger({ charges, loading, error, isRTL }) {
+  const reversedIds = new Set((charges || []).map(c => c.reversesId).filter(Boolean))
+  const totals = activeSumByCurrency(charges, 'charge')
+  return (
+    <LedgerState loading={loading} error={error} empty={!charges.length} isRTL={isRTL}>
+      <ActiveTotalStrip label={isRTL ? 'مفوتر (نشط)' : 'Billed (active)'} totals={totals} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-separate" style={{ borderSpacing: 0 }}>
+          <thead>
+            <tr className="bg-navy-50/60 backdrop-blur-glass-sm">
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'التاريخ' : 'Date'}</th>
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'المريض' : 'Patient'}</th>
+              <th className={TH} style={{ textAlign: 'end' }}>{isRTL ? 'المبلغ' : 'Amount'}</th>
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'الطبيب' : 'Doctor'}</th>
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'الفئة' : 'Category'}</th>
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'الحالة' : 'Status'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {charges.map((c, i) => {
+              const isVoid = (c.kind || 'charge') === 'void'
+              const isVoided = reversedIds.has(c.id)
+              const cur = c.currency || 'IQD'
+              const amtCls = isVoid ? 'text-rose-700' : isVoided ? 'text-navy-400 line-through' : 'text-navy-900 font-semibold'
+              const cat = CATEGORY_LABEL[c.category] || null
+              const isClinical = (c.category || 'clinical') === 'clinical'
+              return (
+                <tr key={c.id} className={`${i % 2 === 1 ? 'bg-white/40' : 'bg-transparent'} hover:bg-accent-cyan-50/40 transition-colors${isVoid ? ' opacity-80' : ''}`}>
+                  <td className={`${TD} text-navy-700 whitespace-nowrap`} style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(c.createdAt, isRTL)}</td>
+                  <td className={`${TD} text-navy-900 font-medium`}>{c.patientName || '—'}</td>
+                  <td className={`${TD} ${amtCls} whitespace-nowrap`} style={{ fontVariantNumeric: 'tabular-nums lining-nums', textAlign: 'end' }}>
+                    {isVoid ? '−' : ''}{formatMoney(Number(c.amountMinor || 0), cur)} <span className="text-navy-400 font-normal">{cur}</span>
+                  </td>
+                  <td className={`${TD} text-navy-600 text-[12.5px]`}>{c.doctorName || '—'}</td>
+                  <td className={TD}>
+                    {isClinical ? (
+                      <span className="text-[12.5px] text-navy-500">{cat ? (isRTL ? cat.ar : cat.en) : '—'}</span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-full bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                        {cat ? (isRTL ? cat.ar : cat.en) : c.category}
+                      </span>
+                    )}
+                  </td>
+                  <td className={TD}>
+                    {isVoid ? <CorrectionBadge type="void" isRTL={isRTL} /> : isVoided ? <CorrectionBadge type="voided" isRTL={isRTL} /> : <span className="text-navy-300">—</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </LedgerState>
+  )
+}
+
+// ─── All Payments ───────────────────────────────────────────────────────────
+function PaymentsLedger({ payments, loading, error, isRTL }) {
+  const reversedIds = new Set((payments || []).map(p => p.reversesId).filter(Boolean))
+  const totals = activeSumByCurrency(payments, 'payment')
+  return (
+    <LedgerState loading={loading} error={error} empty={!payments.length} isRTL={isRTL}>
+      <ActiveTotalStrip label={isRTL ? 'محصّل (نشط)' : 'Collected (active)'} totals={totals} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm border-separate" style={{ borderSpacing: 0 }}>
+          <thead>
+            <tr className="bg-navy-50/60 backdrop-blur-glass-sm">
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'التاريخ' : 'Date'}</th>
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'المريض' : 'Patient'}</th>
+              <th className={TH} style={{ textAlign: 'end' }}>{isRTL ? 'المبلغ' : 'Amount'}</th>
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'طريقة الدفع' : 'Method'}</th>
+              <th className={TH} style={{ textAlign: 'start' }}>{isRTL ? 'الحالة' : 'Status'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.map((p, i) => {
+              const isReversal = (p.kind || 'payment') === 'reversal'
+              const isReversed = reversedIds.has(p.id)
+              const cur = p.currency || 'IQD'
+              const amtCls = isReversal ? 'text-rose-700' : isReversed ? 'text-navy-400 line-through' : 'text-navy-900 font-semibold'
+              return (
+                <tr key={p.id} className={`${i % 2 === 1 ? 'bg-white/40' : 'bg-transparent'} hover:bg-accent-cyan-50/40 transition-colors${isReversal ? ' opacity-80' : ''}`}>
+                  <td className={`${TD} text-navy-700 whitespace-nowrap`} style={{ fontVariantNumeric: 'tabular-nums' }}>{fmtDate(p.recordedAt, isRTL)}</td>
+                  <td className={`${TD} text-navy-900 font-medium`}>{p.patientName || '—'}</td>
+                  <td className={`${TD} ${amtCls} whitespace-nowrap`} style={{ fontVariantNumeric: 'tabular-nums lining-nums', textAlign: 'end' }}>
+                    {isReversal ? '−' : ''}{formatMoney(Number(p.amountMinor || 0), cur)} <span className="text-navy-400 font-normal">{cur}</span>
+                  </td>
+                  <td className={TD}>
+                    <Badge tone={methodTone(p.method)} size="sm">{methodLabel(p.method, isRTL)}</Badge>
+                  </td>
+                  <td className={TD}>
+                    {isReversal ? <CorrectionBadge type="reversal" isRTL={isRTL} /> : isReversed ? <CorrectionBadge type="reversed" isRTL={isRTL} /> : <span className="text-navy-300">—</span>}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    </LedgerState>
   )
 }
 
