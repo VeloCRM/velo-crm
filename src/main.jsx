@@ -1,9 +1,12 @@
 import { StrictMode, Component } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import './index.css'
 import App from './App.jsx'
 import { OperatorProvider } from './contexts/OperatorContext'
+import { queryClient } from './lib/queryClient'
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { hasError: false, error: null } }
@@ -22,4 +25,17 @@ class ErrorBoundary extends Component {
 
 /* Velo CRM v1.1 */
 const root = createRoot(document.getElementById('root'))
-root.render(<StrictMode><BrowserRouter><ErrorBoundary><OperatorProvider><App /></OperatorProvider></ErrorBoundary></BrowserRouter></StrictMode>)
+root.render(
+  <StrictMode>
+    <BrowserRouter>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <OperatorProvider>
+            <App />
+          </OperatorProvider>
+          {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />}
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </BrowserRouter>
+  </StrictMode>,
+)

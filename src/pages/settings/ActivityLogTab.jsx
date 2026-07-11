@@ -9,7 +9,8 @@
  * Operator (SupCod3) actions are visually distinct — an actor whose id doesn't resolve
  * to an in-org profile is the agency (per the trace's logic).
  */
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { fetchAuditLog, resolveActors, describeActor } from '../../lib/audit'
 import { getActionLabel, getActionMeta, formatAuditPayload } from '../../lib/auditLabels'
 import { listTeamMembersInOrg } from '../../lib/profiles'
@@ -17,6 +18,33 @@ import { ROLE_LABELS } from '../../lib/permissions'
 import { isSupabaseConfigured } from '../../lib/supabase'
 import { GlassCard, Button, Input, Select, EmptyState } from '../../components/ui'
 import { Icons } from '../../components/shared'
+
+/*
+ * ═══ TanStack Query reference pattern — COPY THIS for other conversions ═══════
+ *
+ * KEY SHAPE:  ['<entity>', orgId, <server-params object>]
+ *   • orgId comes FIRST after the entity name. Every clinic-scoped query MUST include
+ *     it so an operator switching clinics gets a SEPARATE cache entry — clinic A's data
+ *     is never served under clinic B's key. Source: the synchronously-available
+ *     `dentalOrgId` (App.jsx = impersonation.orgId ?? orgSettings.id), passed down as a
+ *     prop — NOT an async getCurrentOrgId().
+ *   • Put ONLY the params the queryFn actually varies on in the key (here: date range,
+ *     server actorId, limit). Client-side-only filters (category, the "operator" actor
+ *     selection) are applied AFTER the fetch and are deliberately NOT keyed, so toggling
+ *     them reuses the cache instead of refetching identical rows.
+ *
+ * ORG-SCOPING GUARANTEE: the key changes when dentalOrgId changes on impersonation
+ *   switch, AND App.jsx calls queryClient.clear() on every impersonation change —
+ *   belt-and-braces against any cross-org cache bleed.
+ *
+ * INVALIDATION RULE: a mutation that changes an entity must
+ *   queryClient.invalidateQueries({ queryKey: ['<entity>', orgId] }) so lists refresh.
+ *   (This surface is read-only; new audit entries surface via staleTime expiry / focus
+ *   refetch / reopening the tab — nothing to invalidate here.)
+ *
+ * ENABLED: gate on `!!orgId` so a no-org operator never fires the query.
+ * ═════════════════════════════════════════════════════════════════════════════
+ */
 
 // Curated action groups for the category filter (NOT the raw ~40 actions).
 const ACTION_CATEGORIES = [
@@ -76,57 +104,41 @@ function ActorChip({ actor, lang }) {
   )
 }
 
-export default function ActivityLogTab({ lang, dir, isRTL, toast }) {
-  const [rows, setRows] = useState([])
-  const [actorMap, setActorMap] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [members, setMembers] = useState([])
+export default function ActivityLogTab({ orgId, lang, dir, isRTL }) {
   const [expanded, setExpanded] = useState(null)
   const [limit, setLimit] = useState(100)
-
   const [dateFrom, setDateFrom] = useState(defaultFrom)
   const [dateTo, setDateTo] = useState(defaultTo)
   const [actorFilter, setActorFilter] = useState('') // '' | memberId | 'operator'
   const [category, setCategory] = useState('')
 
-  // Org members for the actor dropdown (loaded once).
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      if (!isSupabaseConfigured()) return
-      try { const m = await listTeamMembersInOrg(); if (!cancelled) setMembers(m || []) }
-      catch (e) { console.error('[ActivityLog] members load failed:', e) }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [])
+  const enabled = !!orgId && isSupabaseConfigured()
 
-  // Audit rows on filter/limit change. Date range + a specific member are server-side;
-  // category + the "operator" actor are client-side (we don't hold the operator's id).
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      if (!isSupabaseConfigured()) { if (!cancelled) { setRows([]); setLoading(false) } return }
-      if (!cancelled) { setLoading(true); setError(null) }
-      try {
-        const b = toIsoBounds(dateFrom, dateTo)
-        const actorId = actorFilter && actorFilter !== 'operator' ? actorFilter : undefined
-        const data = await fetchAuditLog({ from: b.from, to: b.to, actorId, limit })
-        const ids = [...new Set(data.flatMap(r => [r.actingUserId, r.effectiveUserId]).filter(Boolean))]
-        const map = await resolveActors(ids)
-        if (!cancelled) { setRows(data); setActorMap(map); setLoading(false) }
-      } catch (e) {
-        if (!cancelled) {
-          console.error('[ActivityLog] load failed:', e)
-          setError(e); setLoading(false)
-          toast?.(isRTL ? 'تعذّر تحميل السجل' : 'Could not load the activity log', 'error')
-        }
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [dateFrom, dateTo, actorFilter, limit, isRTL, toast])
+  // Org members for the actor dropdown (org-scoped cache).
+  const { data: members = [] } = useQuery({
+    queryKey: ['teamMembers', orgId],
+    queryFn: () => listTeamMembersInOrg(),
+    enabled,
+  })
+
+  // The audit feed. Key = org + the SERVER-side params only (date range, member actorId,
+  // limit). category + the "operator" actor selection are client-side (below), so they
+  // are NOT in the key. resolveActors is folded into the SAME queryFn so one cache entry
+  // atomically holds { rows, actors } (no dependent-query waterfall).
+  const serverActorId = actorFilter && actorFilter !== 'operator' ? actorFilter : undefined
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['activityLog', orgId, { from: dateFrom, to: dateTo, actorId: serverActorId, limit }],
+    queryFn: async () => {
+      const b = toIsoBounds(dateFrom, dateTo)
+      const rows = await fetchAuditLog({ from: b.from, to: b.to, actorId: serverActorId, limit })
+      const ids = [...new Set(rows.flatMap(r => [r.actingUserId, r.effectiveUserId]).filter(Boolean))]
+      const actors = await resolveActors(ids)
+      return { rows, actors }
+    },
+    enabled,
+  })
+  const rows = useMemo(() => data?.rows ?? [], [data])
+  const actorMap = useMemo(() => data?.actors ?? {}, [data])
 
   const visibleRows = useMemo(() => rows.filter(r => {
     if (category && !CATEGORY_ACTIONS[category]?.has(r.action)) return false
@@ -170,9 +182,9 @@ export default function ActivityLogTab({ lang, dir, isRTL, toast }) {
 
       {/* Feed */}
       <GlassCard padding="none" className="overflow-hidden">
-        {loading ? (
+        {isLoading ? (
           <div className="py-16 text-center text-sm text-navy-500">{isRTL ? 'جاري التحميل...' : 'Loading...'}</div>
-        ) : error ? (
+        ) : isError ? (
           <div className="py-16 text-center text-sm text-rose-600">{isRTL ? 'تعذّر تحميل السجل' : 'Could not load the activity log'}</div>
         ) : visibleRows.length === 0 ? (
           <div className="py-12">
@@ -246,7 +258,7 @@ export default function ActivityLogTab({ lang, dir, isRTL, toast }) {
         )}
 
         {/* Load older — bumps the server limit (default 100). */}
-        {!loading && !error && rows.length >= limit && (
+        {!isLoading && !isError && rows.length >= limit && (
           <div className="p-4 border-t border-navy-100 text-center">
             <Button variant="secondary" size="sm" onClick={() => setLimit(l => l + 100)}>
               {isRTL ? 'تحميل أقدم' : 'Load older'}

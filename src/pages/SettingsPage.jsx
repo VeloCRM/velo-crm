@@ -51,7 +51,7 @@ const SAMPLE_TEAM = [
   { id: 'tm4', name: 'Maria Lopez',  email: 'maria@velo.app',   role: 'assistant',    avatar: 'M' },
 ]
 
-export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate, isOperator }) {
+export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, onSaveOrgSettings, toast, initialTab, navigate, isOperator, orgId }) {
   const [tab, _setTab] = useState(initialTab || 'organization')
 
   const setTab = (t) => {
@@ -121,7 +121,7 @@ export default function SettingsPage({ t, lang, dir, isRTL, user, orgSettings, o
           {tab === 'clinic' && <ClinicTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} setTab={setTab} />}
           {tab === 'profile' && <ProfileTab t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} toast={toast} />}
           {tab === 'team' && <TeamTab t={t} lang={lang} dir={dir} isRTL={isRTL} orgSettings={orgSettings} toast={toast} />}
-          {tab === 'activity' && <ActivityLogTab lang={lang} dir={dir} isRTL={isRTL} toast={toast} />}
+          {tab === 'activity' && <ActivityLogTab orgId={orgId} lang={lang} dir={dir} isRTL={isRTL} />}
           {tab === 'notifications' && <NotificationsTab t={t} lang={lang} dir={dir} toast={toast} />}
           {/* AI Agent tab hidden (SB-8) — ai_* fields are unbacked; see TABS note. */}
           {tab === 'integrations' && <IntegrationSettingsTab t={t} lang={lang} dir={dir} orgSettings={orgSettings} onSave={onSaveOrgSettings} />}

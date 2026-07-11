@@ -64,6 +64,7 @@ const OverlayFallback = () => null
 import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
+import { queryClient } from './lib/queryClient'
 import * as db from './lib/database'
 import { reversePayment, createCharge, voidCharge, getPatientBalance, fetchChargesByPatient } from './lib/billing'
 import { BalanceSummary, ChargesSection } from './components/BillingSections'
@@ -191,6 +192,14 @@ export default function App() {
   // even if orgSettings re-fetch races. impersonation.orgId is the canonical
   // override; orgSettings.id is the steady-state value.
   const dentalOrgId = impersonation?.orgId ?? orgSettings?.id
+
+  // Belt-and-braces cache isolation: wipe the TanStack Query cache whenever the
+  // effective org changes (impersonation enter / switch / exit / sign-out). Query
+  // keys are already org-scoped (['<entity>', orgId, …]) so a switch loads a fresh
+  // entry, but clearing guarantees clinic A's cached data can never surface under B.
+  useEffect(() => {
+    queryClient.clear()
+  }, [impersonation?.orgId])
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1089,7 +1098,7 @@ export default function App() {
               {page === 'billing' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الفواتير' : 'Billing'} description={isRTL ? 'إدارة الفواتير والمدفوعات قريباً' : 'Billing management coming soon.'} icon={Icons.file} />}
               {page === 'agency-profile' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'ملف الوكالة' : 'Agency Profile'} description={isRTL ? 'إعدادات ملف الوكالة قريباً' : 'Agency profile settings coming soon.'} icon={Icons.user} />}
               {page === 'settings' && isAgencyMode && <AgencyPlaceholder title={isRTL ? 'الإعدادات' : 'Settings'} description={isRTL ? 'إعدادات الوكالة قريباً' : 'Agency settings coming soon.'} icon={Icons.settings} />}
-              {page === 'settings' && !isAgencyMode && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isOperator={isOperator} /></Suspense>}
+              {page === 'settings' && !isAgencyMode && <Suspense fallback={<SkeletonGeneric />}><SettingsPage t={t} lang={lang} dir={dir} isRTL={isRTL} user={user} orgSettings={orgSettings} onSaveOrgSettings={saveOrgSettings} toast={addToast} initialTab={pageSubId} key={pageSubId || 'settings'} navigate={navigate} isOperator={isOperator} orgId={dentalOrgId} /></Suspense>}
               {page === 'operator' && pageSubId === 'credentials' && isOperator && <Suspense fallback={<SkeletonGeneric />}><ClinicCredentialsPage lang={lang} /></Suspense>}
               {page === 'design-system' && isOperator && import.meta.env.DEV && <Suspense fallback={<SkeletonGeneric />}><DesignSystemPage lang={lang} /></Suspense>}
             </>
