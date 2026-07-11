@@ -17,7 +17,7 @@
  */
 
 import { supabase } from './supabase'
-import { requireUser, getImpersonationContext } from './auth_session'
+import { requireUser, getCurrentOrgId, getImpersonationContext } from './auth_session'
 
 /**
  * Listeners notified on audit failures. The toast pipeline subscribes from
@@ -83,4 +83,90 @@ export async function logAuditEvent({ orgId, action, entityType, entityId = null
     notifyAuditFailure(wrapped, { action, entityType, entityId, orgId })
     throw wrapped
   }
+}
+
+// ─── Reads (Activity Log UI) ─────────────────────────────────────────────────
+
+function mapAuditRow(row) {
+  if (!row) return null
+  return {
+    id: row.id,
+    orgId: row.org_id,
+    actingUserId: row.acting_user_id || null,
+    effectiveUserId: row.effective_user_id || null,
+    action: row.action,
+    entityType: row.entity_type,
+    entityId: row.entity_id || null,
+    payload: row.payload || {},
+    createdAt: row.created_at,
+  }
+}
+
+/**
+ * Read the org's audit log, newest first. Org-scoped by RLS (audit_log_select_own_org);
+ * the explicit .eq('org_id', …) is defense in depth and lets the planner use
+ * idx_audit_log_org_created (org_id, created_at DESC). All filters optional.
+ *
+ * @param {object} [opts]
+ * @param {string} [opts.from]        - ISO lower bound on created_at
+ * @param {string} [opts.to]          - ISO upper bound on created_at
+ * @param {string} [opts.action]      - exact action match (e.g. 'payment.create')
+ * @param {string} [opts.entityType]  - exact entity_type match
+ * @param {string} [opts.actorId]     - exact acting_user_id match
+ * @param {number} [opts.limit=100]   - clamped to 1..500
+ * @returns {Promise<object[]>} mapped camelCase rows
+ */
+export async function fetchAuditLog({ from, to, action, entityType, actorId, limit = 100 } = {}) {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  let q = supabase
+    .from('audit_log')
+    .select('id, org_id, acting_user_id, effective_user_id, action, entity_type, entity_id, payload, created_at')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
+    .limit(Math.max(1, Math.min(Number(limit) || 100, 500)))
+  if (from) q = q.gte('created_at', from)
+  if (to) q = q.lte('created_at', to)
+  if (action) q = q.eq('action', action)
+  if (entityType) q = q.eq('entity_type', entityType)
+  if (actorId) q = q.eq('acting_user_id', actorId)
+  const { data, error } = await q
+  if (error) throw error
+  return (data || []).map(mapAuditRow)
+}
+
+/**
+ * Resolve a set of actor ids → display info. Clinic users come from profiles
+ * (readable in-org via profiles_select_own_org). Any id NOT found is an OPERATOR:
+ * in an org-scoped log, a non-member actor is the agency (SupCod3) — operators have
+ * no client-readable profile/operators row. Returns { [id]: { name, role, isOperator } }.
+ * (null ids are dropped here; the UI renders them via describeActor as 'Removed user'.)
+ */
+export async function resolveActors(ids) {
+  const unique = [...new Set((ids || []).filter(Boolean))]
+  const map = {}
+  if (unique.length === 0) return map
+  await requireUser()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, role')
+    .in('id', unique)
+  if (error) throw error
+  for (const p of data || []) {
+    map[p.id] = { name: p.full_name || 'Unknown', role: p.role || null, isOperator: false }
+  }
+  for (const id of unique) {
+    if (!map[id]) map[id] = { name: 'SupCod3', role: null, isOperator: true }
+  }
+  return map
+}
+
+/**
+ * UI-facing resolver for a single actor id against a resolveActors() map. Handles the
+ * three render cases: a clinic member, the operator (SupCod3), and a null id (the auth
+ * user was deleted — acting_user_id FK is ON DELETE SET NULL) → 'Removed user'.
+ */
+export function describeActor(id, actorMap, isRTL = false) {
+  if (!id) return { name: isRTL ? 'مستخدم محذوف' : 'Removed user', role: null, isOperator: false, removed: true }
+  return actorMap?.[id] || { name: 'SupCod3', role: null, isOperator: true }
 }
