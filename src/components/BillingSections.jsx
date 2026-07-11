@@ -78,6 +78,7 @@ export function ChargesSection({ patient, charges, addCharge, onVoid, dir, isRTL
   }, {})
 
   return (
+    <>
     <GlassCard padding="lg">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-base font-semibold text-navy-900 m-0">
@@ -159,6 +160,7 @@ export function ChargesSection({ patient, charges, addCharge, onVoid, dir, isRTL
           })}
         </ul>
       )}
+    </GlassCard>
 
       {showForm && (
         <AddChargeModal
@@ -189,7 +191,7 @@ export function ChargesSection({ patient, charges, addCharge, onVoid, dir, isRTL
           </div>
         </Modal>
       )}
-    </GlassCard>
+    </>
   )
 }
 
@@ -202,21 +204,40 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
     description: '',
     amount: '',
     currency: 'IQD',
-    // Doctor rendering the service: default to the current user if they are a
-    // doctor, else the patient's primary doctor (owner then picks from the list).
-    doctorId: isDoctor ? (profile?.id || '') : primaryDoctorId,
+    // Doctor rendering the service: default to the CURRENT USER — a doctor or an
+    // owner is a chargeable provider — so Save is enabled by default instead of
+    // stranded on an empty picker. Falls back to the patient's primary doctor.
+    // Owners can still reassign via the picker below.
+    doctorId: profile?.id || primaryDoctorId || '',
   })
   const [doctors, setDoctors] = useState([])
   const [submitting, setSubmitting] = useState(false)
 
-  // Owner/receptionist can't add charges (button hidden), so only owners reach
-  // this modal without being a doctor → load the org's doctors for the picker.
+  // Owners pick the rendering provider — load the org's doctors AND owners
+  // (owners bill too; listDoctorsInOrg includes both) to ENRICH the picker.
+  // This fetch is NON-BLOCKING: the field renders immediately from
+  // providerOptions (which always includes the current user), so a slow or
+  // hung fetch can never leave the Doctor field stuck on a loading state.
+  // Doctors use the read-only self field and skip the fetch entirely.
   useEffect(() => {
     if (isDoctor) return
     let cancelled = false
-    listDoctorsInOrg().then(d => { if (!cancelled) setDoctors(d) }).catch(() => {})
+    listDoctorsInOrg()
+      .then(d => { if (!cancelled) setDoctors(d || []) })
+      .catch(err => { if (!cancelled) console.error('listDoctorsInOrg error:', err) })
     return () => { cancelled = true }
   }, [isDoctor])
+
+  // Guarantee the current user (owner/doctor = a valid provider) is always a
+  // selectable option, even if the query is RLS-limited or fails — so the
+  // required Doctor field is never an unfillable dead-end.
+  const providerOptions = (() => {
+    const list = [...doctors]
+    if (profile?.id && ['owner', 'doctor'].includes(profile.role) && !list.some(d => d.id === profile.id)) {
+      list.unshift({ id: profile.id, full_name: profile.full_name, role: profile.role })
+    }
+    return list
+  })()
 
   const amountMinor = toMinor(form.amount, form.currency)
   const valid = form.description.trim() && amountMinor >= 1 && form.doctorId
@@ -239,6 +260,11 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
 
   return (
     <Modal onClose={onClose} dir={dir} width={480}>
+      {/* Structure mirrors the Record Payment modal exactly: a plain ds-root >
+          form with no inner height cap or scroll container. The Modal's own
+          .modal-content (max-height:85vh; overflow-y:auto) is the SINGLE scroll
+          region, so the Save/Cancel footer stays in normal flow and is never
+          clipped by a competing nested scroll box. */}
       <div className="ds-root">
         <form onSubmit={submit}>
           <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
@@ -270,10 +296,16 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
             </FormField>
           ) : (
             <FormField label={isRTL ? 'الطبيب' : 'Doctor'} dir={dir}>
-              <select value={form.doctorId} onChange={e => setForm(p => ({ ...p, doctorId: e.target.value }))} style={selectStyle(dir)}>
-                <option value="">{isRTL ? '— اختر طبيباً —' : '— Select a doctor —'}</option>
-                {doctors.map(d => <option key={d.id} value={d.id}>{d.full_name || d.id}</option>)}
-              </select>
+              {providerOptions.length === 0 ? (
+                <p className="text-xs text-rose-600 m-0 py-1">
+                  {isRTL ? 'لا يوجد أطباء — أضِف طبيباً من إعدادات الفريق.' : 'No doctors found — add a doctor in Team settings.'}
+                </p>
+              ) : (
+                <select value={form.doctorId} onChange={e => setForm(p => ({ ...p, doctorId: e.target.value }))} style={selectStyle(dir)}>
+                  <option value="">{isRTL ? '— اختر طبيباً —' : '— Select a doctor —'}</option>
+                  {providerOptions.map(d => <option key={d.id} value={d.id}>{d.full_name || d.id}</option>)}
+                </select>
+              )}
             </FormField>
           )}
           <div className="flex gap-2 justify-end mt-3">
