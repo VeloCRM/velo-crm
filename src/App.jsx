@@ -65,6 +65,7 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
+import { reversePayment } from './lib/billing'
 import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
@@ -107,6 +108,7 @@ const Icons = {
   plus: (s=16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
   x: (s=16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
   trash: (s=16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>,
+  undo: (s=16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>,
   edit: (s=16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
   arrowLeft: (s=16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>,
   arrowRight: (s=16) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>,
@@ -1816,13 +1818,18 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
       toast?.(isRTL ? 'فشل إضافة الدفعة' : 'Failed to add payment', 'error')
     }
   }
-  const deletePayment = async (id) => {
+  // Corrections are append-a-reversal (operator-only, enforced in billing.js +
+  // RLS). Nothing is deleted: the original payment stays and a reversal row is
+  // appended, so we REFETCH rather than optimistically filtering the list.
+  const handleReversePayment = async (id) => {
     try {
-      await db.removePayment(id)
-      setPayments(prev => prev.filter(p => p.id !== id))
+      await reversePayment(id)
+      const data = await db.fetchPaymentsByPatient(patient.id)
+      setPayments(data)
+      toast?.(isRTL ? 'تم تسجيل قيد التصحيح — تبقى الدفعة الأصلية في السجل' : 'Reversal recorded — the original payment stays in history', 'success')
     } catch (err) {
-      console.error('Delete payment error:', err)
-      toast?.(isRTL ? 'فشل حذف الدفعة' : 'Failed to delete payment', 'error')
+      console.error('Reverse payment error:', err)
+      toast?.(isRTL ? 'فشل عكس الدفعة' : 'Failed to reverse payment', 'error')
     }
   }
 
@@ -2114,7 +2121,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
               {profileTab === 'payments' && (
                 paymentsLoading
                   ? <DentalSpinner isRTL={isRTL} />
-                  : <PaymentsTab payments={payments} addPayment={addPayment} deletePayment={deletePayment} dir={dir} isRTL={isRTL} currentUserRole={currentUserRole} />
+                  : <PaymentsTab payments={payments} addPayment={addPayment} onReverse={handleReversePayment} dir={dir} isRTL={isRTL} currentUserRole={currentUserRole} />
               )}
               {profileTab === 'medical' && (
                 <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
@@ -2185,16 +2192,26 @@ const PAYMENT_METHODS = [
   { id: 'other',       en: 'Other',       ar: 'أخرى',        icon: '🔖' },
 ]
 
-function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL, currentUserRole }) {
+function PaymentsTab({ payments, addPayment, onReverse, dir, isRTL, currentUserRole }) {
   const [showForm, setShowForm] = useState(false)
-  const [confirmDeletePayment, setConfirmDeletePayment] = useState(null)
+  const [confirmReversePayment, setConfirmReversePayment] = useState(null)
   const [form, setForm] = useState({ amount: '', currency: 'IQD', method: 'cash', notes: '' })
-  // Write gate (owner + receptionist per the matrix). doctor/assistant see the
-  // tab read-only; xray_tech never reaches it (tab hidden). RLS is the real boundary.
+  // Write gate governs RECORDING payments (owner + receptionist per the matrix).
+  // doctor/assistant see the tab read-only; xray_tech never reaches it (tab hidden).
   const canWrite = can(currentUserRole, 'payments', 'w')
+  // Corrections are operator-only (SupCod3 model), independent of canWrite —
+  // enforced in billing.js + RLS; this just hides the affordance for non-operators.
+  const { isOperator } = useIsOperator()
 
-  // Sum totals per currency. Don't sum across currencies (per CLAUDE.md).
+  // Active-row set mirrors billing.js activeRows: a 'payment' row whose id is NOT
+  // referenced by any reverses_id. reversal rows never count as positive, and a
+  // reversed original drops out. Totals are computed over active rows only, so a
+  // reversed payment contributes 0 (original + reversal net out) — per currency,
+  // never blended (CLAUDE.md).
+  const reversedIds = new Set(payments.map(p => p.reversesId ?? p.reverses_id).filter(Boolean))
+  const isActivePayment = (p) => (p.kind || 'payment') === 'payment' && !reversedIds.has(p.id)
   const totals = payments.reduce((acc, p) => {
+    if (!isActivePayment(p)) return acc
     const cur = p.currency || 'IQD'
     acc[cur] = (acc[cur] || 0) + Number(p.amountMinor || p.amount_minor || 0)
     return acc
@@ -2255,29 +2272,50 @@ function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL, currentU
               const amountMinor = p.amountMinor ?? p.amount_minor ?? 0
               const recordedAt = p.recordedAt || p.recorded_at || p.created_at
               const dateStr = recordedAt ? new Date(recordedAt).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US') : ''
+              const kind = p.kind || 'payment'
+              const isReversal = kind === 'reversal'
+              const isReversed = reversedIds.has(p.id) // an original that has been reversed
+              // Operators reverse a live payment only — not a reversal row, and not
+              // one already reversed (a second reversal would double-credit; billing.js
+              // guards kind but not double-reversal, so we gate it here).
+              const canReverse = isOperator && !isReversal && !isReversed
+              const amountClass = isReversal ? 'text-rose-700' : isReversed ? 'text-navy-400 line-through' : 'text-navy-900'
               return (
-                <li key={p.id} className="flex items-center gap-3 py-3 border-b border-navy-100/60 last:border-b-0">
-                  <span aria-hidden="true" className="grid place-items-center w-9 h-9 rounded-md bg-navy-50 text-base shrink-0">
-                    {meth.icon}
+                <li key={p.id} className={`flex items-center gap-3 py-3 border-b border-navy-100/60 last:border-b-0${isReversal ? ' opacity-80' : ''}`}>
+                  <span aria-hidden="true" className={`grid place-items-center w-9 h-9 rounded-md text-base shrink-0 ${isReversal ? 'bg-rose-50 text-rose-700' : 'bg-navy-50'}`}>
+                    {isReversal ? Icons.undo(16) : meth.icon}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-base font-semibold text-navy-900 tabular-nums">
-                      {formatMoney(amountMinor, p.currency || 'IQD')}
+                    <div className={`text-base font-semibold tabular-nums ${amountClass}`}>
+                      {isReversal ? '−' : ''}{formatMoney(amountMinor, p.currency || 'IQD')}
                     </div>
-                    <div className="text-xs text-navy-500 mt-1">
-                      {isRTL ? meth.ar : meth.en}
-                      {dateStr && <> &middot; {dateStr}</>}
-                      {p.notes && <> &middot; {p.notes}</>}
+                    <div className="text-xs text-navy-500 mt-1 flex items-center gap-1.5 flex-wrap">
+                      {isReversal && (
+                        <span className="inline-flex items-center rounded-full bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                          {isRTL ? 'قيد تصحيح' : 'Reversal'}
+                        </span>
+                      )}
+                      {isReversed && (
+                        <span className="inline-flex items-center rounded-full bg-navy-100 text-navy-500 border border-navy-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                          {isRTL ? 'معكوسة' : 'Reversed'}
+                        </span>
+                      )}
+                      <span>
+                        {isRTL ? meth.ar : meth.en}
+                        {dateStr && <> &middot; {dateStr}</>}
+                        {p.notes && <> &middot; {p.notes}</>}
+                      </span>
                     </div>
                   </div>
-                  {canWrite && (
+                  {canReverse && (
                     <button
                       type="button"
-                      onClick={() => setConfirmDeletePayment(p.id)}
-                      aria-label={isRTL ? 'حذف' : 'Delete'}
-                      className="grid place-items-center w-11 h-11 md:w-8 md:h-8 rounded-md text-navy-500 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                      onClick={() => setConfirmReversePayment(p.id)}
+                      aria-label={isRTL ? 'عكس الدفعة' : 'Reverse payment'}
+                      title={isRTL ? 'عكس الدفعة' : 'Reverse payment'}
+                      className="grid place-items-center w-11 h-11 md:w-8 md:h-8 rounded-md text-navy-500 hover:text-amber-700 hover:bg-amber-50 transition-colors shrink-0"
                     >
-                      {Icons.trash(14)}
+                      {Icons.undo(14)}
                     </button>
                   )}
                 </li>
@@ -2323,18 +2361,20 @@ function PaymentsTab({ payments, addPayment, deletePayment, dir, isRTL, currentU
         </Modal>
       )}
 
-      {confirmDeletePayment && (
-        <Modal onClose={() => setConfirmDeletePayment(null)} dir={dir} width={400}>
+      {confirmReversePayment && (
+        <Modal onClose={() => setConfirmReversePayment(null)} dir={dir} width={420}>
           <div className="ds-root text-center px-2">
             <h3 className="text-lg font-semibold text-navy-900 m-0 mb-2">
-              {isRTL ? 'حذف الدفعة؟' : 'Delete this payment?'}
+              {isRTL ? 'عكس هذه الدفعة؟' : 'Reverse this payment?'}
             </h3>
             <p className="text-sm text-navy-600 m-0 mb-4">
-              {isRTL ? 'لا يمكن التراجع عن هذا' : 'This action cannot be undone'}
+              {isRTL
+                ? 'سيتم تسجيل قيد تصحيح — تبقى الدفعة الأصلية في السجل.'
+                : 'A correcting entry will be recorded — the original payment stays in history.'}
             </p>
             <div className="flex gap-2 justify-center">
-              <Button variant="secondary" onClick={() => setConfirmDeletePayment(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
-              <Button variant="destructive" onClick={() => { deletePayment(confirmDeletePayment); setConfirmDeletePayment(null) }}>{isRTL ? 'حذف' : 'Delete'}</Button>
+              <Button variant="secondary" onClick={() => setConfirmReversePayment(null)}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
+              <Button variant="primary" onClick={() => { onReverse(confirmReversePayment); setConfirmReversePayment(null) }}>{isRTL ? 'عكس الدفعة' : 'Reverse'}</Button>
             </div>
           </div>
         </Modal>

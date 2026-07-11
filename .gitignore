@@ -38,3 +38,4 @@ export/
 # V1.5 Stage 1 — GHL exploration artifacts (real patient data / internal structure)
 scripts/ghl-sample-data.json
 scripts/_prod-schema-snapshot.sql
+scripts/_prod-schema-snapshot-clean.sql
