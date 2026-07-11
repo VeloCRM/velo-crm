@@ -61,6 +61,9 @@ function mapCharge(row) {
     // Embedded doctor name (via the charges_doctor_fkey join in
     // fetchChargesByPatient); null on the insert path, which the UI refetches.
     doctorName: row.doctor?.full_name || null,
+    // Embedded patient name (via the patient join in the org-wide fetchAllCharges);
+    // null on the per-patient / insert paths that don't join patients.
+    patientName: row.patient?.full_name || null,
   }
 }
 
@@ -83,6 +86,9 @@ function mapBillingPayment(row) {
     recordedBy: row.recorded_by || null,
     notes: row.notes || '',
     createdAt: row.created_at,
+    // Embedded patient name (via the patient join in the org-wide fetchAllPayments);
+    // null on paths that don't join patients.
+    patientName: row.patient?.full_name || null,
   }
 }
 
@@ -429,4 +435,82 @@ export async function getOutstandingCollections() {
       latestChargeAt: o.latestChargeAt,
     }))
     .sort((a, b) => (b.latestChargeAt || '').localeCompare(a.latestChargeAt || ''))
+}
+
+// ─── 7. Finance — clinic-wide reads (sub-slice 2) ────────────────────────────
+// Org-wide analogues of the per-patient reads above, backing the Finance page.
+// Reads are org-scoped by RLS (charges_select_own_org / payments_select_own_org,
+// and the finance_ledger_totals view is security_invoker) — no manual org filter
+// is needed for correctness. We still pass .eq('org_id', orgId) on the base-table
+// reads for defense in depth, matching the rest of this module. None of these write.
+
+const PAYMENT_METHOD_VALUES = ['cash', 'fib', 'zaincash', 'asia_hawala', 'card', 'other']
+
+/**
+ * Clinic-wide totals per currency, from the finance_ledger_totals view. The view is
+ * security_invoker, so RLS scopes the rows to the caller's org automatically — no
+ * params, no org filter. Returns { IQD: { billed, collected, outstanding }, USD: {…} }
+ * — one entry per currency with ledger activity, never blended; {} if none.
+ */
+export async function getClinicLedgerTotals() {
+  await requireUser()
+  const { data, error } = await supabase
+    .from('finance_ledger_totals')
+    .select('currency, billed, collected, outstanding')
+  if (error) throw error
+  const out = {}
+  for (const r of data || []) {
+    out[r.currency] = {
+      billed: Number(r.billed || 0),
+      collected: Number(r.collected || 0),
+      outstanding: Number(r.outstanding || 0),
+    }
+  }
+  return out
+}
+
+/**
+ * Org-wide charges, newest first — the charges half of the Finance ledger. The
+ * org-wide analogue of fetchChargesByPatient: same mapCharge (surfaces kind/
+ * reversesId/category so voids render distinctly and don't inflate totals), plus
+ * the patient name via the patient join. Optional created_at range + category filter.
+ */
+export async function fetchAllCharges({ from, to, category, limit = 200 } = {}) {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  let q = supabase
+    .from('charges')
+    .select('*, patient:patient_id(full_name), doctor:profiles!charges_doctor_fkey(full_name)')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false })
+    .limit(Math.max(1, Math.min(Number(limit) || 200, 500)))
+  if (from) q = q.gte('created_at', from)
+  if (to) q = q.lte('created_at', to)
+  if (category && CHARGE_CATEGORIES.includes(category)) q = q.eq('category', category)
+  const { data, error } = await q
+  if (error) throw error
+  return (data || []).map(mapCharge)
+}
+
+/**
+ * Org-wide payments, newest first — the payments half of the Finance ledger. Unlike
+ * database.js fetchPaymentsWithJoins (which omits kind/reverses_id), this surfaces
+ * them via mapBillingPayment, so reversal rows render as corrections and never count
+ * as positive collections. Optional recorded_at range + method filter.
+ */
+export async function fetchAllPayments({ from, to, method, limit = 200 } = {}) {
+  await requireUser()
+  const orgId = await getCurrentOrgId()
+  let q = supabase
+    .from('payments')
+    .select('*, patient:patient_id(full_name)')
+    .eq('org_id', orgId)
+    .order('recorded_at', { ascending: false })
+    .limit(Math.max(1, Math.min(Number(limit) || 200, 500)))
+  if (from) q = q.gte('recorded_at', from)
+  if (to) q = q.lte('recorded_at', to)
+  if (method && PAYMENT_METHOD_VALUES.includes(method)) q = q.eq('method', method)
+  const { data, error } = await q
+  if (error) throw error
+  return (data || []).map(mapBillingPayment)
 }
