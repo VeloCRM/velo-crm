@@ -22,7 +22,8 @@ import { fetchTreatmentPlansForPatient } from '../lib/dental'
 import { formatMoney, toMinor, fromMinor } from '../lib/money'
 import { sanitizeNotes } from '../lib/sanitize'
 import { fetchMyProfile } from '../lib/profiles'
-import { getClinicLedgerTotals, fetchAllCharges, fetchAllPayments, getOutstandingCollections } from '../lib/billing'
+import { getClinicLedgerTotals, fetchAllCharges, fetchAllPayments, getOutstandingCollections, createCharge } from '../lib/billing'
+import { AddChargeModal } from '../components/BillingSections'
 import { getImpersonationContext } from '../lib/auth_session'
 import { can } from '../lib/permissions'
 import { GlassCard, Button, Input, Select, Badge, EmptyState } from '../components/ui'
@@ -93,8 +94,10 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   void t
   void lang
 
-  const [role, setRole] = useState(null)
+  const [profile, setProfile] = useState(null)
+  const role = profile?.role || null
   const [showRecord, setShowRecord] = useState(false)
+  const [showAddCharge, setShowAddCharge] = useState(false)
   const [activeTab, setActiveTab] = useState('charges')
 
   // Clinic-wide ledger totals (getClinicLedgerTotals → the finance_ledger_totals view).
@@ -137,7 +140,7 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   useEffect(() => {
     if (!showClinicView) return
     let cancelled = false
-    fetchMyProfile().then(p => { if (!cancelled) setRole(p?.role || null) }).catch(() => {})
+    fetchMyProfile().then(p => { if (!cancelled) setProfile(p || null) }).catch(() => {})
     return () => { cancelled = true }
   }, [showClinicView])
 
@@ -252,6 +255,9 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   // Permission gate: can the current role record a new payment?
   // Owner + receptionist + assistant-with-payments-w. Doctor reads only.
   const canRecord = !role || can(role, 'payments', 'w') || can(role, 'finance', 'w')
+  // Add Charge is doctor/owner (mirrors the Billing tab + the charges INSERT RLS;
+  // no 'charges' matrix key, so this is a direct role check).
+  const canAddCharge = ['owner', 'doctor'].includes(role)
 
   return (
     <div dir={dir} className="ds-root min-h-full p-6 md:p-8">
@@ -267,16 +273,28 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
               : 'Recorded payments for the clinic. Every recorded payment is paid — the new schema has no pending-invoice concept.'}
           </p>
         </div>
-        {canRecord && (
-          <Button
-            variant="primary"
-            size="md"
-            iconStart={Icons.plus}
-            onClick={() => { setCollect(null); setShowRecord(true) }}
-          >
-            {isRTL ? 'تسجيل دفعة' : 'Record Payment'}
-          </Button>
-        )}
+        <div className="flex items-center gap-2 flex-wrap">
+          {canAddCharge && (
+            <Button
+              variant="secondary"
+              size="md"
+              iconStart={Icons.plus}
+              onClick={() => setShowAddCharge(true)}
+            >
+              {isRTL ? 'إضافة رسوم' : 'Add Charge'}
+            </Button>
+          )}
+          {canRecord && (
+            <Button
+              variant="primary"
+              size="md"
+              iconStart={Icons.plus}
+              onClick={() => { setCollect(null); setShowRecord(true) }}
+            >
+              {isRTL ? 'تسجيل دفعة' : 'Record Payment'}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Clinic-wide ledger headline (getClinicLedgerTotals → finance_ledger_totals
@@ -374,6 +392,28 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
           onSaved={() => { setShowRecord(false); setCollect(null); setRefreshKey(k => k + 1) }}
           onError={(msg) => toast?.(msg, 'error')}
           onSuccess={(msg) => toast?.(msg, 'success')}
+        />
+      )}
+
+      {/* Add Charge — no fixed patient, so the modal renders PatientPicker first.
+          At page root, outside every GlassCard (backdrop-filter breaks fixed centering). */}
+      {showAddCharge && (
+        <AddChargeModal
+          profile={profile}
+          dir={dir}
+          isRTL={isRTL}
+          onClose={() => setShowAddCharge(false)}
+          onSubmit={async (c) => {
+            try {
+              await createCharge(c)
+              toast?.(isRTL ? 'تمت إضافة الرسوم' : 'Charge added', 'success')
+              setShowAddCharge(false)
+              setRefreshKey(k => k + 1)
+            } catch (err) {
+              console.error('[FinancePage] add charge failed:', err)
+              toast?.(err.message || (isRTL ? 'فشل إضافة الرسوم' : 'Failed to add charge'), 'error')
+            }
+          }}
         />
       )}
     </div>

@@ -19,6 +19,7 @@ import { formatMoney, toMinor } from '../lib/money'
 import { listDoctorsInOrg } from '../lib/profiles'
 import useCurrentProfile from '../hooks/useCurrentProfile'
 import { useIsOperator } from '../lib/operator'
+import PatientPicker from './PatientPicker'
 
 // Income-category options for the Add Charge form. Values MUST match the
 // charges_category_check DB constraint (clinical/product/consultation/other).
@@ -219,9 +220,14 @@ export function ChargesSection({ patient, charges, addCharge, onVoid, dir, isRTL
 
 // ─── Add-charge modal ────────────────────────────────────────────────────────
 
-function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
+export function AddChargeModal({ patient = null, profile, onClose, onSubmit, dir, isRTL }) {
+  // `patient` fixed (patient Billing tab) → picker hidden. `patient` absent (Finance)
+  // → render PatientPicker as the first field and gate Save on a pick.
+  const needsPicker = !patient
+  const [pickedPatient, setPickedPatient] = useState(null)
+  const effectivePatient = patient || pickedPatient
   const isDoctor = profile?.role === 'doctor'
-  const primaryDoctorId = patient.primary_doctor_id ?? patient.primaryDoctorId ?? ''
+  const primaryDoctorId = effectivePatient?.primary_doctor_id ?? effectivePatient?.primaryDoctorId ?? ''
   const [form, setForm] = useState({
     category: 'clinical',
     description: '',
@@ -266,7 +272,7 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
   // UI-enforced rule from the locked decision). Non-clinical charges send no doctor.
   const isClinical = form.category === 'clinical'
   const amountMinor = toMinor(form.amount, form.currency)
-  const valid = form.description.trim() && amountMinor >= 1 && (!isClinical || form.doctorId)
+  const valid = !!effectivePatient && form.description.trim() && amountMinor >= 1 && (!isClinical || form.doctorId)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -274,6 +280,9 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
     setSubmitting(true)
     try {
       await onSubmit({
+        // Include the effective patient's id so callers that don't inject it (Finance)
+        // still know who to bill. The Billing tab also injects patient.id — same value.
+        patientId: effectivePatient.id,
         category: form.category,
         description: form.description.trim(),
         amountMinor,
@@ -297,6 +306,17 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
           <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
             {isRTL ? 'إضافة رسوم' : 'Add Charge'}
           </h3>
+          {needsPicker && (
+            <FormField label={isRTL ? 'المريض' : 'Patient'} dir={dir}>
+              <PatientPicker
+                selected={pickedPatient}
+                onSelect={setPickedPatient}
+                isRTL={isRTL}
+                dir={dir}
+                disabled={submitting}
+              />
+            </FormField>
+          )}
           <FormField label={isRTL ? 'الفئة' : 'Category'} dir={dir}>
             <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={selectStyle(dir)}>
               {CHARGE_CATEGORY_OPTIONS.map(o => (

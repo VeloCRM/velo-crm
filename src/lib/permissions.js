@@ -81,7 +81,7 @@ const MATRIX = {
     tasks: 'rw',      goals: 'r',      docs: 'r',     automations: '',
     forms: '',        social: '',      integrations: '',
     reports: 'r',     finance: 'r',    settings: 'r', team: '',
-    dental_chart: 'rwd', treatment_plans: 'rwd', payments: 'r',
+    dental_chart: 'rwd', treatment_plans: 'rwd', payments: 'rw',
   },
   // Receptionist — front-of-house: patients, appointments, payments, inbox.
   // No clinical writes (dental_chart / treatment_plans are read-only).
