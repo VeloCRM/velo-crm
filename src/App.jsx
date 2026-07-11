@@ -2247,8 +2247,8 @@ function PaymentsTab({ payments, addPayment, onReverse, dir, isRTL, currentUserR
   const [showForm, setShowForm] = useState(false)
   const [confirmReversePayment, setConfirmReversePayment] = useState(null)
   const [form, setForm] = useState({ amount: '', currency: 'IQD', method: 'cash', notes: '' })
-  // Write gate governs RECORDING payments (owner + receptionist per the matrix).
-  // doctor/assistant see the tab read-only; xray_tech never reaches it (tab hidden).
+  // Write gate governs RECORDING payments (owner + receptionist + doctor per the
+  // matrix). assistant sees the tab read-only; xray_tech never reaches it (tab hidden).
   const canWrite = can(currentUserRole, 'payments', 'w')
   // Corrections are operator-only (SupCod3 model), independent of canWrite —
   // enforced in billing.js + RLS; this just hides the affordance for non-operators.
