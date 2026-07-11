@@ -19,10 +19,10 @@ import { isSupabaseConfigured } from '../lib/supabase'
 import { insertPayment } from '../lib/database'
 import PatientPicker from '../components/PatientPicker'
 import { fetchTreatmentPlansForPatient } from '../lib/dental'
-import { formatMoney, toMinor } from '../lib/money'
+import { formatMoney, toMinor, fromMinor } from '../lib/money'
 import { sanitizeNotes } from '../lib/sanitize'
 import { fetchMyProfile } from '../lib/profiles'
-import { getClinicLedgerTotals, fetchAllCharges, fetchAllPayments } from '../lib/billing'
+import { getClinicLedgerTotals, fetchAllCharges, fetchAllPayments, getOutstandingCollections } from '../lib/billing'
 import { getImpersonationContext } from '../lib/auth_session'
 import { can } from '../lib/permissions'
 import { GlassCard, Button, Input, Select, Badge, EmptyState } from '../components/ui'
@@ -109,7 +109,16 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   const [payments, setPayments] = useState([])
   const [paymentsLoading, setPaymentsLoading] = useState(true)
   const [paymentsError, setPaymentsError] = useState(null)
-  // Bumped after a mutation (e.g. Record Payment) to refetch totals + ledger.
+
+  // Collections worklist (getOutstandingCollections — patients who owe > 0).
+  const [collections, setCollections] = useState([])
+  const [collectionsLoading, setCollectionsLoading] = useState(true)
+  const [collectionsError, setCollectionsError] = useState(null)
+  // Pre-fill for the Record Payment modal when opened via a "Collect" button:
+  // { patient, amountMinor, currency } — null means a blank Record Payment.
+  const [collect, setCollect] = useState(null)
+
+  // Bumped after a mutation (e.g. Record Payment) to refetch totals + ledger + worklist.
   const [refreshKey, setRefreshKey] = useState(0)
 
   // Filters — shared: date range + patient search; tab-specific: category / method.
@@ -190,6 +199,25 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
     return () => { cancelled = true }
   }, [showClinicView, dateFrom, dateTo, methodFilter, refreshKey])
 
+  // Collections worklist — every patient owing > 0 (not date-filtered; it's the current
+  // book of debt). Refetched on refreshKey so a settled patient drops off after collect.
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!showClinicView) { if (!cancelled) setCollectionsLoading(false); return }
+      if (!isSupabaseConfigured()) { if (!cancelled) { setCollections([]); setCollectionsLoading(false) } return }
+      if (!cancelled) { setCollectionsLoading(true); setCollectionsError(null) }
+      try {
+        const rows = await getOutstandingCollections()
+        if (!cancelled) { setCollections(rows || []); setCollectionsLoading(false) }
+      } catch (err) {
+        if (!cancelled) { console.error('[FinancePage] collections load failed:', err); setCollectionsError(err); setCollectionsLoading(false) }
+      }
+    }
+    run()
+    return () => { cancelled = true }
+  }, [showClinicView, refreshKey])
+
   // Client-side patient-name filter across both tabs (server already scoped by date/etc.).
   const visibleCharges = useMemo(() => {
     const q = patientQuery.trim().toLowerCase()
@@ -244,7 +272,7 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
             variant="primary"
             size="md"
             iconStart={Icons.plus}
-            onClick={() => setShowRecord(true)}
+            onClick={() => { setCollect(null); setShowRecord(true) }}
           >
             {isRTL ? 'تسجيل دفعة' : 'Record Payment'}
           </Button>
@@ -255,6 +283,17 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
           view): Billed / Collected / Outstanding (net), per currency, never blended.
           All-time clinic totals. Modals render at page root (below), never inside this. */}
       <LedgerTotalsHeader totals={totals} loading={totalsLoading} error={totalsError} isRTL={isRTL} />
+
+      {/* Collections worklist — patients who owe (gross "To collect"), each with a
+          per-currency Collect action that pre-fills Record Payment. */}
+      <CollectionsPanel
+        collections={collections}
+        loading={collectionsLoading}
+        error={collectionsError}
+        canCollect={canRecord}
+        onCollect={(prefill) => { setCollect(prefill); setShowRecord(true) }}
+        isRTL={isRTL}
+      />
 
       {/* Shared filters: date range + patient search (always); plus a tab-specific
           filter — category on Charges, method on Payments. */}
@@ -327,8 +366,12 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
         <RecordPaymentModal
           dir={dir}
           isRTL={isRTL}
-          onClose={() => setShowRecord(false)}
-          onSaved={() => { setShowRecord(false); setRefreshKey(k => k + 1) }}
+          initialPatient={collect?.patient || null}
+          initialAmountMinor={collect?.amountMinor}
+          initialCurrency={collect?.currency}
+          lockPatient={!!collect}
+          onClose={() => { setShowRecord(false); setCollect(null) }}
+          onSaved={() => { setShowRecord(false); setCollect(null); setRefreshKey(k => k + 1) }}
           onError={(msg) => toast?.(msg, 'error')}
           onSuccess={(msg) => toast?.(msg, 'success')}
         />
@@ -415,6 +458,81 @@ function LedgerTotalsHeader({ totals, loading, error, isRTL }) {
         )
       })}
     </div>
+  )
+}
+
+// ─── Collections worklist ───────────────────────────────────────────────────
+// Patients who owe (getOutstandingCollections). "To collect" is GROSS — only the
+// per-currency positive balances, patients in debit only. It differs from the KPI
+// "Outstanding (net)", which nets in patient credits. Each owed currency gets its
+// own Collect button (a payment is single-currency) that pre-fills Record Payment.
+function CollectionsPanel({ collections, loading, error, canCollect, onCollect, isRTL }) {
+  return (
+    <GlassCard padding="lg" className="mb-6">
+      <div className="flex items-start justify-between gap-3 mb-1">
+        <h3 className="text-base font-semibold text-navy-900 m-0">{isRTL ? 'التحصيل' : 'To collect'}</h3>
+        <span className="text-[11px] text-navy-400 text-end">
+          {isRTL ? 'إجمالي المستحق — المرضى المدينون فقط' : 'Gross owed — patients in debit only'}
+        </span>
+      </div>
+      <p className="text-[11px] text-navy-400 m-0 mb-4">
+        {isRTL
+          ? 'يختلف عن «المتبقّي (صافي)» أعلاه لأن الصافي يشمل أرصدة المرضى الدائنة.'
+          : 'Differs from "Outstanding (net)" above — net nets in patient credits.'}
+      </p>
+
+      {loading ? (
+        <div className="py-8 text-center text-sm text-navy-500">{isRTL ? 'جاري التحميل...' : 'Loading...'}</div>
+      ) : error ? (
+        <div className="py-8 text-center text-sm text-rose-600">{isRTL ? 'تعذّر تحميل قائمة التحصيل' : 'Could not load collections'}</div>
+      ) : collections.length === 0 ? (
+        <div className="py-8 text-center text-sm text-navy-500">{isRTL ? 'لا توجد أرصدة مستحقة' : 'No outstanding balances'}</div>
+      ) : (
+        <ul className="flex flex-col">
+          {collections.map(c => {
+            const owed = Object.entries(c.balances || {}).filter(([, v]) => Number(v) > 0)
+            if (!owed.length) return null
+            const dateStr = c.latestChargeAt
+              ? new Date(c.latestChargeAt).toLocaleDateString(isRTL ? 'ar-IQ-u-ca-gregory' : 'en-US')
+              : ''
+            return (
+              <li key={c.patientId} className="flex items-center gap-3 py-3 border-b border-navy-100/60 last:border-b-0">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-navy-900 truncate">{c.fullName || '—'}</div>
+                  <div className="text-xs text-navy-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    {c.phone && <span className="tabular-nums" dir="ltr">{c.phone}</span>}
+                    {c.phone && dateStr && <span>·</span>}
+                    {dateStr && <span>{isRTL ? 'آخر رسم' : 'last charge'} {dateStr}</span>}
+                  </div>
+                </div>
+                <div className="flex items-center gap-x-4 gap-y-2 flex-wrap justify-end">
+                  {owed.map(([cur, v]) => (
+                    <div key={cur} className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-navy-900 tabular-nums whitespace-nowrap">
+                        {formatMoney(Number(v), cur)} <span className="text-navy-400 font-normal">{cur}</span>
+                      </span>
+                      {canCollect && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onCollect({
+                            patient: { id: c.patientId, full_name: c.fullName, phone: c.phone },
+                            amountMinor: Number(v),
+                            currency: cur,
+                          })}
+                        >
+                          {isRTL ? 'تحصيل' : 'Collect'}
+                        </Button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </GlassCard>
   )
 }
 
@@ -616,13 +734,20 @@ function PaymentsLedger({ payments, loading, error, isRTL }) {
 
 
 // ─── Record-payment modal ──────────────────────────────────────────────────
-function RecordPaymentModal({ dir, isRTL, onClose, onSaved, onError, onSuccess }) {
-  const [patient, setPatient] = useState(null)
+function RecordPaymentModal({
+  dir, isRTL, onClose, onSaved, onError, onSuccess,
+  initialPatient = null, initialAmountMinor, initialCurrency, lockPatient = false,
+}) {
+  // The modal remounts each time it opens (showRecord toggles), so these initializers
+  // pick up the current Collect pre-fill on every open.
+  const [patient, setPatient] = useState(initialPatient)
 
   const [plans, setPlans] = useState([])
   const [planId, setPlanId] = useState('')
-  const [amount, setAmount] = useState('')
-  const [currency, setCurrency] = useState('IQD')
+  const [amount, setAmount] = useState(
+    initialAmountMinor != null && initialCurrency ? String(fromMinor(initialAmountMinor, initialCurrency)) : '',
+  )
+  const [currency, setCurrency] = useState(initialCurrency || 'IQD')
   const [method, setMethod] = useState('cash')
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -674,7 +799,7 @@ function RecordPaymentModal({ dir, isRTL, onClose, onSaved, onError, onSuccess }
         <form onSubmit={e => { e.preventDefault(); handleSubmit() }} className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold text-navy-800 m-0">
-              {isRTL ? 'تسجيل دفعة' : 'Record Payment'}
+              {lockPatient ? (isRTL ? 'تحصيل دفعة' : 'Collect payment') : (isRTL ? 'تسجيل دفعة' : 'Record Payment')}
             </h3>
             <button
               type="button"
@@ -696,7 +821,7 @@ function RecordPaymentModal({ dir, isRTL, onClose, onSaved, onError, onSuccess }
               onSelect={setPatient}
               isRTL={isRTL}
               dir={dir}
-              disabled={submitting}
+              disabled={submitting || lockPatient}
             />
           </div>
 
