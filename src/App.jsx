@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { T } from './translations'
 import { C, makeBtn, card } from './design'
@@ -65,6 +65,7 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
 import { queryClient } from './lib/queryClient'
+import { useInfiniteQuery, useMutation } from '@tanstack/react-query'
 import * as db from './lib/database'
 import { reversePayment, createCharge, voidCharge, getPatientBalance, fetchChargesByPatient } from './lib/billing'
 import { BalanceSummary, ChargesSection } from './components/BillingSections'
@@ -214,9 +215,9 @@ export default function App() {
   const setPage = useCallback((p) => navigate('/' + p), [navigate])
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [userRole, setUserRole] = useState('owner')
-  const [patients, setPatients] = useState([])
-  const [patientsTotal, setPatientsTotal] = useState(0)
-  const [patientsLoadingMore, setPatientsLoadingMore] = useState(false)
+  // patients / patientsTotal / patientsLoadingMore now come from a useInfiniteQuery
+  // defined below (after all its deps: dentalOrgId, patientFilterDoctorId, demoMode,
+  // isOperator). See the "Patients — TanStack Query" section.
   // "My patients" filter (PR #6): null = all, otherwise a doctor id. PatientsPage
   // owns the toggle UI / role-default / localStorage and lifts the id up here;
   // the list fetch (which lives in this component) applies it server-side.
@@ -370,16 +371,13 @@ export default function App() {
   // Fetch data from Supabase when user logs in
   const loadAllData = async () => {
     if (demoMode) {
-      // Read-only sample data for the ?demo=1 path. Wait for the dynamic
-      // import to land before populating state.
-      if (!sampleData) return
-      setPatients(sampleData.SAMPLE_DENTAL_PATIENTS || [])
-      setPatientsTotal((sampleData.SAMPLE_DENTAL_PATIENTS || []).length)
+      // Sample patients are derived from sampleData in the Patients query section
+      // below (query is disabled in demo) — nothing to load here.
       return
     }
     if (!useDB) {
       // No Supabase configured (dev only). Show empty state.
-      setPatients([]); setPatientsTotal(0); setAllPayments([])
+      setAllPayments([])
       return
     }
     // Operator without impersonation has no org context; calling getCurrentOrgId()
@@ -393,7 +391,7 @@ export default function App() {
     // as cleared — they'd disagree, the guard would miss, and the throw would
     // surface as the banner.
     if (isOperator && !getImpersonationContext()) {
-      setPatients([]); setPatientsTotal(0); setAllPayments([])
+      setAllPayments([])
       setDataLoading(false)
       return
     }
@@ -418,12 +416,8 @@ export default function App() {
         // the operator (Sprint 0+). The legacy onboarding wizard is gone.
       }
 
-      const [patientsPage, rawPayments] = await Promise.all([
-        db.fetchPatients(),
-        db.fetchAllPayments().catch(() => []),
-      ])
-      setPatients(patientsPage.rows)
-      setPatientsTotal(patientsPage.total)
+      // Patients are loaded by the useInfiniteQuery (keyed on dentalOrgId) — not here.
+      const rawPayments = await db.fetchAllPayments().catch(() => [])
       setAllPayments(rawPayments)
     } catch (err) {
       console.error('Data load error:', err)
@@ -442,12 +436,9 @@ export default function App() {
     try {
       const org = await db.fetchOrg(orgId)
       if (org) setOrgSettings(org)
-      const [patientsPage, rawPayments] = await Promise.all([
-        db.fetchPatientsForOrg(orgId),
-        db.fetchPaymentsForOrg(orgId),
-      ])
-      setPatients(patientsPage.rows)
-      setPatientsTotal(patientsPage.total)
+      // Patients load via the useInfiniteQuery (impersonation branch, keyed on the
+      // impersonated orgId) — not here.
+      const rawPayments = await db.fetchPaymentsForOrg(orgId)
       setAllPayments(rawPayments)
     } catch (err) {
       console.error('Impersonation data load error:', err)
@@ -457,58 +448,108 @@ export default function App() {
     }
   }
 
-  // Fetch the next page of patients and merge into state.
-  const loadMorePatients = useCallback(async () => {
-    if (!useDB) return
-    if (patientsLoadingMore) return
-    if (patients.length >= patientsTotal) return
+  // ── Patients — TanStack Query (org-scoped, paginated, optimistic mutations) ──
+  // Reference pattern (see ActivityLogTab): key = ['patients', orgId, serverParams].
+  // filterDoctorId is a SERVER param (changes the result) so it's in the key — switching
+  // it swaps to a fresh cache entry (the old my-filter refetch effect is gone). Search is
+  // a SEPARATE path inside PatientsPage (searchResults), intentionally not keyed here.
+  // Disabled in demo / no-org-operator; patients then derive from sampleData / empty.
+  const patientsQueryEnabled = useDB && !demoMode && !!dentalOrgId && !(isOperator && !impersonation)
+  const patientsQueryKey = ['patients', dentalOrgId, { filterDoctorId: patientFilterDoctorId || null }]
+  const patientsQuery = useInfiniteQuery({
+    queryKey: patientsQueryKey,
+    queryFn: ({ pageParam = 0 }) => (impersonation
+      ? db.fetchPatientsForOrg(impersonation.orgId, pageParam)
+      : db.fetchPatients(pageParam, undefined, { primaryDoctorId: patientFilterDoctorId || undefined })),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((n, pg) => n + (pg.rows?.length || 0), 0)
+      return loaded < (lastPage?.total || 0) ? loaded : undefined
+    },
+    enabled: patientsQueryEnabled,
+  })
+  // Derived — same names/shapes children already consume. Demo derives from sampleData
+  // (query disabled); otherwise flatten the infinite pages.
+  const patients = useMemo(
+    () => (demoMode
+      ? (sampleData?.SAMPLE_DENTAL_PATIENTS || [])
+      : (patientsQuery.data?.pages.flatMap(pg => pg.rows) || [])),
+    [demoMode, sampleData, patientsQuery.data],
+  )
+  const patientsTotal = demoMode ? patients.length : (patientsQuery.data?.pages?.[0]?.total ?? patients.length)
+  const patientsLoadingMore = patientsQuery.isFetchingNextPage
+  const loadMorePatients = useCallback(() => {
+    if (!patientsQuery.hasNextPage || patientsQuery.isFetchingNextPage) return
     if (!checkSupabaseRateLimit()) {
       addToast(isRTL ? 'كثرة الطلبات، حاول لاحقاً' : 'Too many requests, try again shortly', 'error')
       return
     }
-    setPatientsLoadingMore(true)
-    try {
-      const offset = patients.length
-      const page = impersonation
-        ? await db.fetchPatientsForOrg(impersonation.orgId, offset)
-        : await db.fetchPatients(offset, undefined, { primaryDoctorId: patientFilterDoctorId || undefined })
-      setPatients([...patients, ...page.rows])
-      setPatientsTotal(page.total)
-    } catch (err) {
-      console.error('Load more patients error:', err)
-      addToast(isRTL ? 'فشل تحميل المزيد' : 'Failed to load more', 'error')
-    } finally {
-      setPatientsLoadingMore(false)
-    }
-  }, [useDB, patientsLoadingMore, patients, patientsTotal, impersonation, patientFilterDoctorId, addToast, isRTL])
+    patientsQuery.fetchNextPage()
+  }, [patientsQuery, addToast, isRTL])
 
-  // Re-fetch page 1 when the "My patients" filter changes (PR #6). First-run
-  // guarded so the initial mount doesn't duplicate loadAllData's unfiltered
-  // load. Scoped to the normal (non-impersonation) path — operators don't have
-  // a doctor caseload. Reads the filter from `patientFilterDoctorId`.
-  const patientFilterFirstRun = useRef(true)
-  useEffect(() => {
-    if (patientFilterFirstRun.current) { patientFilterFirstRun.current = false; return }
-    if (!useDB || impersonation) return
-    let cancelled = false
-    ;(async () => {
-      setPatientsLoadingMore(true)
-      try {
-        const page = await db.fetchPatients(0, undefined, { primaryDoctorId: patientFilterDoctorId || undefined })
-        if (cancelled) return
-        setPatients(page.rows)
-        setPatientsTotal(page.total)
-      } catch (err) {
-        if (cancelled) return
-        console.error('Patient filter reload error:', err)
-        addToast(isRTL ? 'فشل تطبيق عامل التصفية' : 'Failed to apply filter', 'error')
-      } finally {
-        if (!cancelled) setPatientsLoadingMore(false)
-      }
-    })()
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [patientFilterDoctorId])
+  // Optimistic write helper: patch page 0 of the infinite cache in place.
+  const patchPatientsCache = (updater) => {
+    queryClient.setQueryData(patientsQueryKey, (old) => {
+      if (!old?.pages?.length) return old
+      return { ...old, pages: old.pages.map((pg, i) => (i === 0 ? updater(pg) : pg)) }
+    })
+  }
+
+  const addPatientMutation = useMutation({
+    mutationFn: ({ raw }) => db.insertPatient(raw, dentalOrgId),
+    onMutate: async ({ optimistic }) => {
+      await queryClient.cancelQueries({ queryKey: patientsQueryKey })
+      const prev = queryClient.getQueryData(patientsQueryKey)
+      patchPatientsCache(pg => ({ ...pg, rows: [optimistic, ...pg.rows], total: pg.total + 1 }))
+      return { prev }
+    },
+    onSuccess: (saved, { optimistic }) => {
+      patchPatientsCache(pg => ({ ...pg, rows: pg.rows.map(x => (x.id === optimistic.id ? saved : x)) }))
+    },
+    onError: (err, _vars, ctx) => {
+      console.error('Add patient error:', err)
+      if (ctx?.prev) queryClient.setQueryData(patientsQueryKey, ctx.prev)
+      addToast(isRTL ? 'خطأ في إضافة المريض' : 'Error adding patient', 'error')
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['patients', dentalOrgId] }),
+  })
+
+  const updatePatientMutation = useMutation({
+    mutationFn: ({ id, data }) => db.patchPatient(id, data),
+    onMutate: async ({ id, data }) => {
+      await queryClient.cancelQueries({ queryKey: patientsQueryKey })
+      const prev = queryClient.getQueryData(patientsQueryKey)
+      patchPatientsCache(pg => ({ ...pg, rows: pg.rows.map(p => (p.id === id
+        ? { ...p, ...data, fullName: data.full_name ?? data.fullName ?? p.fullName, full_name: data.full_name ?? data.fullName ?? p.fullName }
+        : p)) }))
+      return { prev }
+    },
+    onSuccess: (saved, { id }) => {
+      patchPatientsCache(pg => ({ ...pg, rows: pg.rows.map(p => (p.id === id ? saved : p)) }))
+    },
+    onError: (err, _vars, ctx) => {
+      console.error('Update patient error:', err)
+      if (ctx?.prev) queryClient.setQueryData(patientsQueryKey, ctx.prev)
+      addToast(isRTL ? 'خطأ في التحديث' : 'Error updating patient', 'error')
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['patients', dentalOrgId] }),
+  })
+
+  const deletePatientMutation = useMutation({
+    mutationFn: ({ id }) => db.removePatient(id),
+    onMutate: async ({ id }) => {
+      await queryClient.cancelQueries({ queryKey: patientsQueryKey })
+      const prev = queryClient.getQueryData(patientsQueryKey)
+      patchPatientsCache(pg => ({ ...pg, rows: pg.rows.filter(p => p.id !== id), total: Math.max(0, pg.total - 1) }))
+      return { prev }
+    },
+    onError: (err, _vars, ctx) => {
+      console.error('Delete patient error:', err)
+      if (ctx?.prev) queryClient.setQueryData(patientsQueryKey, ctx.prev)
+      addToast(isRTL ? 'خطأ في الحذف' : 'Error deleting patient', 'error')
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ['patients', dentalOrgId] }),
+  })
 
   // Initial data load on sign-in (or impersonation switch).
   // Skip when a pending invite exists — the invite-apply effect will
@@ -548,8 +589,7 @@ export default function App() {
   const handleSignOut = async () => {
     await signOut()
     setUser(null)
-    setPatients([])
-    setPatientsTotal(0)
+    queryClient.clear()
     setOrgSettings({})
     setShowUserMenu(false)
     setImpersonation(null)
@@ -579,8 +619,6 @@ export default function App() {
       localStorage.removeItem('velo_impersonating')
       localStorage.removeItem('velo_admin_session')
       setOrgSettings({})
-      setPatients([])
-      setPatientsTotal(0)
       setAllPayments([])
       loadAllData()
       navigate('/agency')
@@ -664,8 +702,6 @@ export default function App() {
     localStorage.removeItem('velo_impersonating')
     localStorage.removeItem('velo_admin_session')
     setOrgSettings({})
-    setPatients([])
-    setPatientsTotal(0)
     setAllPayments([])
     loadAllData()
     navigate('/agency')
@@ -675,21 +711,17 @@ export default function App() {
 
   const toggleLang = () => setLang(l => l === 'en' ? 'ar' : 'en')
 
-  // ── Patient CRUD — Supabase-backed with optimistic local updates ──────
+  // ── Patient CRUD — optimistic via the TanStack Query mutations above (cache
+  // patched in onMutate for instant feedback; rollback on error; invalidate on
+  // settle). Demo mode is read-only (option a). ────────────────────────────────
   const addPatient = async (raw) => {
     if (!requirePerm('contacts', 'w')) return
     const fullName = (raw.full_name || raw.fullName || '').trim()
     const phone = (raw.phone || '').trim()
-    if (!fullName) {
-      addToast(isRTL ? 'الاسم مطلوب' : 'Full name is required', 'error')
-      return
-    }
-    if (!phone) {
-      addToast(isRTL ? 'رقم الهاتف مطلوب' : 'Phone is required', 'error')
-      return
-    }
-    const orgId = impersonation?.orgId ?? orgSettings?.id
-    if (useDB && !orgId) {
+    if (!fullName) { addToast(isRTL ? 'الاسم مطلوب' : 'Full name is required', 'error'); return }
+    if (!phone) { addToast(isRTL ? 'رقم الهاتف مطلوب' : 'Phone is required', 'error'); return }
+    if (demoMode) { addToast(isRTL ? 'الوضع التجريبي للقراءة فقط' : 'Demo mode is read-only', 'error'); return }
+    if (!dentalOrgId) {
       addToast(isRTL ? 'لا يوجد سياق منظمة — يرجى التحديث' : 'No organization context — please refresh.', 'error')
       return
     }
@@ -706,49 +738,21 @@ export default function App() {
       primaryDoctorId: raw.primary_doctor_id ?? raw.primaryDoctorId ?? null,
       createdAt: new Date().toISOString(),
     }
-    setPatients(prev => [optimistic, ...prev])
-    setPatientsTotal(n => n + 1)
     addToast(isRTL ? 'تمت إضافة المريض' : 'Patient added', 'success')
     pushNotification('contact', isRTL ? 'مريض جديد' : 'New patient added', fullName)
-    if (useDB) {
-      try {
-        const saved = await db.insertPatient(raw, orgId)
-        setPatients(prev => prev.map(x => x.id === optimistic.id ? saved : x))
-      } catch (err) {
-        console.error('Add patient error:', err)
-        addToast(isRTL ? 'خطأ في إضافة المريض' : 'Error adding patient', 'error')
-        loadAllData()
-      }
-    }
+    addPatientMutation.mutate({ raw, optimistic })
   }
   const updatePatient = async (id, data) => {
     if (!requirePerm('contacts', 'w')) return
-    setPatients(prev => prev.map(p => p.id === id ? { ...p, ...data, fullName: data.full_name ?? data.fullName ?? p.fullName, full_name: data.full_name ?? data.fullName ?? p.fullName } : p))
+    if (demoMode) { addToast(isRTL ? 'الوضع التجريبي للقراءة فقط' : 'Demo mode is read-only', 'error'); return }
     addToast(isRTL ? 'تم تحديث المريض' : 'Patient updated', 'success')
-    if (useDB) {
-      try {
-        const saved = await db.patchPatient(id, data)
-        setPatients(prev => prev.map(p => p.id === id ? saved : p))
-      } catch (err) {
-        console.error('Update patient error:', err)
-        addToast(isRTL ? 'خطأ في التحديث' : 'Error updating patient', 'error')
-        loadAllData()
-      }
-    }
+    updatePatientMutation.mutate({ id, data })
   }
   const deletePatient = async (id) => {
     if (!requirePerm('contacts', 'd')) return
-    setPatients(prev => prev.filter(p => p.id !== id))
-    setPatientsTotal(n => Math.max(0, n - 1))
+    if (demoMode) { addToast(isRTL ? 'الوضع التجريبي للقراءة فقط' : 'Demo mode is read-only', 'error'); return }
     addToast(isRTL ? 'تم حذف المريض' : 'Patient deleted', 'success')
-    if (useDB) {
-      try { await db.removePatient(id) }
-      catch (err) {
-        console.error('Delete patient error:', err)
-        addToast(isRTL ? 'خطأ في الحذف' : 'Error deleting patient', 'error')
-        loadAllData()
-      }
-    }
+    deletePatientMutation.mutate({ id })
   }
 
   // Returns true only when the save is genuinely persisted (or accepted in demo
