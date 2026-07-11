@@ -51,9 +51,6 @@ function mapCharge(row) {
     currency: row.currency,
     createdBy: row.created_by || null,
     createdAt: row.created_at,
-    // Embedded doctor name (via the charges_doctor_fkey join in
-    // fetchChargesByPatient); null on the insert path, which the UI refetches.
-    doctorName: row.doctor?.full_name || null,
   }
 }
 
@@ -178,28 +175,6 @@ export async function createCharge(c) {
   })
 
   return mapCharge(data)
-}
-
-// ─── 1b. fetchChargesByPatient ───────────────────────────────────────────────
-
-/**
- * List a patient's charges, newest first — the charges half of the Billing tab.
- * Mirrors database.js fetchPaymentsByPatient. Surfaces `kind`/`reversesId` (via
- * mapCharge) so voids and voided-originals render distinctly, and embeds the
- * rendering doctor's name (charges_doctor_fkey — disambiguated from created_by).
- */
-export async function fetchChargesByPatient(patientId) {
-  if (!patientId) throw new Error('fetchChargesByPatient: patientId is required')
-  await requireUser()
-  const orgId = await getCurrentOrgId()
-  const { data, error } = await supabase
-    .from('charges')
-    .select('*, doctor:profiles!charges_doctor_fkey(full_name)')
-    .eq('org_id', orgId)
-    .eq('patient_id', patientId)
-    .order('created_at', { ascending: false })
-  if (error) throw error
-  return (data || []).map(mapCharge)
 }
 
 // ─── 2. recordPayment ────────────────────────────────────────────────────────
