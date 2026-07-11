@@ -20,6 +20,23 @@ import { listDoctorsInOrg } from '../lib/profiles'
 import useCurrentProfile from '../hooks/useCurrentProfile'
 import { useIsOperator } from '../lib/operator'
 
+// Income-category options for the Add Charge form. Values MUST match the
+// charges_category_check DB constraint (clinical/product/consultation/other).
+// 'clinical' is the default and the only category requiring a doctor (UI gate).
+const CHARGE_CATEGORY_OPTIONS = [
+  { value: 'clinical', en: 'Clinical', ar: 'علاجي' },
+  { value: 'product', en: 'Product sale', ar: 'بيع منتج' },
+  { value: 'consultation', en: 'Consultation', ar: 'استشارة' },
+  { value: 'other', en: 'Other', ar: 'أخرى' },
+]
+// Short badge labels for the charges list — clinical is the norm, so it gets no
+// badge; only non-clinical "other income" is tagged to stand out.
+const CHARGE_CATEGORY_BADGE = {
+  product: { en: 'Product', ar: 'منتج' },
+  consultation: { en: 'Consultation', ar: 'استشارة' },
+  other: { en: 'Other', ar: 'أخرى' },
+}
+
 // ─── Balance summary ─────────────────────────────────────────────────────────
 
 export function BalanceSummary({ balance, isRTL }) {
@@ -137,6 +154,11 @@ export function ChargesSection({ patient, charges, addCharge, onVoid, dir, isRTL
                         {isRTL ? 'مُبطلة' : 'Voided'}
                       </span>
                     )}
+                    {CHARGE_CATEGORY_BADGE[c.category] && (
+                      <span className="inline-flex items-center rounded-full bg-sky-50 text-sky-700 border border-sky-200 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                        {isRTL ? CHARGE_CATEGORY_BADGE[c.category].ar : CHARGE_CATEGORY_BADGE[c.category].en}
+                      </span>
+                    )}
                     <span className="truncate">
                       {c.description}
                       {c.doctorName && <> &middot; {c.doctorName}</>}
@@ -201,6 +223,7 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
   const isDoctor = profile?.role === 'doctor'
   const primaryDoctorId = patient.primary_doctor_id ?? patient.primaryDoctorId ?? ''
   const [form, setForm] = useState({
+    category: 'clinical',
     description: '',
     amount: '',
     currency: 'IQD',
@@ -239,8 +262,11 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
     return list
   })()
 
+  // Doctor is required for clinical charges only (DB stays permissive; this is the
+  // UI-enforced rule from the locked decision). Non-clinical charges send no doctor.
+  const isClinical = form.category === 'clinical'
   const amountMinor = toMinor(form.amount, form.currency)
-  const valid = form.description.trim() && amountMinor >= 1 && form.doctorId
+  const valid = form.description.trim() && amountMinor >= 1 && (!isClinical || form.doctorId)
 
   const submit = async (e) => {
     e.preventDefault()
@@ -248,10 +274,11 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
     setSubmitting(true)
     try {
       await onSubmit({
+        category: form.category,
         description: form.description.trim(),
         amountMinor,
         currency: form.currency,
-        doctorId: form.doctorId,
+        doctorId: isClinical ? form.doctorId : null,
       })
     } finally {
       setSubmitting(false)
@@ -270,6 +297,13 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
           <h3 className="text-lg font-semibold text-navy-900 m-0 mb-4">
             {isRTL ? 'إضافة رسوم' : 'Add Charge'}
           </h3>
+          <FormField label={isRTL ? 'الفئة' : 'Category'} dir={dir}>
+            <select value={form.category} onChange={e => setForm(p => ({ ...p, category: e.target.value }))} style={selectStyle(dir)}>
+              {CHARGE_CATEGORY_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{isRTL ? o.ar : o.en}</option>
+              ))}
+            </select>
+          </FormField>
           <FormField label={isRTL ? 'الوصف' : 'Description'} dir={dir}>
             <input
               value={form.description}
@@ -290,7 +324,9 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
               </select>
             </FormField>
           </div>
-          {isDoctor ? (
+          {/* Doctor field only for CLINICAL charges; non-clinical "other income"
+              (product/consultation/other) hides it and submits doctorId = null. */}
+          {isClinical && (isDoctor ? (
             <FormField label={isRTL ? 'الطبيب' : 'Doctor'} dir={dir}>
               <input value={profile?.full_name || (isRTL ? 'أنت' : 'You')} readOnly disabled style={{ ...inputStyle(dir), opacity: 0.7 }} />
             </FormField>
@@ -307,7 +343,7 @@ function AddChargeModal({ patient, profile, onClose, onSubmit, dir, isRTL }) {
                 </select>
               )}
             </FormField>
-          )}
+          ))}
           <div className="flex gap-2 justify-end mt-3">
             <Button variant="secondary" onClick={onClose}>{isRTL ? 'إلغاء' : 'Cancel'}</Button>
             <Button variant="primary" type="submit" disabled={!valid || submitting}>

@@ -34,6 +34,12 @@ import { insertPayment } from './database'
 
 const DESCRIPTION_MAX = 500
 
+// Income categories — MUST match the charges_category_check DB constraint exactly
+// (scripts/billing-charges-category-migration.sql). 'clinical' is the default and
+// the only category that requires a rendering doctor (enforced in the UI; the DB
+// stays permissive so non-clinical "other income" can have a null doctor_id).
+export const CHARGE_CATEGORIES = ['clinical', 'product', 'consultation', 'other']
+
 // ─── Mappers (snake_case row → camelCase; include the ledger columns) ────────
 
 function mapCharge(row) {
@@ -49,6 +55,7 @@ function mapCharge(row) {
     description: row.description || '',
     amountMinor: row.amount_minor != null ? Number(row.amount_minor) : 0,
     currency: row.currency,
+    category: row.category || 'clinical',
     createdBy: row.created_by || null,
     createdAt: row.created_at,
     // Embedded doctor name (via the charges_doctor_fkey join in
@@ -141,17 +148,24 @@ export async function createCharge(c) {
   const userId = await authUserId()
 
   const patientId = c.patient_id || c.patientId
-  const doctorId = c.doctor_id || c.doctorId
+  const doctorId = c.doctor_id || c.doctorId || null
+  // Default to 'clinical' when omitted so pre-category callers keep working; clamp
+  // to the allow-list so an unknown value can't reach (and be rejected by) the DB.
+  const category = CHARGE_CATEGORIES.includes(c.category) ? c.category : 'clinical'
   if (!patientId) throw new Error('createCharge: patient_id is required')
-  if (!doctorId) throw new Error('createCharge: doctor_id is required')
+  // Doctor is required for CLINICAL charges only (mirrors the UI gate). Non-clinical
+  // "other income" (product/consultation/other) may have no rendering doctor — the DB
+  // column is nullable, so we persist doctor_id = null.
+  if (category === 'clinical' && !doctorId) throw new Error('createCharge: doctor_id is required for clinical charges')
   const description = sanitizeText(c.description || '', DESCRIPTION_MAX)
   if (!description) throw new Error('createCharge: description is required')
 
   const sanitized = {
     patient_id: patientId,
     treatment_plan_item_id: c.treatment_plan_item_id || c.treatmentPlanItemId || null,
-    doctor_id: doctorId,
+    doctor_id: category === 'clinical' ? doctorId : null,
     kind: 'charge',
+    category,
     description,
     amount_minor: Math.max(1, toSafeNumber(c.amount_minor ?? c.amountMinor, 0)),
     currency: sanitizeText(c.currency || 'IQD', 8),
@@ -172,7 +186,8 @@ export async function createCharge(c) {
     payload: {
       amount_minor: sanitized.amount_minor,
       currency: sanitized.currency,
-      doctor_id: doctorId,
+      category,
+      doctor_id: sanitized.doctor_id,
       patient_id: patientId,
     },
   })
