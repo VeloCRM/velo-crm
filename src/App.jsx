@@ -65,7 +65,8 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
 import * as db from './lib/database'
-import { reversePayment } from './lib/billing'
+import { reversePayment, createCharge, voidCharge, getPatientBalance, fetchChargesByPatient } from './lib/billing'
+import { BalanceSummary, ChargesSection } from './components/BillingSections'
 import { isSessionExpired, touchSession, clearAllVeloData, sanitizePathParam, LIMITS, checkSupabaseRateLimit } from './lib/sanitize'
 import { rememberPendingInvite } from './lib/invitations'
 import { listAppointmentsForPatient } from './lib/appointments'
@@ -1797,15 +1798,33 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   void t
   void lang
   const isXrayTech = currentUserRole === 'xray_tech'
-  // Payments state — pulled lazily when the Payments tab is opened or on mount.
+  // Billing state (V1.5 Slice 4) — the Billing tab shows Balance → Charges →
+  // Payments. Payments load as in Slice 3; charges + balance load INDEPENDENTLY
+  // so a billing-schema gap (e.g. before the prod migration) can never break the
+  // payments view — they just stay empty.
   const [payments, setPayments] = useState([])
   const [paymentsLoading, setPaymentsLoading] = useState(true)
+  const [charges, setCharges] = useState([])
+  const [balance, setBalance] = useState({})
+
+  const reloadCharges = useCallback(
+    () => fetchChargesByPatient(patient.id).then(setCharges).catch(err => console.error('Charges reload error:', err)),
+    [patient.id],
+  )
+  const reloadBalance = useCallback(
+    () => getPatientBalance(patient.id).then(setBalance).catch(err => console.error('Balance reload error:', err)),
+    [patient.id],
+  )
+
   useEffect(() => {
     let cancelled = false
     setPaymentsLoading(true)
     db.fetchPaymentsByPatient(patient.id)
       .then(data => { if (!cancelled) { setPayments(data); setPaymentsLoading(false) } })
       .catch(() => { if (!cancelled) setPaymentsLoading(false) })
+    // Charges + balance load independently — never block or break the payments view.
+    fetchChargesByPatient(patient.id).then(c => { if (!cancelled) setCharges(c) }).catch(err => console.error('Charges load error:', err))
+    getPatientBalance(patient.id).then(b => { if (!cancelled) setBalance(b) }).catch(err => console.error('Balance load error:', err))
     return () => { cancelled = true }
   }, [patient.id])
 
@@ -1813,6 +1832,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
     try {
       const saved = await db.insertPayment({ ...raw, patient_id: patient.id })
       setPayments(prev => [saved, ...prev])
+      reloadBalance() // a collection lowers the owed balance
     } catch (err) {
       console.error('Add payment error:', err)
       toast?.(isRTL ? 'فشل إضافة الدفعة' : 'Failed to add payment', 'error')
@@ -1826,10 +1846,35 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
       await reversePayment(id)
       const data = await db.fetchPaymentsByPatient(patient.id)
       setPayments(data)
+      reloadBalance()
       toast?.(isRTL ? 'تم تسجيل قيد التصحيح — تبقى الدفعة الأصلية في السجل' : 'Reversal recorded — the original payment stays in history', 'success')
     } catch (err) {
       console.error('Reverse payment error:', err)
       toast?.(isRTL ? 'فشل عكس الدفعة' : 'Failed to reverse payment', 'error')
+    }
+  }
+  // Charges (V1.5 Slice 4). createCharge is doctor/owner (RLS); voidCharge is
+  // operator-only. Both refetch charges + balance so the headline stays accurate.
+  const addCharge = async (c) => {
+    try {
+      await createCharge({ ...c, patientId: patient.id })
+      await reloadCharges()
+      reloadBalance()
+      toast?.(isRTL ? 'تمت إضافة الرسوم' : 'Charge added', 'success')
+    } catch (err) {
+      console.error('Add charge error:', err)
+      toast?.(isRTL ? 'فشل إضافة الرسوم' : 'Failed to add charge', 'error')
+    }
+  }
+  const handleVoidCharge = async (id) => {
+    try {
+      await voidCharge(id)
+      await reloadCharges()
+      reloadBalance()
+      toast?.(isRTL ? 'تم تسجيل قيد إبطال — تبقى الرسوم الأصلية في السجل' : 'Void recorded — the original charge stays in history', 'success')
+    } catch (err) {
+      console.error('Void charge error:', err)
+      toast?.(isRTL ? 'فشل إبطال الرسوم' : 'Failed to void charge', 'error')
     }
   }
 
@@ -1857,7 +1902,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   const tabs = [
     { id: 'overview',     label: isRTL ? 'نظرة عامة'    : 'Overview' },
     { id: 'appointments', label: isRTL ? 'المواعيد'      : 'Appointments' },
-    { id: 'payments',     label: isRTL ? 'المدفوعات'     : 'Payments' },
+    { id: 'payments',     label: isRTL ? 'الفوترة'       : 'Billing' },
     { id: 'medical',      label: isRTL ? 'التاريخ الطبي' : 'Medical History' },
     { id: 'dental_chart', label: isRTL ? 'مخطط الأسنان' : 'Dental Chart' },
     { id: 'xrays',        label: isRTL ? 'الأشعة'        : 'X-rays' },
@@ -2121,7 +2166,13 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
               {profileTab === 'payments' && (
                 paymentsLoading
                   ? <DentalSpinner isRTL={isRTL} />
-                  : <PaymentsTab payments={payments} addPayment={addPayment} onReverse={handleReversePayment} dir={dir} isRTL={isRTL} currentUserRole={currentUserRole} />
+                  : (
+                    <div className="flex flex-col gap-4">
+                      <BalanceSummary balance={balance} isRTL={isRTL} />
+                      <ChargesSection patient={patient} charges={charges} addCharge={addCharge} onVoid={handleVoidCharge} dir={dir} isRTL={isRTL} />
+                      <PaymentsTab payments={payments} addPayment={addPayment} onReverse={handleReversePayment} dir={dir} isRTL={isRTL} currentUserRole={currentUserRole} />
+                    </div>
+                  )
               )}
               {profileTab === 'medical' && (
                 <Suspense fallback={<DentalSpinner isRTL={isRTL} />}>
