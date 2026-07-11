@@ -13,14 +13,14 @@
  * agency lives there, not here.
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Icons, Modal } from '../components/shared'
 import { isSupabaseConfigured } from '../lib/supabase'
 import {
   fetchPaymentsWithJoins,
   insertPayment,
 } from '../lib/database'
-import { searchPatientsForAppointment } from '../lib/appointments'
+import PatientPicker from '../components/PatientPicker'
 import { fetchTreatmentPlansForPatient } from '../lib/dental'
 import { formatMoney, toMinor } from '../lib/money'
 import { sanitizeNotes } from '../lib/sanitize'
@@ -425,11 +425,6 @@ function PaymentsTable({ rows, isRTL }) {
 // ─── Record-payment modal ──────────────────────────────────────────────────
 function RecordPaymentModal({ dir, isRTL, onClose, onSaved, onError, onSuccess }) {
   const [patient, setPatient] = useState(null)
-  const [search, setSearch] = useState('')
-  const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
-  const [showDropdown, setShowDropdown] = useState(false)
-  const searchTimer = useRef(null)
 
   const [plans, setPlans] = useState([])
   const [planId, setPlanId] = useState('')
@@ -438,25 +433,6 @@ function RecordPaymentModal({ dir, isRTL, onClose, onSaved, onError, onSuccess }
   const [method, setMethod] = useState('cash')
   const [notes, setNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
-
-  // Debounced patient search.
-  useEffect(() => {
-    if (!search || search.length < 2 || patient) { setResults([]); return }
-    setSearching(true)
-    clearTimeout(searchTimer.current)
-    searchTimer.current = setTimeout(async () => {
-      try {
-        const rows = await searchPatientsForAppointment(search)
-        setResults(rows)
-      } catch (err) {
-        console.error('[RecordPaymentModal] patient search:', err)
-        setResults([])
-      } finally {
-        setSearching(false)
-      }
-    }, 250)
-    return () => clearTimeout(searchTimer.current)
-  }, [search, patient])
 
   // Load the patient's open plans whenever a patient is selected.
   useEffect(() => {
@@ -522,59 +498,13 @@ function RecordPaymentModal({ dir, isRTL, onClose, onSaved, onError, onSuccess }
             <label className="text-xs font-medium text-navy-600 select-none">
               {isRTL ? 'المريض' : 'Patient'}
             </label>
-            {patient ? (
-              <div className="flex items-center gap-3 h-11 px-3.5 rounded-glass bg-white/85 border border-navy-100 shadow-glass-sm">
-                <span className="flex-1 font-semibold text-navy-800 truncate">{patient.full_name}</span>
-                {patient.phone && (
-                  <span className="text-[11px] text-navy-500" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                    {patient.phone}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => { setPatient(null); setSearch(''); setShowDropdown(true) }}
-                  aria-label={isRTL ? 'مسح' : 'Clear'}
-                  className="text-navy-400 hover:text-navy-700 transition-colors flex"
-                >
-                  {Icons.x(14)}
-                </button>
-              </div>
-            ) : (
-              <div className="relative">
-                <Input
-                  value={search}
-                  onChange={e => { setSearch(e.target.value); setShowDropdown(true) }}
-                  onFocus={() => setShowDropdown(true)}
-                  placeholder={isRTL ? 'ابحث بالاسم أو الرقم...' : 'Search by name or phone...'}
-                  iconStart={Icons.search}
-                />
-                {showDropdown && search.length >= 2 && (
-                  <div className="absolute top-[calc(100%+4px)] inset-x-0 z-20 max-h-56 overflow-y-auto rounded-glass border border-navy-100 bg-white shadow-glass-md">
-                    {searching ? (
-                      <div className="p-3 text-xs text-navy-500">{isRTL ? 'جاري البحث...' : 'Searching...'}</div>
-                    ) : results.length === 0 ? (
-                      <div className="p-3 text-xs text-navy-500">{isRTL ? 'لا توجد نتائج' : 'No results'}</div>
-                    ) : (
-                      results.map(p => (
-                        <button
-                          type="button"
-                          key={p.id}
-                          onClick={() => { setPatient(p); setShowDropdown(false); setSearch('') }}
-                          className="w-full text-start px-3 py-2.5 border-b border-navy-50 last:border-b-0 hover:bg-accent-cyan-50/60 transition-colors"
-                        >
-                          <div className="font-semibold text-navy-800 text-[13px]">{p.full_name}</div>
-                          {p.phone && (
-                            <div className="text-[11px] text-navy-500 mt-0.5" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                              {p.phone}
-                            </div>
-                          )}
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
+            <PatientPicker
+              selected={patient}
+              onSelect={setPatient}
+              isRTL={isRTL}
+              dir={dir}
+              disabled={submitting}
+            />
           </div>
 
           {/* Amount + currency */}
