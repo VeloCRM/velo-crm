@@ -51,8 +51,9 @@ export async function signOut() {
  */
 export async function getCurrentUser() {
   if (!isSupabaseConfigured()) return null
-  const { data: { user } } = await supabase.auth.getUser()
-  return user
+  // Local session read (no network round-trip) — same rationale as auth_session.js.
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.user ?? null
 }
 
 /**

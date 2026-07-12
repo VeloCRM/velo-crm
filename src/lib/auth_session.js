@@ -22,32 +22,61 @@
 import { supabase } from './supabase'
 
 let _orgIdCache = { userId: null, orgId: null }
+// In-flight profiles.org_id fetch, so concurrent callers for the same user share one
+// request instead of each hitting the DB before the cache is populated.
+let _orgIdInflight = null
 
 /**
- * Resolve the currently authenticated Supabase user. Throws if no session
- * (callers shouldn't catch — let the failure bubble to the toast pipeline).
+ * Read the current user from the LOCAL session — no network. supabase.auth
+ * getSession() reads the in-memory / localStorage session and only round-trips
+ * to the auth server when the access token is expired and needs a refresh (not
+ * on the hot path). Contrast getUser(), which ALWAYS makes a network call.
+ *
+ * Security is unchanged: the client knowing its own user id locally grants
+ * nothing. Every real query sends the signed JWT and RLS evaluates auth.uid()
+ * from the server-verified token — a forged local session produces an invalid
+ * JWT that PostgREST rejects. The old getUser() pre-check was a redundant extra
+ * round-trip re-validating a token that every subsequent query re-validates anyway.
+ */
+async function sessionUser() {
+  if (!supabase) return null
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.user || null
+}
+
+/**
+ * Resolve the currently authenticated Supabase user (local session read). Throws
+ * if there is no session — including the token-expired-and-unrefreshable case,
+ * where getSession() yields null (treated as unauthenticated, same as before).
+ * Callers shouldn't catch — let the failure bubble to the toast pipeline.
  */
 export async function requireUser() {
   if (!supabase) throw new Error('Not authenticated (Supabase is not configured)')
-  const { data: { user }, error } = await supabase.auth.getUser()
-  if (error) throw new Error(`Not authenticated: ${error.message}`)
+  const user = await sessionUser()
   if (!user) throw new Error('Not authenticated')
   return user
 }
 
 /**
- * Best-effort current user lookup. Returns null when not signed in instead
- * of throwing. Use only for read paths that are OK with no-op fallbacks
- * (most read paths should still call requireUser).
+ * Best-effort current user lookup (local session read). Returns null when not
+ * signed in instead of throwing. Use only for read paths that are OK with no-op
+ * fallbacks (most read paths should still call requireUser).
  */
 export async function getCurrentUser() {
-  if (!supabase) return null
   try {
-    const { data: { user } } = await supabase.auth.getUser()
-    return user || null
+    return await sessionUser()
   } catch {
     return null
   }
+}
+
+/**
+ * The current user's id from the LOCAL session, or null. Convenience for the many
+ * "stamp created_by / recorded_by" helpers that only need the id — no network.
+ */
+export async function getSessionUserId() {
+  const user = await sessionUser()
+  return user?.id ?? null
 }
 
 /**
@@ -55,7 +84,11 @@ export async function getCurrentUser() {
  * missing org membership. Cached per-session.
  */
 export async function getCurrentOrgId() {
-  const user = await requireUser()
+  // Resolve the session ONCE here (local read) rather than delegating to
+  // requireUser() — callers already pair requireUser() + getCurrentOrgId(), so
+  // this avoids a second nested session read on every lib call.
+  const user = await sessionUser()
+  if (!user) throw new Error('Not authenticated')
   // Operator impersonation: when an operator is acting on a tenant, the
   // effective org context comes from the impersonation record, not from
   // profiles.org_id (operators don't belong to a clinic org). Bypass cache —
@@ -65,15 +98,27 @@ export async function getCurrentOrgId() {
   if (_orgIdCache.userId === user.id && _orgIdCache.orgId) {
     return _orgIdCache.orgId
   }
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('org_id')
-    .eq('id', user.id)
-    .maybeSingle()
-  if (error) throw new Error(`Could not resolve org: ${error.message}`)
-  if (!data?.org_id) throw new Error('No org membership for current user')
-  _orgIdCache = { userId: user.id, orgId: data.org_id }
-  return data.org_id
+  // Dedupe concurrent resolves for the same user — a patient page fires many
+  // org-scoped reads at once; without this each would fetch profiles.org_id before
+  // the cache is populated. Share one in-flight request.
+  if (_orgIdInflight && _orgIdInflight.userId === user.id) return _orgIdInflight.promise
+  const promise = (async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('org_id')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (error) throw new Error(`Could not resolve org: ${error.message}`)
+    if (!data?.org_id) throw new Error('No org membership for current user')
+    _orgIdCache = { userId: user.id, orgId: data.org_id }
+    return data.org_id
+  })()
+  _orgIdInflight = { userId: user.id, promise }
+  try {
+    return await promise
+  } finally {
+    if (_orgIdInflight?.promise === promise) _orgIdInflight = null
+  }
 }
 
 /**
@@ -82,6 +127,7 @@ export async function getCurrentOrgId() {
  */
 export function clearOrgIdCache() {
   _orgIdCache = { userId: null, orgId: null }
+  _orgIdInflight = null
 }
 
 /**

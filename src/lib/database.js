@@ -26,7 +26,7 @@ import {
   sanitizeSearch,
   toSafeNumber,
 } from './sanitize'
-import { requireUser, getCurrentOrgId } from './auth_session'
+import { requireUser, getCurrentOrgId, getSessionUserId } from './auth_session'
 import { logAuditEvent } from './audit'
 
 
@@ -342,7 +342,7 @@ export async function fetchPaymentsWithJoins({ from, to, method, limit = 100 } =
 export async function insertPayment(p) {
   await requireUser()
   const orgId = await getCurrentOrgId()
-  const userId = (await supabase.auth.getUser()).data.user?.id
+  const userId = await getSessionUserId()
 
   if (!p.patient_id && !p.patientId) {
     throw new Error('insertPayment: patient_id is required')

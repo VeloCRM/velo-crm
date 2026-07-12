@@ -29,7 +29,7 @@
 
 import { supabase } from './supabase'
 import { sanitizeText, sanitizeNotes } from './sanitize'
-import { requireUser, getCurrentOrgId } from './auth_session'
+import { requireUser, getCurrentOrgId, getSessionUserId } from './auth_session'
 import { logAuditEvent } from './audit'
 
 
@@ -63,8 +63,7 @@ async function assertDoctorInOrg(doctorId, orgId) {
  * runs in normal flows.
  */
 async function currentUserId() {
-  const result = await supabase.auth.getUser()
-  return result.data.user?.id ?? null
+  return getSessionUserId()
 }
 
 /**

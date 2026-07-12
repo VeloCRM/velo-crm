@@ -20,8 +20,10 @@
  * means one query per session, regardless of how many components ask.
  */
 
-import { createContext, useContext, useEffect, useState } from 'react'
+import { createContext, useContext, useEffect } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { supabase, isSupabaseConfigured } from '../lib/supabase'
+import { queryClient } from '../lib/queryClient'
 
 const OperatorContext = createContext({
   loading: true,
@@ -67,45 +69,32 @@ async function fetchIsOperatorFromServer() {
  *   - exposes a manual `refresh()` for callers that mutate operator state.
  */
 export function OperatorProvider({ children }) {
-  const [state, setState] = useState({ loading: true, isOperator: false })
+  // One cached fetch, shared by every isOperator consumer. TanStack Query dedupes
+  // the mount fetch + StrictMode double-invoke into a single request; staleTime
+  // Infinity means operator status is fetched ONCE per session (it can't change
+  // mid-session) — previously the mount fetch + the onAuthStateChange INITIAL_SESSION
+  // event + StrictMode fired ~4-6 `operators?select=user_id` requests per page.
+  const { data: isOperator = false, isLoading, refetch } = useQuery({
+    queryKey: ['isOperator'],
+    queryFn: fetchIsOperatorFromServer,
+    staleTime: Infinity,
+  })
 
-  const refresh = async () => {
-    setState(prev => ({ ...prev, loading: true }))
-    const isOperator = await fetchIsOperatorFromServer()
-    setState({ loading: false, isOperator })
-  }
-
+  // React to real auth transitions only: refetch on sign-in, force false on sign-out.
+  // (TOKEN_REFRESHED / INITIAL_SESSION don't change operator status, so no refetch.)
   useEffect(() => {
-    let cancelled = false
-
-    ;(async () => {
-      const isOperator = await fetchIsOperatorFromServer()
-      if (!cancelled) setState({ loading: false, isOperator })
-    })()
-
-    if (!isSupabaseConfigured()) return () => { cancelled = true }
-
+    if (!isSupabaseConfigured()) return undefined
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_OUT') {
-        setState({ loading: false, isOperator: false })
-        return
-      }
-      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION') {
-        ;(async () => {
-          const isOperator = await fetchIsOperatorFromServer()
-          if (!cancelled) setState({ loading: false, isOperator })
-        })()
-      }
+      if (event === 'SIGNED_OUT') queryClient.setQueryData(['isOperator'], false)
+      else if (event === 'SIGNED_IN') refetch()
     })
+    return () => subscription?.unsubscribe?.()
+  }, [refetch])
 
-    return () => {
-      cancelled = true
-      subscription?.unsubscribe?.()
-    }
-  }, [])
+  const refresh = async () => { await refetch() }
 
   return (
-    <OperatorContext.Provider value={{ ...state, refresh }}>
+    <OperatorContext.Provider value={{ loading: isLoading, isOperator, refresh }}>
       {children}
     </OperatorContext.Provider>
   )
