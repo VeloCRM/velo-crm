@@ -28,7 +28,7 @@
 
 import { supabase } from './supabase'
 import { sanitizeText, sanitizeNotes, toSafeNumber } from './sanitize'
-import { requireUser, getCurrentOrgId } from './auth_session'
+import { requireUser, getCurrentOrgId, getSessionUserId } from './auth_session'
 import { logAuditEvent } from './audit'
 import { insertPayment } from './database'
 
@@ -95,7 +95,7 @@ function mapBillingPayment(row) {
 // ─── Shared internals ────────────────────────────────────────────────────────
 
 async function authUserId() {
-  return (await supabase.auth.getUser()).data.user?.id
+  return getSessionUserId()
 }
 
 /**

@@ -12,6 +12,7 @@
  */
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Icons, FormField, inputStyle, selectStyle, Modal } from './shared'
 import { GlassCard, Button } from './ui'
 import ToothLabel from './ToothLabel'
@@ -65,15 +66,9 @@ import { isHeic, convertHeicToJpeg } from '../lib/heicConverter'
 const EDIT_ROLES = new Set(['owner', 'doctor'])
 
 function useMyRole() {
-  const [role, setRole] = useState(null)
-  useEffect(() => {
-    let cancelled = false
-    fetchMyProfile()
-      .then(p => { if (!cancelled) setRole(p?.role || null) })
-      .catch(() => { if (!cancelled) setRole(null) })
-    return () => { cancelled = true }
-  }, [])
-  return role
+  // Shared ['myProfile'] cache — same fetch as hooks/useMyRole + useMyToothNotation.
+  const { data } = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile })
+  return data?.role || null
 }
 
 

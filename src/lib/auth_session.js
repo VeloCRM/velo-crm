@@ -22,6 +22,9 @@
 import { supabase } from './supabase'
 
 let _orgIdCache = { userId: null, orgId: null }
+// In-flight profiles.org_id fetch, so concurrent callers for the same user share one
+// request instead of each hitting the DB before the cache is populated.
+let _orgIdInflight = null
 
 /**
  * Read the current user from the LOCAL session — no network. supabase.auth
@@ -68,6 +71,15 @@ export async function getCurrentUser() {
 }
 
 /**
+ * The current user's id from the LOCAL session, or null. Convenience for the many
+ * "stamp created_by / recorded_by" helpers that only need the id — no network.
+ */
+export async function getSessionUserId() {
+  const user = await sessionUser()
+  return user?.id ?? null
+}
+
+/**
  * Resolve the caller's org_id from `profiles`. Throws on missing profile or
  * missing org membership. Cached per-session.
  */
@@ -86,15 +98,27 @@ export async function getCurrentOrgId() {
   if (_orgIdCache.userId === user.id && _orgIdCache.orgId) {
     return _orgIdCache.orgId
   }
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('org_id')
-    .eq('id', user.id)
-    .maybeSingle()
-  if (error) throw new Error(`Could not resolve org: ${error.message}`)
-  if (!data?.org_id) throw new Error('No org membership for current user')
-  _orgIdCache = { userId: user.id, orgId: data.org_id }
-  return data.org_id
+  // Dedupe concurrent resolves for the same user — a patient page fires many
+  // org-scoped reads at once; without this each would fetch profiles.org_id before
+  // the cache is populated. Share one in-flight request.
+  if (_orgIdInflight && _orgIdInflight.userId === user.id) return _orgIdInflight.promise
+  const promise = (async () => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('org_id')
+      .eq('id', user.id)
+      .maybeSingle()
+    if (error) throw new Error(`Could not resolve org: ${error.message}`)
+    if (!data?.org_id) throw new Error('No org membership for current user')
+    _orgIdCache = { userId: user.id, orgId: data.org_id }
+    return data.org_id
+  })()
+  _orgIdInflight = { userId: user.id, promise }
+  try {
+    return await promise
+  } finally {
+    if (_orgIdInflight?.promise === promise) _orgIdInflight = null
+  }
 }
 
 /**
@@ -103,6 +127,7 @@ export async function getCurrentOrgId() {
  */
 export function clearOrgIdCache() {
   _orgIdCache = { userId: null, orgId: null }
+  _orgIdInflight = null
 }
 
 /**

@@ -29,7 +29,7 @@
  */
 
 import { supabase } from './supabase'
-import { requireUser, getCurrentOrgId } from './auth_session'
+import { requireUser, getCurrentOrgId, getSessionUserId } from './auth_session'
 import { logAuditEvent } from './audit'
 import { sanitizeText, sanitizeNotes, toSafeNumber } from './sanitize'
 
@@ -261,7 +261,7 @@ export async function addDentalChartEntry(patientId, { tooth_number, surface = n
   if (!patientId) throw new Error('addDentalChartEntry: patientId is required')
   await requireUser()
   const orgId = await getCurrentOrgId()
-  const userId = (await supabase.auth.getUser()).data.user?.id || null
+  const userId = await getSessionUserId()
 
   const safe = {
     org_id: orgId,

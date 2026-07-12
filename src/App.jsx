@@ -65,7 +65,7 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
 import { queryClient } from './lib/queryClient'
-import { useInfiniteQuery, useMutation } from '@tanstack/react-query'
+import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 import * as db from './lib/database'
 import { reversePayment, createCharge, voidCharge, getPatientBalance, fetchChargesByPatient } from './lib/billing'
 import { BalanceSummary, ChargesSection } from './components/BillingSections'
@@ -222,7 +222,6 @@ export default function App() {
   // owns the toggle UI / role-default / localStorage and lifts the id up here;
   // the list fetch (which lives in this component) applies it server-side.
   const [patientFilterDoctorId, setPatientFilterDoctorId] = useState(null)
-  const [allPayments, setAllPayments] = useState([])
   const [teamMembers, setTeamMembers] = useState([])
   // Sample data is null until ?demo=1 is detected and the module is imported.
   // Pages/widgets read slices from this; nothing renders sample content
@@ -376,8 +375,7 @@ export default function App() {
       return
     }
     if (!useDB) {
-      // No Supabase configured (dev only). Show empty state.
-      setAllPayments([])
+      // No Supabase configured (dev only). Nothing to load.
       return
     }
     // Operator without impersonation has no org context; calling getCurrentOrgId()
@@ -391,7 +389,6 @@ export default function App() {
     // as cleared — they'd disagree, the guard would miss, and the throw would
     // surface as the banner.
     if (isOperator && !getImpersonationContext()) {
-      setAllPayments([])
       setDataLoading(false)
       return
     }
@@ -416,9 +413,9 @@ export default function App() {
         // the operator (Sprint 0+). The legacy onboarding wizard is gone.
       }
 
-      // Patients are loaded by the useInfiniteQuery (keyed on dentalOrgId) — not here.
-      const rawPayments = await db.fetchAllPayments().catch(() => [])
-      setAllPayments(rawPayments)
+      // Patients load via the useInfiniteQuery (keyed on dentalOrgId); org-wide
+      // payments are no longer prefetched here — nothing on the shell consumed them
+      // (FinancePage loads its own bounded/aggregated data).
     } catch (err) {
       console.error('Data load error:', err)
       setDataError(err.message || 'Failed to load data')
@@ -436,10 +433,8 @@ export default function App() {
     try {
       const org = await db.fetchOrg(orgId)
       if (org) setOrgSettings(org)
-      // Patients load via the useInfiniteQuery (impersonation branch, keyed on the
-      // impersonated orgId) — not here.
-      const rawPayments = await db.fetchPaymentsForOrg(orgId)
-      setAllPayments(rawPayments)
+      // Patients load via the useInfiniteQuery (impersonation branch); org-wide
+      // payments aren't prefetched (unused).
     } catch (err) {
       console.error('Impersonation data load error:', err)
       setDataError(err.message || 'Failed to load org data')
@@ -619,7 +614,6 @@ export default function App() {
       localStorage.removeItem('velo_impersonating')
       localStorage.removeItem('velo_admin_session')
       setOrgSettings({})
-      setAllPayments([])
       loadAllData()
       navigate('/agency')
     }
@@ -702,7 +696,6 @@ export default function App() {
     localStorage.removeItem('velo_impersonating')
     localStorage.removeItem('velo_admin_session')
     setOrgSettings({})
-    setAllPayments([])
     loadAllData()
     navigate('/agency')
   }
@@ -1090,7 +1083,7 @@ export default function App() {
               {page === 'automations' && <Suspense fallback={<SkeletonGeneric />}><AutomationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'forms' && <Suspense fallback={<SkeletonGeneric />}><FormsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} urlFormId={pageSubId} navigate={navigate} /></Suspense>}
               {page === 'social' && <Suspense fallback={<SkeletonGeneric />}><SocialMonitor lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
-              {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isOperator={isOperator && !impersonation} orgPayments={impersonation ? allPayments : null} /></Suspense>}
+              {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isOperator={isOperator && !impersonation} /></Suspense>}
               {page === 'inventory' && <Suspense fallback={<SkeletonGeneric />}><InventoryPage lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
@@ -1815,37 +1808,35 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   // Payments. Payments load as in Slice 3; charges + balance load INDEPENDENTLY
   // so a billing-schema gap (e.g. before the prod migration) can never break the
   // payments view — they just stay empty.
-  const [payments, setPayments] = useState([])
-  const [paymentsLoading, setPaymentsLoading] = useState(true)
-  const [charges, setCharges] = useState([])
-  const [balance, setBalance] = useState({})
+  // Billing data via TanStack Query, TAB-GUARDED: the 3 billing reads (payments,
+  // charges, balance) fire ONLY when the Billing tab is open — previously they hit
+  // the DB on EVERY profile open even if Billing was never clicked. Keyed by
+  // patient.id (a patient uuid is unique to its org, so the key is inherently
+  // org-scoped). Charges/balance stay independent so a billing-schema gap can't
+  // break the payments view (each query fails on its own).
+  const billingEnabled = profileTab === 'payments'
+  const paymentsQuery = useQuery({ queryKey: ['patientPayments', patient.id], queryFn: () => db.fetchPaymentsByPatient(patient.id), enabled: billingEnabled })
+  const chargesQuery = useQuery({ queryKey: ['patientCharges', patient.id], queryFn: () => fetchChargesByPatient(patient.id), enabled: billingEnabled })
+  const balanceQuery = useQuery({ queryKey: ['patientBalance', patient.id], queryFn: () => getPatientBalance(patient.id), enabled: billingEnabled })
+  const payments = paymentsQuery.data ?? []
+  const paymentsLoading = paymentsQuery.isLoading
+  const charges = chargesQuery.data ?? []
+  const balance = balanceQuery.data ?? {}
 
-  const reloadCharges = useCallback(
-    () => fetchChargesByPatient(patient.id).then(setCharges).catch(err => console.error('Charges reload error:', err)),
-    [patient.id],
-  )
-  const reloadBalance = useCallback(
-    () => getPatientBalance(patient.id).then(setBalance).catch(err => console.error('Balance reload error:', err)),
-    [patient.id],
-  )
-
-  useEffect(() => {
-    let cancelled = false
-    setPaymentsLoading(true)
-    db.fetchPaymentsByPatient(patient.id)
-      .then(data => { if (!cancelled) { setPayments(data); setPaymentsLoading(false) } })
-      .catch(() => { if (!cancelled) setPaymentsLoading(false) })
-    // Charges + balance load independently — never block or break the payments view.
-    fetchChargesByPatient(patient.id).then(c => { if (!cancelled) setCharges(c) }).catch(err => console.error('Charges load error:', err))
-    getPatientBalance(patient.id).then(b => { if (!cancelled) setBalance(b) }).catch(err => console.error('Balance load error:', err))
-    return () => { cancelled = true }
+  // Refresh the patient's billing after a money mutation (record/reverse payment,
+  // add/void charge). NOTE: the ORG-WIDE Finance keys (totals/collections/ledger)
+  // are NOT invalidated here yet — that wiring lands with the Finance conversion (#2),
+  // where a stale cached balance would be a correctness bug.
+  const invalidateBilling = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['patientPayments', patient.id] })
+    queryClient.invalidateQueries({ queryKey: ['patientCharges', patient.id] })
+    queryClient.invalidateQueries({ queryKey: ['patientBalance', patient.id] })
   }, [patient.id])
 
   const addPayment = async (raw) => {
     try {
-      const saved = await db.insertPayment({ ...raw, patient_id: patient.id })
-      setPayments(prev => [saved, ...prev])
-      reloadBalance() // a collection lowers the owed balance
+      await db.insertPayment({ ...raw, patient_id: patient.id })
+      invalidateBilling() // a collection lowers the owed balance
     } catch (err) {
       console.error('Add payment error:', err)
       toast?.(isRTL ? 'فشل إضافة الدفعة' : 'Failed to add payment', 'error')
@@ -1857,9 +1848,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   const handleReversePayment = async (id) => {
     try {
       await reversePayment(id)
-      const data = await db.fetchPaymentsByPatient(patient.id)
-      setPayments(data)
-      reloadBalance()
+      invalidateBilling()
       toast?.(isRTL ? 'تم تسجيل قيد التصحيح — تبقى الدفعة الأصلية في السجل' : 'Reversal recorded — the original payment stays in history', 'success')
     } catch (err) {
       console.error('Reverse payment error:', err)
@@ -1871,8 +1860,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   const addCharge = async (c) => {
     try {
       await createCharge({ ...c, patientId: patient.id })
-      await reloadCharges()
-      reloadBalance()
+      invalidateBilling()
       toast?.(isRTL ? 'تمت إضافة الرسوم' : 'Charge added', 'success')
     } catch (err) {
       console.error('Add charge error:', err)
@@ -1882,8 +1870,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   const handleVoidCharge = async (id) => {
     try {
       await voidCharge(id)
-      await reloadCharges()
-      reloadBalance()
+      invalidateBilling()
       toast?.(isRTL ? 'تم تسجيل قيد إبطال — تبقى الرسوم الأصلية في السجل' : 'Void recorded — the original charge stays in history', 'success')
     } catch (err) {
       console.error('Void charge error:', err)
