@@ -65,6 +65,7 @@ import { signOut, getCurrentUser, onAuthStateChange } from './lib/auth'
 import { getImpersonationContext } from './lib/auth_session'
 import { isSupabaseConfigured } from './lib/supabase'
 import { queryClient } from './lib/queryClient'
+import { invalidateFinance } from './lib/financeCache'
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query'
 import * as db from './lib/database'
 import { reversePayment, createCharge, voidCharge, getPatientBalance, fetchChargesByPatient } from './lib/billing'
@@ -1824,14 +1825,16 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
   const balance = balanceQuery.data ?? {}
 
   // Refresh the patient's billing after a money mutation (record/reverse payment,
-  // add/void charge). NOTE: the ORG-WIDE Finance keys (totals/collections/ledger)
-  // are NOT invalidated here yet — that wiring lands with the Finance conversion (#2),
-  // where a stale cached balance would be a correctness bug.
+  // add/void charge), AND the org-wide Finance page caches (totals / ledgers /
+  // collections) so a payment on this tab can't leave Finance showing a stale
+  // amount owed. patient.orgId is the effective (possibly impersonated) org — the
+  // same partition FinancePage keys its queries under, so invalidation lines up.
   const invalidateBilling = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['patientPayments', patient.id] })
     queryClient.invalidateQueries({ queryKey: ['patientCharges', patient.id] })
     queryClient.invalidateQueries({ queryKey: ['patientBalance', patient.id] })
-  }, [patient.id])
+    invalidateFinance(patient.orgId)
+  }, [patient.id, patient.orgId])
 
   const addPayment = async (raw) => {
     try {
