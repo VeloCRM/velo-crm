@@ -14,9 +14,12 @@
  */
 
 import { useState, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Icons, Modal } from '../components/shared'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { insertPayment } from '../lib/database'
+import { queryClient } from '../lib/queryClient'
+import { financeKeys, invalidateFinance } from '../lib/financeCache'
 import PatientPicker from '../components/PatientPicker'
 import { fetchTreatmentPlansForPatient } from '../lib/dental'
 import { formatMoney, toMinor, fromMinor } from '../lib/money'
@@ -64,6 +67,10 @@ const methodTone = (id) => {
   }
 }
 
+// Stable empty-array fallback for query data. A fresh `[]` each render would make
+// the downstream visibleCharges/visiblePayments useMemo deps change every time.
+const EMPTY_ROWS = []
+
 // Default to the last 90 days when the page first loads.
 function defaultDateFrom() {
   const d = new Date()
@@ -94,35 +101,12 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   void t
   void lang
 
-  const [profile, setProfile] = useState(null)
-  const role = profile?.role || null
   const [showRecord, setShowRecord] = useState(false)
   const [showAddCharge, setShowAddCharge] = useState(false)
   const [activeTab, setActiveTab] = useState('charges')
-
-  // Clinic-wide ledger totals (getClinicLedgerTotals → the finance_ledger_totals view).
-  const [totals, setTotals] = useState({})
-  const [totalsLoading, setTotalsLoading] = useState(true)
-  const [totalsError, setTotalsError] = useState(null)
-
-  // Ledger tabs (fetchAllCharges / fetchAllPayments — org-wide, surface kind/reversesId).
-  const [charges, setCharges] = useState([])
-  const [chargesLoading, setChargesLoading] = useState(true)
-  const [chargesError, setChargesError] = useState(null)
-  const [payments, setPayments] = useState([])
-  const [paymentsLoading, setPaymentsLoading] = useState(true)
-  const [paymentsError, setPaymentsError] = useState(null)
-
-  // Collections worklist (getOutstandingCollections — patients who owe > 0).
-  const [collections, setCollections] = useState([])
-  const [collectionsLoading, setCollectionsLoading] = useState(true)
-  const [collectionsError, setCollectionsError] = useState(null)
   // Pre-fill for the Record Payment modal when opened via a "Collect" button:
   // { patient, amountMinor, currency } — null means a blank Record Payment.
   const [collect, setCollect] = useState(null)
-
-  // Bumped after a mutation (e.g. Record Payment) to refetch totals + ledger + worklist.
-  const [refreshKey, setRefreshKey] = useState(0)
 
   // Filters — shared: date range + patient search; tab-specific: category / method.
   const [dateFrom, setDateFrom] = useState(defaultDateFrom)
@@ -137,89 +121,89 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
   const impersonating = getImpersonationContext()?.orgId || null
   const showClinicView = !isOperator || !!impersonating
 
-  useEffect(() => {
-    if (!showClinicView) return
-    let cancelled = false
-    fetchMyProfile().then(p => { if (!cancelled) setProfile(p || null) }).catch(() => {})
-    return () => { cancelled = true }
-  }, [showClinicView])
+  // Profile via the shared ['myProfile'] cache (the same fetch useMyRole/DentalTabs
+  // read) — gives us role + org_id without a second round-trip on this page.
+  const profileQuery = useQuery({ queryKey: ['myProfile'], queryFn: fetchMyProfile, enabled: showClinicView })
+  const profile = profileQuery.data || null
+  const role = profile?.role || null
 
-  // Clinic-wide ledger totals — all-time (getClinicLedgerTotals scopes by org). Refetched
-  // on refreshKey (after a mutation). Not affected by the date/tab filters.
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      if (!showClinicView) { if (!cancelled) setTotalsLoading(false); return }
-      if (!isSupabaseConfigured()) { if (!cancelled) { setTotals({}); setTotalsLoading(false) } return }
-      if (!cancelled) { setTotalsLoading(true); setTotalsError(null) }
-      try {
-        const t = await getClinicLedgerTotals()
-        if (!cancelled) { setTotals(t || {}); setTotalsLoading(false) }
-      } catch (err) {
-        if (!cancelled) { console.error('[FinancePage] totals load failed:', err); setTotalsError(err); setTotalsLoading(false) }
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [showClinicView, refreshKey])
+  // Org id for cache-key PARTITIONING only (so impersonating another clinic can't
+  // collide with your own cached ledger). The reads still resolve the effective org
+  // server-side via getCurrentOrgId() — this never widens what a query can see.
+  const orgId = impersonating || profile?.org_id || null
 
-  // All Charges tab — org-wide, date range + category filter (patient filter is client-side).
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      if (!showClinicView) { if (!cancelled) setChargesLoading(false); return }
-      if (!isSupabaseConfigured()) { if (!cancelled) { setCharges([]); setChargesLoading(false) } return }
-      if (!cancelled) { setChargesLoading(true); setChargesError(null) }
-      try {
-        const b = toIsoBounds(dateFrom, dateTo)
-        const rows = await fetchAllCharges({ from: b.from, to: b.to, category: categoryFilter || undefined, limit: 200 })
-        if (!cancelled) { setCharges(rows || []); setChargesLoading(false) }
-      } catch (err) {
-        if (!cancelled) { console.error('[FinancePage] charges load failed:', err); setChargesError(err); setChargesLoading(false) }
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [showClinicView, dateFrom, dateTo, categoryFilter, refreshKey])
+  // Gate every clinic read on a resolved org + a configured backend. When disabled,
+  // useQuery reports isLoading=false with data=undefined, so the panels fall through
+  // to their empty state (never an infinite spinner) in demo mode / no-org.
+  const clinicReadsEnabled = showClinicView && isSupabaseConfigured() && !!orgId
+  // While the shared profile is still resolving the org, show "loading" rather than a
+  // one-frame empty-state flash on this money surface. Once profile settles without an
+  // org, this drops to false so we fall through to the empty state (no hang).
+  const orgResolving = showClinicView && isSupabaseConfigured() && !orgId && profileQuery.isLoading
 
-  // All Payments tab — org-wide, date range + method filter. Surfaces kind/reversesId so
-  // reversal corrections render struck and are excluded from the active total.
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      if (!showClinicView) { if (!cancelled) setPaymentsLoading(false); return }
-      if (!isSupabaseConfigured()) { if (!cancelled) { setPayments([]); setPaymentsLoading(false) } return }
-      if (!cancelled) { setPaymentsLoading(true); setPaymentsError(null) }
-      try {
-        const b = toIsoBounds(dateFrom, dateTo)
-        const rows = await fetchAllPayments({ from: b.from, to: b.to, method: methodFilter || undefined, limit: 200 })
-        if (!cancelled) { setPayments(rows || []); setPaymentsLoading(false) }
-      } catch (err) {
-        if (!cancelled) { console.error('[FinancePage] payments load failed:', err); setPaymentsError(err); setPaymentsLoading(false) }
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [showClinicView, dateFrom, dateTo, methodFilter, refreshKey])
+  // Server-varying params ONLY go in the ledger keys; the patient-name filter stays a
+  // client-side useMemo below (ActivityLogTab pattern). A fresh object each render is
+  // fine — TanStack hashes query keys by value, so identical filters don't refetch.
+  const chargeParams = useMemo(() => {
+    const b = toIsoBounds(dateFrom, dateTo)
+    return { from: b.from, to: b.to, category: categoryFilter || undefined }
+  }, [dateFrom, dateTo, categoryFilter])
+  const paymentParams = useMemo(() => {
+    const b = toIsoBounds(dateFrom, dateTo)
+    return { from: b.from, to: b.to, method: methodFilter || undefined }
+  }, [dateFrom, dateTo, methodFilter])
 
-  // Collections worklist — every patient owing > 0 (not date-filtered; it's the current
-  // book of debt). Refetched on refreshKey so a settled patient drops off after collect.
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      if (!showClinicView) { if (!cancelled) setCollectionsLoading(false); return }
-      if (!isSupabaseConfigured()) { if (!cancelled) { setCollections([]); setCollectionsLoading(false) } return }
-      if (!cancelled) { setCollectionsLoading(true); setCollectionsError(null) }
-      try {
-        const rows = await getOutstandingCollections()
-        if (!cancelled) { setCollections(rows || []); setCollectionsLoading(false) }
-      } catch (err) {
-        if (!cancelled) { console.error('[FinancePage] collections load failed:', err); setCollectionsError(err); setCollectionsLoading(false) }
-      }
-    }
-    run()
-    return () => { cancelled = true }
-  }, [showClinicView, refreshKey])
+  // Clinic-wide ledger totals (finance_ledger_totals view) — all-time, no filters.
+  const totalsQuery = useQuery({
+    queryKey: financeKeys.clinicTotals(orgId),
+    queryFn: getClinicLedgerTotals,
+    enabled: clinicReadsEnabled,
+  })
+  const totals = totalsQuery.data || {}
+  const totalsLoading = orgResolving || totalsQuery.isLoading
+  const totalsError = totalsQuery.error || null
+
+  // All Charges — org-wide, date range + category (patient-name filter is client-side).
+  const chargesQuery = useQuery({
+    queryKey: financeKeys.allCharges(orgId, chargeParams),
+    queryFn: () => fetchAllCharges({ ...chargeParams, limit: 200 }),
+    enabled: clinicReadsEnabled,
+  })
+  const charges = chargesQuery.data || EMPTY_ROWS
+  const chargesLoading = orgResolving || chargesQuery.isLoading
+  const chargesError = chargesQuery.error || null
+
+  // All Payments — org-wide, date range + method. Uses the kind-aware billing.js
+  // fetchAllPayments so reversal rows render struck and don't inflate the active total.
+  const paymentsQuery = useQuery({
+    queryKey: financeKeys.allPayments(orgId, paymentParams),
+    queryFn: () => fetchAllPayments({ ...paymentParams, limit: 200 }),
+    enabled: clinicReadsEnabled,
+  })
+  const payments = paymentsQuery.data || EMPTY_ROWS
+  const paymentsLoading = orgResolving || paymentsQuery.isLoading
+  const paymentsError = paymentsQuery.error || null
+
+  // Collections worklist — every patient owing > 0 (not date-filtered; current book of
+  // debt). A settled patient drops off after a collect once this key is invalidated.
+  const collectionsQuery = useQuery({
+    queryKey: financeKeys.outstanding(orgId),
+    queryFn: getOutstandingCollections,
+    enabled: clinicReadsEnabled,
+  })
+  const collections = collectionsQuery.data || EMPTY_ROWS
+  const collectionsLoading = orgResolving || collectionsQuery.isLoading
+  const collectionsError = collectionsQuery.error || null
+
+  // A payment/charge recorded HERE also moves the affected patient's cached billing
+  // (Billing tab keys), so refresh those too — the reverse of the Billing-tab → Finance
+  // fix in App.jsx invalidateBilling. Finance's own reads refresh via invalidateFinance.
+  const invalidatePatient = (pid) => {
+    if (!pid) return
+    queryClient.invalidateQueries({ queryKey: ['patientPayments', pid] })
+    queryClient.invalidateQueries({ queryKey: ['patientCharges', pid] })
+    queryClient.invalidateQueries({ queryKey: ['patientBalance', pid] })
+  }
 
   // Client-side patient-name filter across both tabs (server already scoped by date/etc.).
   const visibleCharges = useMemo(() => {
@@ -389,7 +373,7 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
           initialCurrency={collect?.currency}
           lockPatient={!!collect}
           onClose={() => { setShowRecord(false); setCollect(null) }}
-          onSaved={() => { setShowRecord(false); setCollect(null); setRefreshKey(k => k + 1) }}
+          onSaved={(pid) => { setShowRecord(false); setCollect(null); invalidateFinance(orgId); invalidatePatient(pid) }}
           onError={(msg) => toast?.(msg, 'error')}
           onSuccess={(msg) => toast?.(msg, 'success')}
         />
@@ -405,10 +389,11 @@ export default function FinancePage({ t, lang, dir, isRTL, toast, isOperator }) 
           onClose={() => setShowAddCharge(false)}
           onSubmit={async (c) => {
             try {
-              await createCharge(c)
+              const created = await createCharge(c)
               toast?.(isRTL ? 'تمت إضافة الرسوم' : 'Charge added', 'success')
               setShowAddCharge(false)
-              setRefreshKey(k => k + 1)
+              invalidateFinance(orgId)
+              invalidatePatient(created?.patientId || c.patient_id || c.patientId)
             } catch (err) {
               console.error('[FinancePage] add charge failed:', err)
               toast?.(err.message || (isRTL ? 'فشل إضافة الرسوم' : 'Failed to add charge'), 'error')
@@ -824,7 +809,7 @@ function RecordPaymentModal({
         recorded_at: new Date().toISOString(),
       })
       onSuccess(isRTL ? 'تم تسجيل الدفعة' : 'Payment recorded')
-      onSaved()
+      onSaved(patient.id)
     } catch (err) {
       console.error('[RecordPaymentModal] insert failed:', err)
       onError(err.message || (isRTL ? 'فشل تسجيل الدفعة' : 'Failed to record payment'))
