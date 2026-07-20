@@ -381,59 +381,42 @@ export async function getPatientBalance(patientId) {
  * newest charge first. Returns
  *   [{ patientId, fullName, phone, balances: { IQD, USD }, latestChargeAt }]
  *
- * NOTE (scale): aggregates the org's ledger client-side. Fine at clinic scale
- * (thousands of patients, sparse payments); revisit as an RPC / SQL view if a
- * single org's ledger grows large.
+ * Reads the patient_outstanding_balances view (security_invoker, org-scoped by RLS):
+ * one row per (patient, currency) with owed > 0, carrying the patient's name/phone and
+ * a patient-level latest_charge_at. We just re-group those rows into the per-patient
+ * shape the UI expects. This replaces the old whole-ledger client-side aggregation —
+ * the active-row rule now lives in the view (VERBATIM from finance_ledger_totals), so
+ * a single org's ledger no longer ships to the browser. The .eq('org_id') is defense
+ * in depth (the view already scopes to the caller's org via RLS).
  */
 export async function getOutstandingCollections() {
   await requireUser()
   const orgId = await getCurrentOrgId()
 
-  const [chRes, pmRes] = await Promise.all([
-    supabase.from('charges')
-      .select('id, patient_id, kind, reverses_id, amount_minor, currency, created_at')
-      .eq('org_id', orgId),
-    supabase.from('payments')
-      .select('id, patient_id, kind, reverses_id, amount_minor, currency')
-      .eq('org_id', orgId),
-  ])
-  if (chRes.error) throw chRes.error
-  if (pmRes.error) throw pmRes.error
+  const { data, error } = await supabase
+    .from('patient_outstanding_balances')
+    .select('patient_id, full_name, phone, currency, owed, latest_charge_at')
+    .eq('org_id', orgId)
+  if (error) throw error
 
   const byPatient = new Map()
-  const bucket = (pid) => {
-    if (!byPatient.has(pid)) byPatient.set(pid, { charges: [], payments: [] })
-    return byPatient.get(pid)
+  for (const r of data || []) {
+    let entry = byPatient.get(r.patient_id)
+    if (!entry) {
+      entry = {
+        patientId: r.patient_id,
+        fullName: r.full_name || '',
+        phone: r.phone || '',
+        balances: {},
+        latestChargeAt: r.latest_charge_at || null,
+      }
+      byPatient.set(r.patient_id, entry)
+    }
+    // View returns owed > 0 rows only; balances holds the collectable currencies.
+    entry.balances[r.currency] = Number(r.owed)
   }
-  for (const c of chRes.data || []) bucket(c.patient_id).charges.push(c)
-  for (const p of pmRes.data || []) bucket(p.patient_id).payments.push(p)
 
-  const owing = []
-  for (const [patientId, { charges, payments }] of byPatient) {
-    const balances = owedByCurrency(charges, payments)
-    if (!Object.values(balances).some(v => v > 0)) continue
-    const latestChargeAt = activeRows(charges, 'charge')
-      .reduce((max, c) => (!max || c.created_at > max) ? c.created_at : max, null)
-    owing.push({ patientId, balances, latestChargeAt })
-  }
-  if (owing.length === 0) return []
-
-  const { data: pts, error: ptErr } = await supabase
-    .from('patients')
-    .select('id, full_name, phone')
-    .in('id', owing.map(o => o.patientId))
-    .eq('org_id', orgId)
-  if (ptErr) throw ptErr
-  const pmap = new Map((pts || []).map(p => [p.id, p]))
-
-  return owing
-    .map(o => ({
-      patientId: o.patientId,
-      fullName: pmap.get(o.patientId)?.full_name || '',
-      phone: pmap.get(o.patientId)?.phone || '',
-      balances: o.balances,
-      latestChargeAt: o.latestChargeAt,
-    }))
+  return [...byPatient.values()]
     .sort((a, b) => (b.latestChargeAt || '').localeCompare(a.latestChargeAt || ''))
 }
 
