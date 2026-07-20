@@ -21,6 +21,9 @@ export const financeKeys = {
   allCharges:   (orgId, params) => ['allCharges', orgId, params],
   allPayments:  (orgId, params) => ['allPayments', orgId, params],
   outstanding:  (orgId) => ['outstanding', orgId],
+  // Reports → "Production by doctor" (per_doctor_production RPC). A charge/void
+  // mutation changes a doctor's active-charge sum, so it must refresh here too.
+  perDoctorProduction: (orgId, params) => ['perDoctorProduction', orgId, params],
 }
 
 /**
@@ -36,4 +39,5 @@ export function invalidateFinance(orgId) {
   queryClient.invalidateQueries({ queryKey: ['allCharges', orgId] })
   queryClient.invalidateQueries({ queryKey: ['allPayments', orgId] })
   queryClient.invalidateQueries({ queryKey: ['outstanding', orgId] })
+  queryClient.invalidateQueries({ queryKey: ['perDoctorProduction', orgId] })
 }
