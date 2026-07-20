@@ -518,3 +518,31 @@ export async function fetchAllPayments({ from, to, method, limit = 200 } = {}) {
   if (error) throw error
   return (data || []).map(mapBillingPayment)
 }
+
+// ─── 8. Per-doctor production report (RPC) ───────────────────────────────────
+
+/**
+ * Per-doctor "produced" = Σ a doctor's ACTIVE charges, per currency, within an
+ * optional [from, to) window — `to` is the EXCLUSIVE upper bound (the RPC's
+ * contract). Backed by the SECURITY INVOKER function public.per_doctor_production
+ * (scripts/per-doctor-production-report.sql), so RLS scopes it to the caller's org
+ * exactly like the finance view; no manual org filter here. A row with a NULL
+ * doctorId is the non-clinical "other income" bucket (the UI labels it "Other
+ * income (no doctor)"). Passing no window returns all-time, which reconciles with
+ * finance_ledger_totals.billed. Throws on error.
+ */
+export async function fetchPerDoctorProduction({ from, to } = {}) {
+  await requireUser()
+  const { data, error } = await supabase.rpc('per_doctor_production', {
+    p_from: from || null,
+    p_to: to || null,
+  })
+  if (error) throw error
+  return (data || []).map(r => ({
+    orgId: r.org_id,
+    doctorId: r.doctor_id,          // NULL → non-clinical "other income" bucket
+    doctorName: r.doctor_name,      // NULL when doctorId is NULL
+    currency: r.currency,
+    produced: Number(r.produced || 0),
+  }))
+}

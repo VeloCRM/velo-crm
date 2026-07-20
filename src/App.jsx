@@ -1087,7 +1087,7 @@ export default function App() {
               {page === 'finance' && <Suspense fallback={<SkeletonGeneric />}><FinancePage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} currency={orgSettings.currency || 'USD'} toast={addToast} showConfirm={showConfirm} isOperator={isOperator && !impersonation} /></Suspense>}
               {page === 'inventory' && <Suspense fallback={<SkeletonGeneric />}><InventoryPage lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
               {page === 'integrations' && <Suspense fallback={<SkeletonGeneric />}><IntegrationsPage t={t} lang={lang} dir={dir} isRTL={isRTL} toast={addToast} /></Suspense>}
-              {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} onOpenBuilder={() => setPage('report-builder')} /></Suspense>}
+              {page === 'reports' && <Suspense fallback={<SkeletonGeneric />}><ReportsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} onOpenBuilder={() => setPage('report-builder')} orgId={dentalOrgId} role={effectiveRole} /></Suspense>}
               {page === 'report-builder' && <Suspense fallback={<SkeletonGeneric />}><ReportBuilder t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} onBack={() => setPage('reports')} /></Suspense>}
               {page === 'tasks' && <Suspense fallback={<SkeletonGeneric />}><TasksPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} user={user} toast={addToast} showConfirm={showConfirm} /></Suspense>}
               {page === 'goals' && <Suspense fallback={<SkeletonGeneric />}><GoalsPage t={t} lang={lang} dir={dir} isRTL={isRTL} contacts={patients} toast={addToast} /></Suspense>}

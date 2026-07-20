@@ -17,6 +17,7 @@
  */
 
 import { useState, useEffect, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Icons } from '../components/shared'
 import { isSupabaseConfigured } from '../lib/supabase'
 import {
@@ -26,8 +27,14 @@ import {
   fetchNewPatientsByMonth,
   fetchPatientRetention,
 } from '../lib/reports'
+import { fetchPerDoctorProduction } from '../lib/billing'
+import { financeKeys } from '../lib/financeCache'
 import { formatMoney } from '../lib/money'
 import { GlassCard, Button } from '../components/ui'
+
+// Stable empty-array fallback for query data (a fresh [] each render would churn
+// the byCurrency useMemo deps in the production section).
+const EMPTY_ROWS = []
 import { KPICard } from '../components/ds/KPICard'
 import { ChartCard } from '../components/ds/ChartCard'
 
@@ -74,7 +81,7 @@ function shortMonth(ymd, isRTL) {
 }
 
 
-export default function ReportsPage({ t, lang, dir, isRTL, onOpenBuilder }) {
+export default function ReportsPage({ t, lang, dir, isRTL, onOpenBuilder, orgId, role }) {
   void t
   void lang
   void onOpenBuilder
@@ -246,6 +253,11 @@ export default function ReportsPage({ t, lang, dir, isRTL, onOpenBuilder }) {
           </div>
         </>
       )}
+
+      {/* Production by doctor — self-contained: its own [from, to) range picker and
+          TanStack query, so it loads independently of the legacy report cards above.
+          Renders only for owner/doctor; the RPC self-scopes a doctor to their own rows. */}
+      <ProductionByDoctorSection isRTL={isRTL} orgId={orgId} role={role} />
     </div>
   )
 }
@@ -604,6 +616,195 @@ function ChartEmpty({ children }) {
   return (
     <div className="py-10 text-center text-[12.5px] text-navy-500">
       {children}
+    </div>
+  )
+}
+
+
+// ─── Production by doctor (per_doctor_production RPC) ────────────────────────
+// Σ each doctor's ACTIVE charges, per currency, over a [from, to) window. Distinct
+// from the page-level range above — production reporting wants calendar periods.
+const PRODUCTION_RANGES = [
+  { id: 'this_month',   en: 'This month',   ar: 'هذا الشهر' },
+  { id: 'last_month',   en: 'Last month',   ar: 'الشهر الماضي' },
+  { id: 'this_quarter', en: 'This quarter', ar: 'هذا الربع' },
+  { id: 'all',          en: 'All time',     ar: 'كل الوقت' },
+]
+
+// A preset → { from, to } where `to` is the EXCLUSIVE upper bound the RPC expects
+// (the start of the NEXT period, never the last day of this one). new Date(y, m±k, 1)
+// rolls the year over correctly at Dec/Jan boundaries.
+function productionRange(id) {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = now.getMonth()
+  const iso = dt => dt.toISOString()
+  switch (id) {
+    case 'last_month':
+      return { from: iso(new Date(y, m - 1, 1)), to: iso(new Date(y, m, 1)) }
+    case 'this_quarter': {
+      const q = Math.floor(m / 3) * 3
+      return { from: iso(new Date(y, q, 1)), to: iso(new Date(y, q + 3, 1)) }
+    }
+    case 'all':
+      return { from: null, to: null }
+    case 'this_month':
+    default:
+      return { from: iso(new Date(y, m, 1)), to: iso(new Date(y, m + 1, 1)) }
+  }
+}
+
+function ProductionByDoctorSection({ isRTL, orgId, role }) {
+  // Visibility mirrors the RPC's server-side predicate: owner (and operator, whose
+  // effectiveRole resolves to 'owner') see all doctors; a doctor sees only their own
+  // rows; everyone else gets nothing — so we don't render an empty section for them.
+  const canSee = role === 'owner' || role === 'doctor'
+  const isOwnerView = role === 'owner'
+
+  const [rangeId, setRangeId] = useState('this_month')
+  const range = useMemo(() => productionRange(rangeId), [rangeId])
+
+  // Org-scoped key; server-varying { from, to } in the key. Also invalidated by
+  // invalidateFinance() on every money mutation (see lib/financeCache.js). Disabled
+  // for non-visible roles so no needless call is made.
+  const query = useQuery({
+    queryKey: financeKeys.perDoctorProduction(orgId, range),
+    queryFn: () => fetchPerDoctorProduction(range),
+    enabled: canSee && isSupabaseConfigured() && !!orgId,
+  })
+  const rows = query.data || EMPTY_ROWS
+  const loading = (isSupabaseConfigured() && !orgId) || query.isLoading
+  const error = query.error || null
+
+  // Group by currency (never blended); within a currency, doctors highest-first and
+  // the NULL-doctor "Other income" bucket pinned to the bottom.
+  const byCurrency = useMemo(() => {
+    const map = {}
+    for (const r of rows) (map[r.currency] || (map[r.currency] = [])).push(r)
+    for (const cur of Object.keys(map)) {
+      map[cur].sort((a, b) => {
+        const aOther = a.doctorId == null
+        const bOther = b.doctorId == null
+        if (aOther !== bOther) return aOther ? 1 : -1
+        return b.produced - a.produced
+      })
+    }
+    return map
+  }, [rows])
+  const currencies = Object.keys(byCurrency).sort() // IQD before USD — deterministic
+
+  // Non-visible roles (receptionist / assistant / xray_tech): render nothing rather
+  // than an empty section. Placed AFTER all hooks so hook order stays stable.
+  if (!canSee) return null
+
+  return (
+    <GlassCard padding="lg" className="mt-6">
+      <div className="flex items-start justify-between flex-wrap gap-4 mb-1">
+        <div>
+          <h2 className="text-base font-semibold text-navy-900 m-0">
+            {isOwnerView
+              ? (isRTL ? 'الإنتاج حسب الطبيب' : 'Production by doctor')
+              : (isRTL ? 'إنتاجي' : 'My production')}
+          </h2>
+          <p className="text-[11px] text-navy-500 mt-1 mb-0 max-w-xl">
+            {isOwnerView
+              ? (isRTL
+                  ? 'إجمالي ما فوتره كل طبيب (الرسوم النشطة)، لكل عملة. عند اختيار «كل الوقت» يساوي «المُفوتَر» في صفحة المالية.'
+                  : 'Total billed per doctor (active charges), per currency. On “All time” this equals Finance’s Billed.')
+              : (isRTL
+                  ? 'إنتاجك المُفوتَر (الرسوم النشطة) حسب الفترة، لكل عملة.'
+                  : 'Your billed production (active charges) by period, per currency.')}
+          </p>
+        </div>
+        <div role="tablist" aria-label={isRTL ? 'النطاق الزمني' : 'Date range'} className="flex flex-wrap gap-1.5">
+          {PRODUCTION_RANGES.map(r => (
+            <Button
+              key={r.id}
+              variant={rangeId === r.id ? 'primary' : 'secondary'}
+              size="sm"
+              role="tab"
+              aria-selected={rangeId === r.id}
+              onClick={() => setRangeId(r.id)}
+            >
+              {isRTL ? r.ar : r.en}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-10 text-center text-sm text-navy-500">{isRTL ? 'جاري التحميل...' : 'Loading...'}</div>
+      ) : error ? (
+        <div className="py-10 text-center text-sm text-rose-600">
+          {isRTL ? 'تعذّر تحميل تقرير الإنتاج' : 'Could not load the production report'}
+        </div>
+      ) : currencies.length === 0 ? (
+        <div className="py-10 text-center text-sm text-navy-500">
+          {isRTL ? 'لا توجد رسوم في هذا النطاق' : 'No charges in this range'}
+        </div>
+      ) : (
+        <div className="grid gap-5 mt-4 grid-cols-1 md:grid-cols-2">
+          {currencies.map(cur => (
+            <ProductionCurrencyTable key={cur} isRTL={isRTL} currency={cur} rows={byCurrency[cur]} showTotal={isOwnerView} />
+          ))}
+        </div>
+      )}
+    </GlassCard>
+  )
+}
+
+// One per-currency table: doctors (highest-first) + the pinned "Other income" row.
+// The bold Total (which — for All time — reconciles with Finance's Billed) shows
+// only in the owner view; a doctor is not shown a clinic-level total.
+function ProductionCurrencyTable({ isRTL, currency, rows, showTotal }) {
+  const total = rows.reduce((s, r) => s + r.produced, 0)
+  return (
+    <div className="rounded-glass border border-navy-100 overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-navy-50/50 border-b border-navy-100">
+        <span className="text-[10.5px] font-semibold uppercase tracking-[0.08em] text-navy-600">
+          {isRTL ? 'الطبيب' : 'Doctor'}
+        </span>
+        <span className="text-xs font-semibold text-navy-600 border border-navy-200 rounded-full px-2.5 py-0.5">
+          {currency}
+        </span>
+      </div>
+      <table className="w-full text-sm border-separate" style={{ borderSpacing: 0 }}>
+        <tbody>
+          {rows.map((r, i) => {
+            const isOther = r.doctorId == null
+            return (
+              <tr key={r.doctorId || 'other-income'} className={i % 2 ? 'bg-white/40' : 'bg-transparent'}>
+                <td className={`px-4 py-2.5 border-b border-navy-50 ${isOther ? 'text-navy-500 italic' : 'text-navy-900 font-medium'}`}>
+                  {isOther
+                    ? (isRTL ? 'دخل آخر (بدون طبيب)' : 'Other income (no doctor)')
+                    : (r.doctorName || (isRTL ? 'غير معروف' : 'Unknown'))}
+                </td>
+                <td
+                  className="px-4 py-2.5 border-b border-navy-50 text-navy-900 font-semibold whitespace-nowrap"
+                  style={{ fontVariantNumeric: 'tabular-nums lining-nums', textAlign: 'end' }}
+                >
+                  {formatMoney(r.produced, currency)}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+        {showTotal && (
+          <tfoot>
+            <tr className="bg-navy-50/40">
+              <td className="px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-navy-600">
+                {isRTL ? 'الإجمالي' : 'Total'}
+              </td>
+              <td
+                className="px-4 py-2.5 text-navy-900 font-bold whitespace-nowrap"
+                style={{ fontVariantNumeric: 'tabular-nums lining-nums', textAlign: 'end' }}
+              >
+                {formatMoney(total, currency)}
+              </td>
+            </tr>
+          </tfoot>
+        )}
+      </table>
     </div>
   )
 }
