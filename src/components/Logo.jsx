@@ -29,7 +29,7 @@ export function Logo({ variant = 'navy', withWordmark = true, size = 28, tone = 
       {withWordmark && (
         <span className="leading-tight" style={{ fontFamily: 'var(--font-sans)' }}>
           <span style={{ fontWeight: 700, fontSize: 16, letterSpacing: '-0.01em',
-            color: wordColor, display: 'block' }}>{BRAND.appName}</span>
+            color: wordColor, display: 'block', whiteSpace: 'nowrap' }}>{BRAND.appName}</span>
           <small style={{ display: 'block', fontSize: 10, fontWeight: 500,
             textTransform: 'uppercase', letterSpacing: '0.06em', marginTop: -2,
             color: subColor }}>{BRAND.vendorTagline}</small>

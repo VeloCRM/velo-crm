@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { T } from './translations'
+import { BRAND } from './config/brand'
+import { Logo } from './components/Logo'
 import { C, makeBtn, card } from './design'
 // Sample data is dynamically imported when the URL contains ?demo=1.
 // Production builds never load this module unless a user explicitly opts
@@ -849,7 +851,7 @@ export default function App() {
               {!sidebarCollapsed && (
                 <div className="overflow-hidden">
                   <div className="flex items-center gap-2 font-display text-[19px] font-extrabold tracking-[-0.03em] text-navy-900 leading-tight">
-                    {isRTL ? 'وكالة Velo' : 'Velo Agency'}
+                    {BRAND.appName}
                     <span className="text-[9px] font-bold leading-[14px] tracking-[0.05em] uppercase rounded px-1.5 py-0.5 bg-accent-cyan-50 text-accent-cyan-700 ring-1 ring-accent-cyan-100">PRO</span>
                   </div>
                   <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500">{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
@@ -858,18 +860,15 @@ export default function App() {
             </>
           ) : (
             <>
-              {/* Logo mark — 48x48 (36 when collapsed), tooth glyph in cyan */}
-              <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
-                <svg width={sidebarCollapsed ? 18 : 24} height={sidebarCollapsed ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan-600"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
-              </div>
-              {!sidebarCollapsed && (
-                <div className="overflow-hidden">
-                  <div className="font-display text-[19px] font-bold tracking-[-0.03em] text-navy-900 leading-tight truncate">{orgSettings.name || t.appName}</div>
-                  {orgSettings.name ? (
-                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-accent-cyan-50 text-accent-cyan-700 text-[10px] font-semibold uppercase tracking-wider">{t.appName}</span>
-                  ) : (
-                    <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500 truncate">{t.appTagline}</div>
-                  )}
+              {/* SupCod3 product wordmark on the inline-start; clinic (tenant)
+                  name sits beside it — product identity left, tenant identity
+                  next to it (white-label seed). */}
+              <Logo variant="navy" withWordmark={!sidebarCollapsed} size={sidebarCollapsed ? 34 : 40} />
+              {!sidebarCollapsed && orgSettings.name && (
+                <div className="min-w-0 overflow-hidden ps-2"
+                     style={{ borderInlineStart: '1px solid var(--border-default)' }}>
+                  <div className="text-[12px] font-semibold leading-tight truncate"
+                       style={{ color: 'var(--text-secondary)' }}>{orgSettings.name}</div>
                 </div>
               )}
             </>
@@ -952,11 +951,15 @@ export default function App() {
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'rgb(var(--velo-surface-canvas))' }}>
         <header className="mobile-header" style={{ height:52, minHeight:52, background: '#FFFFFF', borderBottom:'1px solid #DDE7F4', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
-          {/* Mobile: Logo + company name in header */}
+          {/* Mobile: SC mark + product name, then clinic name (truncates but
+              never disappears). Logical padding keeps the divider RTL-safe. */}
           {isMobile && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-              <div style={{ width:34, height:34, borderRadius:9, background:'#ECFEFF', border:'1px solid #CFFAFE', display:'flex', alignItems:'center', justifyContent:'center', color:'#0891B2', fontWeight:800, fontSize:15, fontFamily:"'Syne',sans-serif" }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
-              <span style={{ fontSize:16, fontWeight:800, color:'#0A2540', fontFamily:"'Syne',sans-serif", letterSpacing:'-0.03em' }}>{orgSettings.name || 'Velo'}</span>
+            <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flexShrink:1 }}>
+              <Logo variant="navy" withWordmark={false} size={30} />
+              <span style={{ fontSize:15, fontWeight:700, color:'var(--brand-navy)', fontFamily:'var(--font-sans)', letterSpacing:'-0.02em', whiteSpace:'nowrap' }}>{BRAND.appName}</span>
+              {orgSettings.name && (
+                <span style={{ fontSize:12, color:'var(--text-tertiary)', paddingInlineStart:8, borderInlineStart:'1px solid var(--border-default)', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{orgSettings.name}</span>
+              )}
             </div>
           )}
           {/* Search → opens Command Palette */}
@@ -976,11 +979,11 @@ export default function App() {
           <button onClick={() => setNotifOpen(v => !v)} style={{ width:32, height:32, borderRadius:8, border:'1px solid #DDE7F4', background:'#F1F5FB', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#103562', position:'relative', transition:'all 0.18s ease' }}
             onMouseEnter={e=>e.currentTarget.style.background='#DDE7F4'} onMouseLeave={e=>e.currentTarget.style.background='#F1F5FB'}>
             {Icons.bell(16)}
-            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:'#FF6B6B', color:'#07080E', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #FFFFFF' }}>{notifications.filter(n => !n.read).length}</span>}
+            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:'var(--status-danger-fg)', color:'var(--brand-white)', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #FFFFFF' }}>{notifications.filter(n => !n.read).length}</span>}
           </button>
           {/* User avatar + dropdown */}
           <div style={{ position:'relative' }}>
-            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, #00FFB2, #4DA6FF)', display:'flex', alignItems:'center', justifyContent:'center', color:'#07080E', fontSize:13, fontWeight:600, cursor:'pointer', transition:'transform 0.18s ease', boxShadow:'0 0 12px rgba(0,255,178,0.25)' }}
+            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, var(--brand-teal), var(--brand-navy))', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--brand-white)', fontSize:13, fontWeight:600, cursor:'pointer', transition:'transform 0.18s ease', boxShadow:'0 0 12px rgba(20,184,166,0.25)' }}
               onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
               {(user?.email || 'U').charAt(0).toUpperCase()}
             </div>

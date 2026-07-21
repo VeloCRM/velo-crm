@@ -7,9 +7,9 @@ export const C = {
   sidebarBorder: 'rgba(255,255,255,0.07)',
   sidebarHover: 'rgba(255,255,255,0.04)',
   sidebarText: '#7B7F9E',
-  sidebarActiveText: '#00FFB2',
-  sidebarActive: '#00FFB2',
-  sidebarActiveBg: 'rgba(0,255,178,0.08)',
+  sidebarActiveText: '#14B8A6',
+  sidebarActive: '#14B8A6',
+  sidebarActiveBg: 'rgba(20,184,166,0.08)',
 
   // Content — migrated to --velo-* tokens (light-only app; resolve to :root)
   bg: 'rgb(var(--velo-surface-canvas))',
@@ -26,10 +26,10 @@ export const C = {
 
   // Brand
   primary: 'rgb(var(--velo-accent-solid))',
-  primaryHov: '#00E8A0',
+  primaryHov: '#0F8F82',
   primaryBg: 'rgb(var(--velo-accent-subtle))',
-  primaryBorder: 'rgba(0,255,178,0.25)',
-  primaryRing: 'rgba(0,255,178,0.3)',
+  primaryBorder: 'rgba(20,184,166,0.25)',
+  primaryRing: 'rgba(20,184,166,0.3)',
 
   // Accents
   blue: '#4DA6FF',
@@ -44,7 +44,7 @@ export const C = {
   // Semantic (aliases of the accent palette)
   success: 'rgb(var(--velo-accent-fg))',
   successBg: 'rgb(var(--velo-accent-subtle))',
-  successBorder: 'rgba(0,255,178,0.2)',
+  successBorder: 'rgba(20,184,166,0.2)',
   warning: 'rgb(var(--velo-status-warning-fg))',
   warningBg: 'rgb(var(--velo-status-warning-bg))',
   warningBorder: 'rgba(255,179,71,0.2)',
@@ -66,7 +66,7 @@ export const C = {
   transition: 'all 0.18s ease',
 
   // Shadows
-  shadowGlowMint: '0 0 20px rgba(0,255,178,0.15)',
+  shadowGlowMint: '0 0 20px rgba(20,184,166,0.15)',
   shadowGlowBlue: '0 0 20px rgba(77,166,255,0.15)',
 
   // Extra (legacy aliases)
@@ -78,7 +78,7 @@ export const C = {
 export const S = { xs: 4, sm: 8, md: 16, lg: 24, xl: 32, xxl: 48 }
 
 export const CAT_COLORS = {
-  client:   { bg: 'rgba(0,255,178,0.09)', text: '#00FFB2', accent: '#00FFB2' },
+  client:   { bg: 'rgba(20,184,166,0.09)', text: '#14B8A6', accent: '#14B8A6' },
   prospect: { bg: 'rgba(255,179,71,0.09)', text: '#FFB347', accent: '#FFB347' },
   partner:  { bg: 'rgba(77,166,255,0.09)', text: '#4DA6FF', accent: '#4DA6FF' },
   supplier: { bg: 'rgba(167,139,250,0.09)', text: '#A78BFA', accent: '#A78BFA' },
@@ -90,7 +90,7 @@ export const STAGE_COLORS = {
   qualified:   { bg: 'rgba(77,166,255,0.09)', text: '#4DA6FF', accent: '#4DA6FF' },
   proposal:    { bg: 'rgba(255,179,71,0.09)', text: '#FFB347', accent: '#FFB347' },
   negotiation: { bg: 'rgba(167,139,250,0.09)', text: '#A78BFA', accent: '#A78BFA' },
-  won:         { bg: 'rgba(0,255,178,0.09)', text: '#00FFB2', accent: '#00FFB2' },
+  won:         { bg: 'rgba(20,184,166,0.09)', text: '#14B8A6', accent: '#14B8A6' },
   lost:        { bg: 'rgba(255,107,107,0.09)', text: '#FF6B6B', accent: '#FF6B6B' },
 }
 
