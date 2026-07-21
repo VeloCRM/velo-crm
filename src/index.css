@@ -1,4 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap');
 @import './styles/tokens.css';
 @import './styles/theme.css';
 @import "tailwindcss";
@@ -174,7 +173,7 @@
 
 /* Scoped reset: any subtree wrapped in .ds-root opts into the new system. */
 .ds-root {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
   font-variant-numeric: tabular-nums;
   color: var(--ds-navy-800);
@@ -188,7 +187,7 @@
 /* Arabic locales: switch primary stack to Tajawal. The Latin fallback keeps
    numerals tabular-aligned while letters render in Tajawal for Arabic copy. */
 .ds-root[dir="rtl"], .ds-root [lang="ar"], .ds-root :lang(ar) {
-  font-family: 'Tajawal', 'Noto Sans Arabic', 'Inter', sans-serif;
+  font-family: 'Tajawal', 'Noto Sans Arabic', var(--font-sans);
 }
 
 /* Frosted-glass card. Components compose this with Tailwind classes for
@@ -352,7 +351,7 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
@@ -371,14 +370,14 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.2;
   letter-spacing: -0.03em;
   color: var(--text-primary);
 }
 
 input, textarea, select, button {
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Mobile: force ≥16px on form controls so iOS Safari does not auto-zoom the
