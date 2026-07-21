@@ -1,9 +1,10 @@
 // Velo CRM - Translations (EN / AR)
+import { BRAND } from './config/brand'
 
 export const T = {
   en: {
     // App
-    appName: 'Velo',
+    appName: BRAND.appName,
     appTagline: 'CRM Platform',
 
     // Nav
@@ -418,7 +419,7 @@ export const T = {
 
   ar: {
     // App
-    appName: 'فيلو',
+    appName: BRAND.appName,
     appTagline: 'منصة CRM',
 
     // Nav
