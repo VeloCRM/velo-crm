@@ -5,17 +5,50 @@ screens render via aliases (`index.css --velo-*`, `tailwind.config.js`,
 `theme.css`) and are functional + recolored teal where they consume tokens, but
 retain hardcoded inline hex until individually migrated.
 
-> The full migrated-vs-aliased per-file checklist (with raw-hex literal counts)
-> is completed in Task 12. This file already records the items that must not be
-> lost: **Future passes** and **Technical debt**.
+## Migrated (preview-matched: tokens / teal / IBM Plex / motion)
 
-## Migrated so far (preview-matched, tokens/teal/IBM Plex)
-- [x] Shell chrome (App.jsx header + sidebar) — stacked product/clinic identity, SC logo
-- [x] Auth (login / reset)
-- [x] Dashboard (`DentalDashboard`) — entrance, countUp, progress bar, pulse, toast
-- [x] Patients list (`PatientsPage` in App.jsx) — bounded entrance (first 12 rows)
-- [x] Patient profile (`PatientProfile` in App.jsx) — tooth chart: pressFeedback on selection only
-- [ ] Appointments + calendar + AddAppointmentModal — Task 11 (pending)
+| Screen | File | Notes |
+|---|---|---|
+| Shell chrome | `App.jsx` header + sidebar | stacked product/clinic identity, SC logo, RTL-safe |
+| Auth (login / reset) | `pages/Auth.jsx` | zero raw hex; SC mark, "by SupCod3", teal focus |
+| Dashboard ("Today") | `pages/DentalDashboard.jsx` | entrance, countUp, progress bar, pulse, check-in toast |
+| Patients list | `PatientsPage` (in `App.jsx`) | bounded entrance (first 12 rows only) |
+| Patient profile | `PatientProfile` (in `App.jsx`) | tooth chart: pressFeedback on selection only |
+| Appointments + calendar + modal | `pages/AppointmentsPage.jsx`, `components/AddAppointmentModal.jsx`, shared `Modal` | modal 0.2s in / 0.15s out; status-token banners |
+
+**Residual hex in the migrated set is intentional, not a violation** — zero stray
+mint/cyan remains. What's left: teal in `rgba()` form (brand-correct, e.g. the
+dashboard glow `rgba(20,184,166,…)`), neutral grays/whites/shadows, the
+clinical-neutral tooth outline `#64748b`, and the deliberately-preserved
+clinical/categorical colors below.
+
+## Aliased (functional, recolored via aliases — not yet preview-matched)
+
+Raw-hex literal counts (`grep -cE '#hex|rgba(…)'`). These screens work and are
+recolored teal *where they consume tokens*, but retain hardcoded inline hex.
+Priority ≈ front-desk visibility.
+
+| Count | File | Note |
+|---|---|---|
+| 51 | `pages/operator/OperatorConsole.jsx` | operator-only (dark theme); low clinic visibility |
+| 50 | `components/EmptyState.jsx` | shared empty-state; touches several pages |
+| 48 | `pages/SocialMonitor.jsx` | operator/marketing surface |
+| 39 | `pages/operator/ClinicCredentials.jsx` | operator-only |
+| 25 | `pages/ReportsPage.jsx` | includes chart colors (categorical) |
+| 23 | `components/DentalTabs.jsx` | **clinical condition colors — intentional; see future pass** |
+| 13 | `pages/TasksPage.jsx` | |
+| 12 | `pages/IntegrationsPage.jsx` | |
+| 9 | `pages/AppointmentsPage.jsx` | **doctor categorical palette + slate fallbacks — intentional** |
+| 9 | `components/Toast.jsx` | shared; status-colored toasts |
+| 8 | `components/NotificationCenter.jsx` | |
+| 7 | `components/TestAccountBanner.jsx` | |
+| 6 | `pages/InventoryPage.jsx` / `pages/DesignSystem.jsx` (operator) / `components/AIAssistant.jsx` | AIAssistant is a dark floating panel (intentional dark) |
+| 2–3 | `SettingsPage.jsx`, `DocsPage.jsx`, `KeyboardShortcuts.jsx`, `CommandPalette.jsx` | |
+| 1 | `ui/*` primitives (`Button/Input/Select/SkeletonGlass`), `shared.jsx`, `Logo.jsx` | single neutral/brand value each — benign |
+
+Next-pass priority for real recolor work: **EmptyState** and **Toast** (shared,
+wide reach), then **ReportsPage** (chart palette needs a categorical system, not
+a flat teal remap), then the operator surfaces (lower clinic visibility).
 
 ## Future passes (recorded so they don't evaporate)
 
