@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import { signIn, resetPassword } from '../lib/auth'
 import { checkLoginAttempt, getLoginLockoutRemaining } from '../lib/sanitize'
 import { GlassCard, Button, Input, Modal } from '../components/ui'
+import { BRAND } from '../config/brand'
+import { Logo } from '../components/Logo'
 
 /* ── Inline icons ─────────────────────────────────────────────────────── */
 const MailIcon = (s = 16) => (
@@ -25,7 +27,7 @@ const GlobeIcon = (s = 16) => (
 
 const STRINGS = {
   en: {
-    welcome: 'Welcome to Velo',
+    welcome: 'Welcome to SupCod3 Dental',
     tagline: 'Dental practice management',
     welcomeSub: 'Enter your details to continue',
     forgotSub: 'Enter your email and we\'ll send a reset link',
@@ -44,7 +46,7 @@ const STRINGS = {
     timeRemaining: 'Time remaining:',
     loading: 'Loading…',
     orDivider: 'or',
-    newToVelo: 'New to Velo?',
+    newToVelo: 'New to SupCod3 Dental?',
     createTestAccount: 'Create test account',
     testAccountSubtitle: 'Pre-seeded with sample patients, appointments and treatment plans. Resets after 14 days.',
     creatingTestAccount: 'Setting up your test clinic…',
@@ -58,7 +60,7 @@ const STRINGS = {
     themeDark:  'Switch to dark mode',
   },
   ar: {
-    welcome: 'مرحباً بك في فيلو',
+    welcome: 'مرحباً بك في SupCod3 Dental',
     tagline: 'إدارة عيادة الأسنان',
     welcomeSub: 'أدخل بياناتك للمتابعة',
     forgotSub: 'أدخل بريدك الإلكتروني وسنرسل رابط إعادة التعيين',
@@ -77,7 +79,7 @@ const STRINGS = {
     timeRemaining: 'الوقت المتبقي:',
     loading: 'جارٍ التحميل...',
     orDivider: 'أو',
-    newToVelo: 'جديد في فيلو؟',
+    newToVelo: 'جديد في SupCod3 Dental؟',
     createTestAccount: 'إنشاء حساب تجريبي',
     testAccountSubtitle: 'يتضمن مرضى ومواعيد وخطط علاج تجريبية. يُعاد الضبط بعد 14 يوماً.',
     creatingTestAccount: 'جاري تجهيز عيادتك التجريبية...',
@@ -201,16 +203,13 @@ export default function AuthPage({ onAuth, lang, setLang }) {
       </header>
 
       <div className="min-h-screen flex flex-col items-center justify-center px-5 py-20">
-        {/* Brand mark */}
+        {/* Brand mark — navy SC mark on the light auth surface (brief §1). */}
         <div className="text-center mb-8">
-          <div
-            aria-hidden="true"
-            className="mx-auto mb-3 grid place-items-center w-14 h-14 rounded-2xl shadow-glass-lg navy-gradient text-white text-2xl font-bold"
-          >
-            V
+          <div className="mx-auto mb-3 grid place-items-center w-14 h-14">
+            <Logo variant="navy" withWordmark={false} size={56} />
           </div>
           <h1 className="text-3xl font-bold text-navy-800 leading-tight tracking-tight m-0 mb-1">
-            Velo
+            {BRAND.appName}
           </h1>
           <p className="text-sm text-navy-500 m-0">{txt.tagline}</p>
         </div>
@@ -359,7 +358,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
           )}
 
           <div className="mt-7 text-center text-[11px] font-normal text-navy-400">
-            &copy; 2026 Velo CRM
+            &copy; 2026 {BRAND.appName}
           </div>
         </GlassCard>
       </div>
