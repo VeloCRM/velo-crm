@@ -23,15 +23,33 @@ retain hardcoded inline hex until individually migrated.
 The dental chart carries a **clinical** color system (condition/finding colors
 in `DentalTabs.jsx` + `FINDING_STYLES`), which is medically meaningful and was
 deliberately NOT remapped to brand teal during the rebrand. It deserves its own
-session:
-1. **Create a custom dental-charting skill** via `skill-creator`, encoding:
-   - FDI notation conventions (and Palmer mapping)
-   - condition/finding **color standards** (caries, restorations, crowns,
-     endo, missing, etc. — the clinical palette, distinct from brand tokens)
-   - surface charting conventions (5-surface / Dentrix-style zones, whole-tooth
-     vs per-surface finding rules)
-2. **Redesign the chart against that skill with clinical input** (a dentist in
-   the loop), rather than ad-hoc visual tweaks.
+session.
+
+**Step 1 — Create a custom dental-charting skill** via `skill-creator`, encoding:
+- FDI notation conventions (and Palmer mapping)
+- condition/finding **color standards** (caries, restorations, crowns, endo,
+  missing, etc. — the clinical palette, distinct from brand tokens)
+- surface charting conventions (5-surface / Dentrix-style zones, whole-tooth vs
+  per-surface finding rules)
+
+**Step 2 — Redesign the chart against that skill** as a **three-tier design**
+(a dentist in the loop; clinical validation is required BEFORE implementation):
+
+1. **Tier 1 — Charting surface (primary):** anatomically realistic **2D SVG**
+   per tooth *type* (incisor / canine / premolar / molar — not one generic
+   glyph), FDI notation, **surface-level marking**. This is the day-to-day
+   charting path and must stay fast, keyboard-accessible, and print-clean.
+   A reference concept exists in the project docs — locate and cite it when
+   the session starts.
+2. **Tier 2 — Anatomical detail view:** tap/click a tooth to open a larger
+   anatomical detail of that single tooth (surfaces, existing findings,
+   history). Still 2D; a drill-down from Tier 1, not a replacement for it.
+3. **Tier 3 — Optional on-demand 3D single-tooth mode (patient presentation):**
+   a 3D render of one tooth for explaining treatment to the patient.
+   **On-demand and presentation-only — NEVER in the charting path** (never
+   blocks or replaces Tiers 1–2; lazy-loaded so the 3D engine never ships to
+   the charting bundle).
+
 Until then, the chart stays structurally unchanged; the rebrand only aligned the
 UI-accent (hover/focus/selection = teal) and added `pressFeedback` on selection.
 
