@@ -1,3 +1,6 @@
+import { useRef } from 'react'
+import gsap from 'gsap'
+
 // ─── SVG Icon helper (Heroicons style, consistent 1.5px stroke) ────────────
 const I = (s, children) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">{children}</svg>
 
@@ -48,10 +51,30 @@ export const Icons = {
 
 // ─── Modal ──────────────────────────────────────────────────────────────────
 export function Modal({ children, onClose, dir, width = 520 }) {
+  // Enter animation is CSS scaleIn (.modal-content, 0.2s fade+scale 0.98→1),
+  // reduced-motion-disabled in index.css. Exit is driven here: 0.15s fade+scale
+  // out, then unmount. requestClose is the single close authority — the backdrop
+  // and (via the function-child form) the modal's own buttons route through it,
+  // so every dismissal animates. Reduced-motion → immediate close, no tween.
+  const contentRef = useRef(null)
+  const overlayRef = useRef(null)
+  const closingRef = useRef(false)
+
+  const requestClose = () => {
+    if (closingRef.current) return
+    closingRef.current = true
+    const el = contentRef.current, ov = overlayRef.current
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    if (reduce || !el) { onClose(); return }
+    el.style.setProperty('animation', 'none', 'important') // release the CSS scaleIn fill hold so GSAP owns the exit
+    gsap.to(ov, { opacity: 0, duration: 0.15, ease: 'power2.in' })
+    gsap.to(el, { opacity: 0, scale: 0.98, duration: 0.15, ease: 'power2.in', onComplete: onClose })
+  }
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={e => e.stopPropagation()} style={{ direction: dir, width, maxWidth: '92vw' }}>
-        {children}
+    <div ref={overlayRef} className="modal-overlay" onClick={requestClose}>
+      <div ref={contentRef} className="modal-content" onClick={e => e.stopPropagation()} style={{ direction: dir, width, maxWidth: '92vw' }}>
+        {typeof children === 'function' ? children(requestClose) : children}
       </div>
     </div>
   )

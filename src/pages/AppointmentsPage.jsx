@@ -420,7 +420,7 @@ export default function AppointmentsPage({ t, lang, dir, isRTL, patients, toast,
                     <span
                       aria-hidden="true"
                       className="absolute inset-x-3 -bottom-px h-0.5 rounded-full"
-                      style={{ background: 'linear-gradient(90deg, #103562, #06B6D4)' }}
+                      style={{ background: 'linear-gradient(90deg, var(--brand-navy), var(--brand-teal))' }}
                     />
                   )}
                 </button>
@@ -805,11 +805,11 @@ function CurrentTimeLine() {
     <div className="absolute z-sticky pointer-events-none flex items-center start-[54px] end-0" style={{ top }}>
       <div
         className="w-2.5 h-2.5 rounded-full flex-shrink-0"
-        style={{ background: '#06B6D4', boxShadow: '0 0 12px -2px rgba(6,182,212,0.55)' }}
+        style={{ background: 'var(--brand-teal)', boxShadow: '0 0 12px -2px rgba(20,184,166,0.55)' }}
       />
       <div
         className="flex-1 h-0.5 opacity-90"
-        style={{ background: '#06B6D4', boxShadow: '0 0 8px -2px rgba(6,182,212,0.45)' }}
+        style={{ background: 'var(--brand-teal)', boxShadow: '0 0 8px -2px rgba(20,184,166,0.45)' }}
       />
     </div>
   )
