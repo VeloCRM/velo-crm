@@ -39,3 +39,7 @@ export/
 scripts/ghl-sample-data.json
 scripts/_prod-schema-snapshot.sql
 scripts/_prod-schema-snapshot-clean.sql
+
+!.claude/
+.claude/*
+!.claude/skills/
