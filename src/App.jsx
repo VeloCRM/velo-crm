@@ -2102,7 +2102,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
                     <span
                       aria-hidden="true"
                       className="absolute inset-x-2 -bottom-px h-[3px] rounded-full"
-                      style={{ background: 'linear-gradient(90deg, #103562, #06B6D4)' }}
+                      style={{ background: 'linear-gradient(90deg, var(--brand-navy), var(--brand-teal))' }}
                     />
                   )}
                 </button>
