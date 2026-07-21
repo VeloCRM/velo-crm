@@ -143,7 +143,7 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave, isOper
   // 0 rows and throws. Render read-only for clinic members; only operators
   // (who hold the orgs UPDATE policy) get an editable, working save path.
   const readOnly = !isOperator
-  const operatorNote = lang === 'ar' ? 'يُدار بواسطة مشغّل Velo الخاص بك.' : 'Managed by your Velo operator.'
+  const operatorNote = lang === 'ar' ? 'يُدار بواسطة مشغّل SupCod3 الخاص بك.' : 'Managed by your SupCod3 operator.'
   // Only fields backed by real `orgs` columns live here. `industry` +
   // `primary_color` were removed (SB-8, no column). `currency` was also removed:
   // currency is now chosen per-charge/per-payment (see scripts/billing-design.md),
@@ -171,8 +171,8 @@ function OrganizationTab({ t, lang, dir, isRTL, orgSettings = {}, onSave, isOper
       {readOnly && (
         <div className="bg-navy-50 border border-navy-100 rounded-glass px-4 py-3 text-[13px] text-navy-600">
           {lang === 'ar'
-            ? 'تُدار إعدادات المؤسسة بواسطة مشغّل Velo الخاص بك. الحقول أدناه للعرض فقط — تواصل مع المشغّل لتغييرها.'
-            : 'Organization settings are managed by your Velo operator. The fields below are read-only — contact your operator to change them.'}
+            ? 'تُدار إعدادات المؤسسة بواسطة مشغّل SupCod3 الخاص بك. الحقول أدناه للعرض فقط — تواصل مع المشغّل لتغييرها.'
+            : 'Organization settings are managed by your SupCod3 operator. The fields below are read-only — contact your operator to change them.'}
         </div>
       )}
       <GlassCard padding="lg">
@@ -1067,7 +1067,7 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
   // button — nothing is ever submitted from this tab. `onSave` is intentionally
   // unused.
   void onSave
-  const operatorNote = lang === 'ar' ? 'يُدار بواسطة مشغّل Velo الخاص بك.' : 'Managed by your Velo operator.'
+  const operatorNote = lang === 'ar' ? 'يُدار بواسطة مشغّل SupCod3 الخاص بك.' : 'Managed by your SupCod3 operator.'
   // Math.random() is impure during render; pin it to a useState lazy
   // initializer so the secret is generated exactly once per mount.
   const [defaultSecret] = useState(() => orgSettings.whatsapp_webhook_secret || 'velo_' + Math.random().toString(36).slice(2, 10))
@@ -1125,8 +1125,8 @@ function IntegrationSettingsTab({ t, lang, dir, orgSettings = {}, onSave }) {
     <div className="space-y-5">
       <div className="bg-navy-50 border border-navy-100 rounded-glass px-4 py-3 text-[13px] text-navy-600">
         {lang === 'ar'
-          ? 'يُدار اتصال WhatsApp و Meta و Gmail بواسطة مشغّل Velo الخاص بك. الحقول أدناه للعرض فقط.'
-          : 'WhatsApp, Meta, and Gmail credentials are managed by your Velo operator. The fields below are read-only.'}
+          ? 'يُدار اتصال WhatsApp و Meta و Gmail بواسطة مشغّل SupCod3 الخاص بك. الحقول أدناه للعرض فقط.'
+          : 'WhatsApp, Meta, and Gmail credentials are managed by your SupCod3 operator. The fields below are read-only.'}
       </div>
       {/* WhatsApp — Step by step */}
       <Section title="WhatsApp Cloud API" icon="💬">
@@ -1412,8 +1412,8 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
   const handleAddDoctor = () => {
     toast?.(
       isRTL
-        ? 'الأطباء مستخدمو Velo — ادعهم من تبويب الفريق بدور "طبيب"'
-        : 'Doctors are Velo users — invite them from the Team tab with role "Doctor"',
+        ? 'الأطباء مستخدمو SupCod3 — ادعهم من تبويب الفريق بدور "طبيب"'
+        : 'Doctors are SupCod3 users — invite them from the Team tab with role "Doctor"',
       'info'
     )
     if (setTab) setTab('team')
@@ -1436,8 +1436,8 @@ function ClinicTab({ lang, dir, isRTL, toast, setTab }) {
             <h3 className="text-lg font-semibold text-navy-800 m-0">{isRTL ? 'الاطباء' : 'Doctors'}</h3>
             <p className="text-sm text-navy-600 leading-relaxed m-0 mt-1">
               {isRTL
-                ? 'الأطباء مستخدمو Velo — ادعهم من تبويب الفريق بدور "طبيب"'
-                : 'Doctors are Velo users — invite from the Team tab with role "Doctor"'}
+                ? 'الأطباء مستخدمو SupCod3 — ادعهم من تبويب الفريق بدور "طبيب"'
+                : 'Doctors are SupCod3 users — invite from the Team tab with role "Doctor"'}
             </p>
           </div>
           <Button variant="primary" onClick={handleAddDoctor} iconStart={Icons.users}>

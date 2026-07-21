@@ -97,8 +97,8 @@ export default function DesignSystem({ lang = 'en' }) {
   const T = isRTL
     ? {
         eyebrow: 'نظام التصميم',
-        h1: 'مكتبة "زجاج سائل" — Velo',
-        sub: 'العناصر الأساسية، الألوان، والطباعة لمنتج Velo Dental. هذه الصفحة للمشغّل فقط ولا تظهر للعيادات.',
+        h1: 'مكتبة "زجاج سائل" — SupCod3 Dental',
+        sub: 'العناصر الأساسية، الألوان، والطباعة لمنتج SupCod3 Dental. هذه الصفحة للمشغّل فقط ولا تظهر للعيادات.',
         sections: {
           colors: { e: 'الألوان', t: 'لوحة الألوان', d: 'الكحلي للهوية، الفيروزي للتمييز.' },
           type:   { e: 'الطباعة', t: 'الطباعة', d: 'Inter للإنجليزية، Tajawal للعربية.' },
@@ -116,8 +116,8 @@ export default function DesignSystem({ lang = 'en' }) {
       }
     : {
         eyebrow: 'Design system',
-        h1: 'Liquid Glass primitives — Velo',
-        sub: 'Foundation tokens, colors, typography, and primitives for Velo Dental. Operator-only — clinic users never see this page.',
+        h1: 'Liquid Glass primitives — SupCod3 Dental',
+        sub: 'Foundation tokens, colors, typography, and primitives for SupCod3 Dental. Operator-only — clinic users never see this page.',
         sections: {
           colors: { e: 'Color', t: 'Palette', d: 'Navy carries the brand. Cyan accents key actions.' },
           type:   { e: 'Type', t: 'Typography', d: 'Inter for Latin, Tajawal for Arabic copy.' },
@@ -429,7 +429,7 @@ export default function DesignSystem({ lang = 'en' }) {
 
           <footer className="pt-8 border-t border-navy-100/60 text-center">
             <p className="text-xs text-navy-500">
-              Velo CRM · Liquid Glass design system · Sprint 1 Phase 1.1
+              SupCod3 Dental · Liquid Glass design system · Sprint 1 Phase 1.1
             </p>
           </footer>
         </div>

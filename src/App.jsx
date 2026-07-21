@@ -836,13 +836,13 @@ export default function App() {
     : baseVisibleGroups
 
   return (
-    <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:"'DM Sans',-apple-system,sans-serif", direction:dir }}>
+    <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:'var(--font-sans)', direction:dir }}>
       {/* ── SIDEBAR (desktop) ────────────────────────────────────────── */}
       <aside
         className="desktop-sidebar relative z-raised flex flex-col bg-navy-50 border-e border-navy-100 overflow-hidden transition-[width,min-width] duration-base ease-standard"
         style={{ width: sidebarCollapsed ? 56 : 228, minWidth: sidebarCollapsed ? 56 : 228 }}
       >
-        <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[72px] py-3.5 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
+        <div className={`flex items-center gap-2 min-w-0 border-b border-navy-100 min-h-[72px] py-3.5 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
           {isAgencyMode ? (
             <>
               <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
@@ -860,12 +860,13 @@ export default function App() {
             </>
           ) : (
             <>
-              {/* SupCod3 product wordmark on the inline-start; clinic (tenant)
-                  name sits beside it — product identity left, tenant identity
-                  next to it (white-label seed). */}
-              <Logo variant="navy" withWordmark={!sidebarCollapsed} size={sidebarCollapsed ? 34 : 40} />
+              {/* SupCod3 product wordmark (shrink-0, keeps its space) on the
+                  inline-start; clinic (tenant) name sits beside it and truncates
+                  with ellipsis when tight — product identity left, tenant beside
+                  (white-label seed). Divider is a logical inline-start border. */}
+              <Logo variant="navy" withWordmark={!sidebarCollapsed} size={sidebarCollapsed ? 34 : 36} compact />
               {!sidebarCollapsed && orgSettings.name && (
-                <div className="min-w-0 overflow-hidden ps-2"
+                <div className="flex-1 min-w-0 overflow-hidden ps-2"
                      style={{ borderInlineStart: '1px solid var(--border-default)' }}>
                   <div className="text-[12px] font-semibold leading-tight truncate"
                        style={{ color: 'var(--text-secondary)' }}>{orgSettings.name}</div>
@@ -951,14 +952,17 @@ export default function App() {
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'rgb(var(--velo-surface-canvas))' }}>
         <header className="mobile-header" style={{ height:52, minHeight:52, background: '#FFFFFF', borderBottom:'1px solid #DDE7F4', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
-          {/* Mobile: SC mark + product name, then clinic name (truncates but
-              never disappears). Logical padding keeps the divider RTL-safe. */}
+          {/* Mobile: SC mark + product name (one shrink-0 unit), then clinic
+              name that truncates with ellipsis but never disappears. Logical
+              padding/border keep the divider RTL-safe. */}
           {isMobile && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flexShrink:1 }}>
-              <Logo variant="navy" withWordmark={false} size={30} />
-              <span style={{ fontSize:15, fontWeight:700, color:'var(--brand-navy)', fontFamily:'var(--font-sans)', letterSpacing:'-0.02em', whiteSpace:'nowrap' }}>{BRAND.appName}</span>
+            <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:'1 1 auto', overflow:'hidden' }}>
+              <span style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
+                <Logo variant="navy" withWordmark={false} size={30} />
+                <span style={{ fontSize:15, fontWeight:700, color:'var(--brand-navy)', fontFamily:'var(--font-sans)', letterSpacing:'-0.02em', whiteSpace:'nowrap' }}>{BRAND.appName}</span>
+              </span>
               {orgSettings.name && (
-                <span style={{ fontSize:12, color:'var(--text-tertiary)', paddingInlineStart:8, borderInlineStart:'1px solid var(--border-default)', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{orgSettings.name}</span>
+                <span style={{ fontSize:12, color:'var(--text-tertiary)', paddingInlineStart:8, borderInlineStart:'1px solid var(--border-default)', flex:'1 1 auto', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{orgSettings.name}</span>
               )}
             </div>
           )}

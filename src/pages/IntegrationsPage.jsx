@@ -3,14 +3,14 @@ import { C, makeBtn, card } from '../design'
 import { Icons } from '../components/shared'
 
 const INTEGRATIONS = [
-  { id: 'whatsapp', name: 'WhatsApp Business', desc: 'Send and receive WhatsApp messages directly from Velo inbox', category: 'communication', connected: true, color: '#25D366', initial: 'W' },
+  { id: 'whatsapp', name: 'WhatsApp Business', desc: 'Send and receive WhatsApp messages directly from SupCod3 inbox', category: 'communication', connected: true, color: '#25D366', initial: 'W' },
   { id: 'gmail', name: 'Gmail', desc: 'Sync emails, track opens, and send from your Gmail account', category: 'communication', connected: true, color: '#EA4335', initial: 'G' },
   { id: 'twilio', name: 'Twilio SMS', desc: 'Send SMS notifications and alerts to contacts', category: 'communication', connected: false, color: '#F22F46', initial: 'T' },
   { id: 'facebook', name: 'Facebook Messenger', desc: 'Manage Facebook conversations and leads in one place', category: 'social', connected: false, color: '#1877F2', initial: 'f' },
   { id: 'instagram', name: 'Instagram DM', desc: 'Reply to Instagram messages and manage social interactions', category: 'social', connected: false, color: '#E4405F', initial: 'I' },
   { id: 'gcalendar', name: 'Google Calendar', desc: 'Sync appointments and events with Google Calendar', category: 'calendar', connected: false, color: '#4285F4', initial: 'G' },
   { id: 'meta_ads', name: 'Meta Ads', desc: 'Import leads from Facebook and Instagram ad campaigns', category: 'marketing', connected: false, color: '#0668E1', initial: 'M' },
-  { id: 'zapier', name: 'Zapier', desc: 'Connect Velo to 5000+ apps with automated workflows', category: 'automation', connected: false, color: '#FF4A00', initial: 'Z' },
+  { id: 'zapier', name: 'Zapier', desc: 'Connect SupCod3 to 5000+ apps with automated workflows', category: 'automation', connected: false, color: '#FF4A00', initial: 'Z' },
   { id: 'make', name: 'Make (Integromat)', desc: 'Build advanced automation scenarios with visual builder', category: 'automation', connected: false, color: '#6D00CC', initial: 'M' },
   { id: 'stripe', name: 'Stripe', desc: 'Process payments and manage subscriptions', category: 'payments', connected: false, color: '#635BFF', initial: 'S' },
 ]
