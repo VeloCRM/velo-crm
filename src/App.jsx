@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useGSAP } from '@gsap/react'
+import { entrance } from './lib/motion'
 import { T } from './translations'
 import { BRAND } from './config/brand'
 import { Logo } from './components/Logo'
@@ -1251,11 +1253,21 @@ export default function App() {
 // Deals, lead-scoring, and notes-timeline are gone. Documents/prescriptions/
 // x-rays were dropped from the dental schema.
 
+// Entrance stagger applies ONLY to this many leading rows (~one viewport).
+// Rows beyond it — and every row appended by "Load more" — never carry
+// data-anim, so the choreography can never run per-item across thousands of
+// records. See the useGSAP guard below.
+const INITIAL_ANIM_COUNT = 12
+
 function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMorePatients, patientsLoadingMore = false, addPatient, updatePatient, deletePatient, setPage, toast, showConfirm, urlPatientId, navigate, isOperator, impersonation, orgId, currentUserId, currentUserRole, patientFilterDoctorId, setPatientFilterDoctorId }) {
   void t
   void lang
   void orgId
   const [search, setSearch] = useState('')
+  // Motion: page scope + a run-once guard so entrance never re-fires on
+  // search, filter, or "Load more" — only on the first populated browse render.
+  const listScopeRef = useRef(null)
+  const didAnimateRef = useRef(false)
 
   // ── Server-side patient search (SB-2) ─────────────────────────────────────
   // A debounced term of >= SEARCH_MIN_CHARS switches the list from the browse
@@ -1394,6 +1406,19 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
   // whole org); in browse mode it's the parent's paginated list. No client filter.
   const filtered = searchActive ? searchResults.rows : patients
 
+  // Bounded entrance choreography. Runs ONCE, on the first populated *browse*
+  // render. The guard blocks every re-fire: search (searchActive), My-patients
+  // filter, and "Load more" (patients.length grows) all leave didAnimateRef set,
+  // so the animation never replays and never fights typing or scrolling. Only
+  // the first INITIAL_ANIM_COUNT rows carry data-anim="row", so the stagger is
+  // capped at ~one viewport regardless of how many thousands of rows are loaded.
+  useGSAP(() => {
+    if (didAnimateRef.current || searchActive || patients.length === 0 || !listScopeRef.current) return
+    didAnimateRef.current = true
+    const mm = entrance(listScopeRef.current)
+    return () => mm.revert()
+  }, { scope: listScopeRef, dependencies: [patients.length, searchActive] })
+
   if (selectedPatientId) {
     // Look in the browse list AND the search results — a patient opened from a
     // search hit may not be in the loaded browse page.
@@ -1433,6 +1458,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
 
   return (
     <div
+      ref={listScopeRef}
       dir={dir}
       className="ds-root min-h-full -m-4 md:-m-8 p-4 md:p-8 box-border"
       style={{ background: 'var(--ds-canvas-gradient)' }}
@@ -1441,7 +1467,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
         <div className="ds-ambient" />
 
         {/* ── Header ───────────────────────────────────────────────── */}
-        <header className="flex items-start justify-between gap-4 flex-wrap">
+        <header data-anim="title" className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold text-navy-900 leading-tight tracking-tight m-0">
               {isRTL ? 'المرضى' : 'Patients'}
@@ -1531,7 +1557,9 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
                 const name = fullNameOf(p)
                 const isLast = i === filtered.length - 1
                 return (
-                  <li key={p.id} className={isLast ? '' : 'border-b border-navy-100/60'}>
+                  <li key={p.id}
+                    data-anim={i < INITIAL_ANIM_COUNT ? 'row' : undefined}
+                    className={isLast ? '' : 'border-b border-navy-100/60'}>
                     <div
                       role="button"
                       tabIndex={0}
