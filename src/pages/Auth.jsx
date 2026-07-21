@@ -208,9 +208,10 @@ export default function AuthPage({ onAuth, lang, setLang }) {
           <div className="mx-auto mb-3 grid place-items-center w-14 h-14">
             <Logo variant="navy" withWordmark={false} size={56} />
           </div>
-          <h1 className="text-3xl font-bold text-navy-800 leading-tight tracking-tight m-0 mb-1">
+          <h1 className="text-3xl font-bold text-navy-800 leading-tight tracking-tight m-0 mb-0.5">
             {BRAND.appName}
           </h1>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-navy-400 m-0 mb-1">{BRAND.vendorTagline}</p>
           <p className="text-sm text-navy-500 m-0">{txt.tagline}</p>
         </div>
 
@@ -358,7 +359,7 @@ export default function AuthPage({ onAuth, lang, setLang }) {
           )}
 
           <div className="mt-7 text-center text-[11px] font-normal text-navy-400">
-            &copy; 2026 {BRAND.appName}
+            &copy; 2026 {BRAND.appName} · {BRAND.vendorTagline}
           </div>
         </GlassCard>
       </div>

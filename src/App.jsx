@@ -860,16 +860,18 @@ export default function App() {
             </>
           ) : (
             <>
-              {/* SupCod3 product wordmark (shrink-0, keeps its space) on the
-                  inline-start; clinic (tenant) name sits beside it and truncates
-                  with ellipsis when tight — product identity left, tenant beside
-                  (white-label seed). Divider is a logical inline-start border. */}
-              <Logo variant="navy" withWordmark={!sidebarCollapsed} size={sidebarCollapsed ? 34 : 36} compact />
-              {!sidebarCollapsed && orgSettings.name && (
-                <div className="flex-1 min-w-0 overflow-hidden ps-2"
-                     style={{ borderInlineStart: '1px solid var(--border-default)' }}>
-                  <div className="text-[12px] font-semibold leading-tight truncate"
-                       style={{ color: 'var(--text-secondary)' }}>{orgSettings.name}</div>
+              {/* SC mark (shrink-0) + stacked two-line block: product name on
+                  top, clinic (tenant) name under it — both truncate with
+                  ellipsis when tight. No "by SupCod3" here (login + footer only). */}
+              <Logo variant="navy" withWordmark={false} size={sidebarCollapsed ? 34 : 36} />
+              {!sidebarCollapsed && (
+                <div className="min-w-0 flex-1 overflow-hidden leading-tight">
+                  <div className="text-[15px] font-bold tracking-[-0.01em] truncate"
+                       style={{ color: 'var(--brand-navy)', fontFamily: 'var(--font-sans)' }}>{BRAND.appName}</div>
+                  {orgSettings.name && (
+                    <div className="text-[11px] font-medium truncate"
+                         style={{ color: 'var(--text-secondary)' }}>{orgSettings.name}</div>
+                  )}
                 </div>
               )}
             </>
@@ -952,18 +954,18 @@ export default function App() {
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'rgb(var(--velo-surface-canvas))' }}>
         <header className="mobile-header" style={{ height:52, minHeight:52, background: '#FFFFFF', borderBottom:'1px solid #DDE7F4', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
-          {/* Mobile: SC mark + product name (one shrink-0 unit), then clinic
-              name that truncates with ellipsis but never disappears. Logical
-              padding/border keep the divider RTL-safe. */}
+          {/* Mobile: SC mark + stacked two-line block (product name over clinic
+              name). Clinic truncates with ellipsis but never disappears.
+              No "by SupCod3" here (login + footer only). */}
           {isMobile && (
             <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:'1 1 auto', overflow:'hidden' }}>
-              <span style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-                <Logo variant="navy" withWordmark={false} size={30} />
-                <span style={{ fontSize:15, fontWeight:700, color:'var(--brand-navy)', fontFamily:'var(--font-sans)', letterSpacing:'-0.02em', whiteSpace:'nowrap' }}>{BRAND.appName}</span>
-              </span>
-              {orgSettings.name && (
-                <span style={{ fontSize:12, color:'var(--text-tertiary)', paddingInlineStart:8, borderInlineStart:'1px solid var(--border-default)', flex:'1 1 auto', minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{orgSettings.name}</span>
-              )}
+              <Logo variant="navy" withWordmark={false} size={30} />
+              <div style={{ minWidth:0, overflow:'hidden', lineHeight:1.15 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:'var(--brand-navy)', fontFamily:'var(--font-sans)', letterSpacing:'-0.02em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{BRAND.appName}</div>
+                {orgSettings.name && (
+                  <div style={{ fontSize:11, fontWeight:500, color:'var(--text-secondary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{orgSettings.name}</div>
+                )}
+              </div>
             </div>
           )}
           {/* Search → opens Command Palette */}
