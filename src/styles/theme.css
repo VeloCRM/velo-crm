@@ -8,10 +8,10 @@
   --bg-card-hover: #141828;
   --bg-hover: rgba(255,255,255,0.04);
 
-  --accent-primary: #00FFB2;
+  --accent-primary: #14B8A6;
   --accent-secondary: #4DA6FF;
   --accent-blue: #4DA6FF;
-  --accent-green: #00FFB2;
+  --accent-green: #14B8A6;
   --accent-amber: #FFB347;
   --accent-red: #FF6B6B;
   --accent-coral: #FF6B6B;
@@ -30,7 +30,7 @@
   --radius-xl: 18px;
 
   --shadow-card: none;
-  --shadow-glow-mint: 0 0 20px rgba(0,255,178,0.15);
+  --shadow-glow-mint: 0 0 20px rgba(20,184,166,0.15);
   --shadow-glow-blue: 0 0 20px rgba(77,166,255,0.15);
   --transition: all 0.18s ease;
 
@@ -40,16 +40,16 @@
   --bg-surface: #101422;
   --bg-glass: rgba(12,14,26,0.85);
 
-  --accent-cyan: #00FFB2;
+  --accent-cyan: #14B8A6;
 
   --border-subtle: rgba(255,255,255,0.07);
-  --border-glow: rgba(0,255,178,0.3);
+  --border-glow: rgba(20,184,166,0.3);
 
-  --shadow-glow: 0 0 20px rgba(0,255,178,0.15);
+  --shadow-glow: 0 0 20px rgba(20,184,166,0.15);
 
-  --font-display: 'Syne', sans-serif;
-  --font-body: 'DM Sans', sans-serif;
-  --font-data: 'DM Sans', sans-serif;
+  --font-display: 'IBM Plex Sans', sans-serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-data: 'IBM Plex Mono', monospace;
 }
 
 /* ─── Global ──────────────────────────────────────────────────────── */
@@ -138,16 +138,16 @@ tbody tr:hover { background: rgba(255,255,255,0.03) !important; transition: var(
    :hover, so these utility classes add the Clinical Luxury hover glow
    and lift. Opt in by setting className alongside the existing style. */
 .velo-btn-primary:hover {
-  background: #00E8A0 !important;
+  background: #0F8F82 !important;
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(0,255,178,0.3);
+  box-shadow: 0 4px 14px rgba(20,184,166,0.3);
 }
 .velo-btn-primary:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(0,255,178,0.2);
+  box-shadow: 0 2px 8px rgba(20,184,166,0.2);
 }
 .velo-btn-secondary:hover {
-  background: rgba(0,255,178,0.15) !important;
+  background: rgba(20,184,166,0.15) !important;
 }
 .velo-btn-ghost:hover {
   background: rgba(255,255,255,0.04) !important;
