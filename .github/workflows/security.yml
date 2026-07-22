@@ -20,5 +20,12 @@ jobs:
       - uses: anthropics/claude-code-security-review@main
         with:
           comment-pr: true
-          claude-api-key: ${{ secrets.CLAUDE_API_KEY }}
+          # Tolerate either secret name: whichever is defined in repo/org
+          # Actions secrets supplies the value (the other resolves empty).
+          claude-api-key: ${{ secrets.CLAUDE_API_KEY || secrets.ANTHROPIC_API_KEY }}
           claudecode-timeout: "45"
+        env:
+          # Belt-and-suspenders: some versions of the action read the key
+          # straight from env under one of these names rather than the input.
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY || secrets.CLAUDE_API_KEY }}
+          CLAUDE_API_KEY: ${{ secrets.CLAUDE_API_KEY || secrets.ANTHROPIC_API_KEY }}
