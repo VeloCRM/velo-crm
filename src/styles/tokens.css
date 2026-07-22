@@ -1,0 +1,32 @@
+/* SupCod3 Dental — brand token layer. SINGLE SOURCE OF TRUTH for brand hexes.
+   No other file may introduce brand hex literals; they alias into these vars.
+   RGB-triplet forms feed Tailwind's rgb(var(--x) / <alpha-value>) syntax. */
+:root {
+  /* Brand */
+  --brand-navy: #0A2540;        --brand-navy-rgb: 10 37 64;
+  --brand-teal: #14B8A6;        --brand-teal-rgb: 20 184 166;
+  --brand-teal-hover: #0F8F82;
+  --brand-teal-tint: #CCFBF1;   /* confirmed-status background */
+  --brand-white: #FFFFFF;
+
+  /* Surfaces / borders */
+  --surface-canvas: #F8FAFC;
+  --surface-raised: #FFFFFF;
+  --surface-sunken: #F1F5F9;
+  --border-default: #E2E8F0;
+
+  /* Text */
+  --text-primary:   #0F172A;
+  --text-secondary: #475569;
+  --text-tertiary:  #64748B;
+
+  /* Status — brand book */
+  --status-confirmed-fg: #0F8F82;  --status-confirmed-bg: #CCFBF1;
+  --status-progress-fg:  #1D4ED8;  --status-progress-bg:  #DBEAFE;
+  --status-waiting-fg:   #B45309;  --status-waiting-bg:   #FEF3C7;
+  --status-danger-fg:    #B91C1C;  --status-danger-bg:    #FEE2E2;
+
+  /* Type */
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
+}

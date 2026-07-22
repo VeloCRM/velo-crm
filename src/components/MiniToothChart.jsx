@@ -14,6 +14,7 @@
  * is pinned dir="ltr" so it never mirrors under RTL (matches the dental chart).
  */
 import ToothLabel from './ToothLabel'
+import { pressFeedback } from '../lib/motion'
 import useMyToothNotation from '../hooks/useMyToothNotation'
 
 const UPPER_TEETH = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28]
@@ -41,7 +42,7 @@ export default function MiniToothChart({ value = [], onChange, lang = 'en' }) {
           <button
             key={n}
             type="button"
-            onClick={() => toggle(n)}
+            onClick={(e) => { pressFeedback(e.currentTarget); toggle(n) }}
             aria-pressed={on}
             aria-label={`${isRTL ? 'سن' : 'Tooth'} ${n}${on ? (isRTL ? '، محدد' : ', selected') : ''}`}
             className={[

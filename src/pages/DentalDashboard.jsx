@@ -1,4 +1,6 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useGSAP } from '@gsap/react'
+import { entrance, countUp, progressBar, pulse } from '../lib/motion'
 import AddAppointmentModal from '../components/AddAppointmentModal'
 import {
   SAMPLE_DENTAL_DOCTORS,
@@ -125,6 +127,12 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
   const [refreshTrigger, setRefreshTrigger] = useState(0)
   const [myFullName, setMyFullName] = useState('')
 
+  // ── Motion refs (see src/lib/motion.js — all reduced-motion-safe) ──
+  const scopeRef = useRef(null)     // page scope for entrance choreography
+  const tileRefs = useRef([])       // KPI value nodes → countUp
+  const progressRef = useRef(null)  // today's-completion bar → progressBar
+  const pulseRef = useRef(null)     // single "in chair" live dot → pulse
+
   // Greeting target name — fetched once per mount; safe to fail (we have a fallback).
   useEffect(() => {
     let cancelled = false
@@ -228,6 +236,10 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
     if (!isSupabaseConfigured()) return
     try {
       await updateAppointmentStatus(id, status)
+      // Check-in confirmation — surface a success toast (animates via Toast.jsx).
+      if (status === 'confirmed') {
+        toast?.(isRTL ? 'تم تسجيل وصول المريض' : 'Patient checked in', 'success')
+      }
     } catch (err) {
       console.error('[DentalDashboard] status update failed:', err)
       // Revert just this row via a functional update so the UI never shows a status the
@@ -280,12 +292,34 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
     { key: 'payment',        icon: Icons.dollar,   label: isRTL ? 'تسجيل دفعة'   : 'Record Payment', onClick: () => setPage('finance'),       primary: false },
   ]
 
+  // ── Entrance choreography + data motion (once, after first data paint) ──
+  // Every helper is gsap.matchMedia-wrapped; reduced-motion sets final state
+  // instantly. Runs when loading flips false so the real DOM exists.
+  useGSAP(() => {
+    if (dbData.loading || !scopeRef.current) return
+    const mms = [entrance(scopeRef.current)]
+    if (tileRefs.current[0]) mms.push(countUp(tileRefs.current[0], dbData.totalPatients))
+    if (tileRefs.current[1]) mms.push(countUp(tileRefs.current[1], dbData.appointmentsCount))
+    if (tileRefs.current[2]) mms.push(countUp(tileRefs.current[2], dbData.patientsThisMonth))
+    const total = dbData.appointmentsList.length
+    const done = dbData.appointmentsList.filter(a => a.status === 'completed').length
+    if (progressRef.current) mms.push(progressBar(progressRef.current, total ? (done / total) * 100 : 0))
+    if (pulseRef.current) mms.push(pulse(pulseRef.current))  // max one "in chair" dot
+    return () => mms.forEach(mm => mm && mm.revert())
+  }, { scope: scopeRef, dependencies: [dbData.loading] })
+
   // Hold the skeleton until the first stats fetch resolves — otherwise a
   // populated clinic briefly renders zeros + "No appointments" empty states.
   if (dbData.loading) return <DashboardSkeleton dir={dir} />
 
+  // First in-progress ("in chair") appointment — the single pulse target.
+  const inChairId = dbData.appointmentsList.find(a => a.status === 'in_progress')?.id
+  const doneToday = dbData.appointmentsList.filter(a => a.status === 'completed').length
+  const totalToday = dbData.appointmentsList.length
+
   return (
     <div
+      ref={scopeRef}
       dir={dir}
       className="ds-root min-h-full -m-4 md:-m-8 p-4 md:p-8 box-border"
       style={{ background: 'var(--ds-canvas-gradient)' }}
@@ -294,7 +328,7 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
         <div className="ds-ambient" />
 
         {/* ── Hero greeting ──────────────────────────────────────────────── */}
-        <header className="animate-fade-in">
+        <header data-anim="title">
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent-cyan-700 mb-1.5">
             {dateLabel}
           </p>
@@ -310,9 +344,10 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
 
         {/* ── Stat tiles ─────────────────────────────────────────────────── */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-5">
-          {STAT_TILES.map(s => (
+          {STAT_TILES.map((s, i) => (
             <GlassCard
               key={s.key}
+              data-anim="card"
               padding="lg"
               className="relative overflow-hidden transition-all duration-fast ease-standard hover:-translate-y-px hover:shadow-glass"
             >
@@ -320,14 +355,14 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
               <span
                 aria-hidden="true"
                 className="pointer-events-none absolute -top-6 -end-6 w-40 h-40 rounded-full opacity-50"
-                style={{ background: 'radial-gradient(closest-side, rgba(6,182,212,0.18), rgba(6,182,212,0))' }}
+                style={{ background: 'radial-gradient(closest-side, rgba(20,184,166,0.18), rgba(20,184,166,0))' }}
               />
               <div className="relative flex flex-col gap-4">
                 <span aria-hidden="true" className={`grid place-items-center w-10 h-10 rounded-full ${s.tint}`}>
                   {s.icon(20)}
                 </span>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-navy-500">{s.label}</p>
-                <p className="text-5xl font-bold text-navy-900 leading-none tabular-nums tracking-tight">{s.value}</p>
+                <p ref={el => (tileRefs.current[i] = el)} className="text-5xl font-bold text-navy-900 leading-none tabular-nums tracking-tight font-mono">{s.value}</p>
               </div>
             </GlassCard>
           ))}
@@ -385,7 +420,7 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
               {doctors.map(doc => {
                 const docApts = dbData.appointmentsList.filter(a => a.doctor_id === doc.id)
                 return (
-                  <GlassCard key={doc.id} padding="md" className="flex items-center gap-3">
+                  <GlassCard key={doc.id} data-anim="card" padding="md" className="flex items-center gap-3">
                     <span
                       aria-hidden="true"
                       className={`grid place-items-center w-11 h-11 rounded-full text-white text-sm font-bold shadow-glass-sm bg-gradient-to-br ${avatarGradient(doc.full_name)}`}
@@ -411,15 +446,30 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
         {/* ── Two-column: Timeline + Recent Patients ─────────────────────── */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-5">
           {/* Today's Schedule */}
-          <GlassCard padding="lg" className="md:col-span-2">
-            <header className="flex items-center justify-between mb-5">
+          <GlassCard data-anim="card" padding="lg" className="md:col-span-2">
+            <header className="flex items-center justify-between mb-3">
               <h2 className="text-xl font-semibold text-navy-900 m-0">
                 {isRTL ? 'جدول اليوم' : "Today's Schedule"}
               </h2>
-              {dbData.appointmentsList.length > 0 && (
-                <Badge tone="cyan">{dbData.appointmentsList.length}</Badge>
+              {totalToday > 0 && (
+                <Badge tone="cyan">{totalToday}</Badge>
               )}
             </header>
+
+            {/* Today's completion — count + animated progress bar */}
+            {totalToday > 0 && (
+              <div className="mb-5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-navy-500">
+                    {isRTL ? 'اكتمل اليوم' : 'Completed today'}
+                  </span>
+                  <span className="text-[11px] font-mono tabular-nums text-navy-600">{doneToday}/{totalToday}</span>
+                </div>
+                <div className="h-1 rounded-full bg-navy-100 overflow-hidden">
+                  <div ref={progressRef} className="h-full rounded-full bg-accent-cyan-500" style={{ width: 0 }} />
+                </div>
+              </div>
+            )}
 
             {dbData.appointmentsList.length === 0 ? (
               <div className="py-8 flex flex-col items-center gap-4 text-center">
@@ -437,12 +487,14 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
                   const fallback = patients?.find(p => p.id === apt.patient_id)
                   const patientName = apt.patients?.full_name || fallback?.full_name || (isRTL ? 'مريض' : 'Unknown')
                   const tone = STATUS_TONE[apt.status] || 'neutral'
+                  const isInChair = apt.id === inChairId
                   return (
                     <li
                       key={apt.id}
+                      data-anim="row"
                       className="flex items-center gap-3 p-3 rounded-glass border border-navy-100/60 bg-white/60 backdrop-blur-glass-sm hover:border-accent-cyan-300 transition-colors"
                     >
-                      <span className="w-12 text-center font-semibold text-sm text-navy-700 tabular-nums shrink-0">
+                      <span className="w-12 text-center font-semibold text-sm text-navy-700 tabular-nums font-mono shrink-0">
                         {aptTimeStr(apt.scheduled_at)}
                       </span>
                       <span aria-hidden="true" className="w-px self-stretch bg-navy-100/80" />
@@ -452,6 +504,11 @@ export default function DentalDashboard({ t, lang, isRTL, dir, patients, setPage
                           <p className="text-xs text-navy-500 capitalize m-0 mt-0.5">{apt.type.replace(/_/g, ' ')}</p>
                         )}
                       </div>
+                      {isInChair && (
+                        <span ref={pulseRef} aria-hidden="true"
+                          className="w-2 h-2 rounded-full bg-accent-cyan-500 shrink-0"
+                          title={isRTL ? 'على الكرسي' : 'In chair'} />
+                      )}
                       <Badge tone={tone} size="sm" dot>{apt.status.replace(/_/g, ' ')}</Badge>
                       <div className="flex gap-1 shrink-0">
                         {apt.status === 'scheduled' && (

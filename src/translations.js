@@ -1,9 +1,10 @@
 // Velo CRM - Translations (EN / AR)
+import { BRAND } from './config/brand'
 
 export const T = {
   en: {
     // App
-    appName: 'Velo',
+    appName: BRAND.appName,
     appTagline: 'CRM Platform',
 
     // Nav
@@ -268,7 +269,7 @@ export const T = {
     back: 'Back',
     viewAll: 'View All',
     search: 'Search',
-    searchPlaceholder: 'Search Velo…',
+    searchPlaceholder: 'Search SupCod3…',
     loading: 'Loading...',
     noData: 'No data available',
     actions: 'Actions',
@@ -418,7 +419,7 @@ export const T = {
 
   ar: {
     // App
-    appName: 'فيلو',
+    appName: BRAND.appName,
     appTagline: 'منصة CRM',
 
     // Nav
@@ -683,7 +684,7 @@ export const T = {
     back: 'رجوع',
     viewAll: 'عرض الكل',
     search: 'بحث',
-    searchPlaceholder: 'بحث في فيلو…',
+    searchPlaceholder: 'بحث في SupCod3…',
     loading: 'جارٍ التحميل...',
     noData: 'لا توجد بيانات',
     actions: 'إجراءات',

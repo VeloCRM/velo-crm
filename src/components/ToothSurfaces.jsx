@@ -21,6 +21,7 @@
  * A native <title> gives a hover tooltip naming the surface.
  */
 import { surfaceLayout, groupBySurface, SURFACE_LABELS, WEDGE_POLYGONS } from '../lib/toothSurfaces'
+import { pressFeedback } from '../lib/motion'
 import { toLocaleDigits } from '../lib/toothNotation'
 import ToothLabel from './ToothLabel'
 
@@ -29,7 +30,7 @@ const EMPTY_FILL = 'rgba(148,163,184,0.16)' // faint neutral so the 5 zones are 
 // Visible hover/focus highlight: a cyan accent stroke (CSS overrides the base
 // stroke attribute). Replaces the old opacity dim, which made faint wedges fainter.
 // active: gives a touch press cue (hover never fires on touch — M-02).
-const WEDGE_CLASS = 'cursor-pointer transition-all duration-100 hover:[stroke:#06b6d4] hover:[stroke-width:2.5] active:[stroke:#06b6d4] active:[stroke-width:2.5] focus:outline-none focus-visible:[stroke:#06b6d4] focus-visible:[stroke-width:2.5]'
+const WEDGE_CLASS = 'cursor-pointer transition-all duration-100 hover:[stroke:#14b8a6] hover:[stroke-width:2.5] active:[stroke:#14b8a6] active:[stroke-width:2.5] focus:outline-none focus-visible:[stroke:#14b8a6] focus-visible:[stroke-width:2.5]'
 
 export default function ToothSurfaces({
   fdi, findings, findingStyles, onSurfaceClick, onAddClick,
@@ -51,11 +52,14 @@ export default function ToothSurfaces({
 
   // Interaction props only (role/keyboard/handlers); styling is applied per
   // element so the wedge hover highlight stays on the wedges.
+  // Selection-only tactile cue: scale-press the clicked region (pressFeedback is
+  // reduced-motion-safe). This is the ONLY motion on the chart — no entrance,
+  // pulse, or decorative animation on clinical data.
   const interactive = (handler) => (disabled
     ? { role: 'img' }
     : {
-      onClick: handler,
-      onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handler() } },
+      onClick: (e) => { pressFeedback(e.currentTarget); handler() },
+      onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pressFeedback(e.currentTarget); handler() } },
       role: 'button',
       tabIndex: 0,
     })

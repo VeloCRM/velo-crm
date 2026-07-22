@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Syne:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&family=Tajawal:wght@400;500;700;800&display=swap');
+@import './styles/tokens.css';
 @import './styles/theme.css';
 @import "tailwindcss";
 @config "../tailwind.config.js";
@@ -10,32 +10,32 @@
    Theme switch: toggle [data-theme="dark"] on <html>.                   */
 
 :root {
-  /* Surfaces */
-  --velo-surface-canvas:  250 248 245;   /* ink-50 — warm paper */
+  /* Surfaces — aliased to tokens.css (SupCod3 brand) */
+  --velo-surface-canvas:  248 250 252;   /* #F8FAFC */
   --velo-surface-raised:  255 255 255;   /* white — cards, panels */
-  --velo-surface-sunken:  244 241 236;   /* ink-100 — table headers, inset */
-  --velo-surface-overlay:  20  18  15;   /* warm near-black; use at /50 for backdrop */
+  --velo-surface-sunken:  241 245 249;   /* #F1F5F9 */
+  --velo-surface-overlay:  15  23  42;   /* slate-900; use at /50 for backdrop */
 
-  /* Text */
-  --velo-text-primary:     21  20  15;   /* ink-900 */
-  --velo-text-secondary:   61  58  51;   /* ink-700 */
-  --velo-text-tertiary:   122 116 104;   /* ink-500 */
-  --velo-text-inverse:    250 248 245;   /* ink-50 */
-  --velo-text-brand:        0 163 114;   /* mint-700 (accessible mint) */
-  --velo-text-on-accent:   21  20  15;   /* ink-900 on mint solid */
+  /* Text — aliased to tokens.css */
+  --velo-text-primary:     15  23  42;   /* #0F172A */
+  --velo-text-secondary:   71  85 105;   /* #475569 */
+  --velo-text-tertiary:   100 116 139;   /* #64748B */
+  --velo-text-inverse:    248 250 252;   /* #F8FAFC */
+  --velo-text-brand:        13 148 136;  /* teal-600 accessible text */
+  --velo-text-on-accent:  255 255 255;   /* white on teal solid */
 
-  /* Borders */
-  --velo-border-subtle:   233 228 220;   /* ink-200 */
-  --velo-border-default:  209 203 191;   /* ink-300 */
-  --velo-border-strong:   122 116 104;   /* ink-500 */
-  --velo-border-brand:      0 255 178;   /* mint-500 */
+  /* Borders — aliased to tokens.css */
+  --velo-border-subtle:   226 232 240;   /* #E2E8F0 */
+  --velo-border-default:  226 232 240;   /* #E2E8F0 */
+  --velo-border-strong:   100 116 139;   /* slate-500 */
+  --velo-border-brand:     20 184 166;   /* teal #14B8A6 */
 
-  /* Accent */
-  --velo-accent-solid:        0 255 178; /* mint-500 */
-  --velo-accent-solid-hover:  0 214 149; /* mint-500 darkened */
-  --velo-accent-muted:      214 255 238; /* mint-100 */
-  --velo-accent-subtle:     235 248 240; /* mint-500 @ 6% pre-blended over canvas */
-  --velo-accent-fg:           0 163 114; /* mint-700 */
+  /* Accent — aliased to tokens.css (teal) */
+  --velo-accent-solid:       20 184 166; /* teal #14B8A6 */
+  --velo-accent-solid-hover: 15 143 130; /* teal-hover #0F8F82 */
+  --velo-accent-muted:      204 251 241; /* #CCFBF1 */
+  --velo-accent-subtle:     240 253 250; /* teal @ ~6% over canvas */
+  --velo-accent-fg:          13 148 136; /* teal-600 */
 
   /* Status */
   --velo-status-success-bg:     236 253 243;
@@ -160,8 +160,8 @@
   --ds-navy-600:  #1B4477;
   --ds-navy-700:  #103562;
   --ds-navy-800:  #0A2540;
-  --ds-cyan-500:  #06B6D4;
-  --ds-cyan-600:  #0891B2;
+  --ds-cyan-500:  #14B8A6;
+  --ds-cyan-600:  #0F8F82;
 
   /* Subtle off-white canvas gradient — replaces flat white where used */
   --ds-canvas-gradient: linear-gradient(180deg,
@@ -173,7 +173,7 @@
 
 /* Scoped reset: any subtree wrapped in .ds-root opts into the new system. */
 .ds-root {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: var(--font-sans);
   font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
   font-variant-numeric: tabular-nums;
   color: var(--ds-navy-800);
@@ -187,7 +187,7 @@
 /* Arabic locales: switch primary stack to Tajawal. The Latin fallback keeps
    numerals tabular-aligned while letters render in Tajawal for Arabic copy. */
 .ds-root[dir="rtl"], .ds-root [lang="ar"], .ds-root :lang(ar) {
-  font-family: 'Tajawal', 'Noto Sans Arabic', 'Inter', sans-serif;
+  font-family: 'Tajawal', 'Noto Sans Arabic', var(--font-sans);
 }
 
 /* Frosted-glass card. Components compose this with Tailwind classes for
@@ -227,10 +227,10 @@
 
 /* Accent (cyan) gradient for secondary highlights. */
 .accent-gradient {
-  background: linear-gradient(158deg, #22D3EE 0%, #06B6D4 60%, #0891B2 100%);
+  background: linear-gradient(158deg, #2DD4BF 0%, #14B8A6 60%, #0F8F82 100%);
   color: #062B36;
 }
-[dir="rtl"] .accent-gradient { background: linear-gradient(202deg, #22D3EE 0%, #06B6D4 60%, #0891B2 100%); }
+[dir="rtl"] .accent-gradient { background: linear-gradient(202deg, #2DD4BF 0%, #14B8A6 60%, #0F8F82 100%); }
 
 /* Subtle ambient glow used behind hero glass cards — paint as a sibling
    div with `.ds-ambient` to get the soft cyan/navy halo without affecting
@@ -253,6 +253,12 @@
   .ds-root *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  /* Modals live outside .ds-root (the overlay is the parent), so guard them
+     explicitly — the enter scaleIn must not run under reduced-motion. */
+  .modal-overlay,
+  .modal-content {
+    animation: none !important;
   }
 }
 
@@ -309,7 +315,7 @@
   opacity: 1;
 }
 
-/* Focus: the legacy mint focus ring (rgba(0,255,178,…)) clashes with the
+/* Focus: the legacy mint focus ring (rgba(20,184,166,…)) clashes with the
    new cyan focus treatment. Disable the legacy ring so the primitive's
    `focus-within:shadow-focus-cyan` on the wrapper is the only signal.  */
 .ds-root :is(input, textarea, select):focus {
@@ -351,7 +357,7 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 400;
   line-height: 1.5;
@@ -370,14 +376,14 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6 {
-  font-family: 'Syne', sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.2;
   letter-spacing: -0.03em;
   color: var(--text-primary);
 }
 
 input, textarea, select, button {
-  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* Mobile: force ≥16px on form controls so iOS Safari does not auto-zoom the
@@ -407,7 +413,7 @@ input, textarea, select, button {
   100% { background-position: 200% 0; }
 }
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.98); }
   to   { opacity: 1; transform: scale(1); }
 }
 @keyframes slideInLeft {
@@ -415,8 +421,8 @@ input, textarea, select, button {
   to   { opacity: 1; transform: translateX(0); }
 }
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(0,255,178,0.4); }
-  50%       { box-shadow: 0 0 0 6px rgba(0,255,178,0); }
+  0%, 100% { box-shadow: 0 0 0 0 rgba(20,184,166,0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(20,184,166,0); }
 }
 
 .animate-slide-up { animation: fadeSlideUp 0.4s ease forwards; }

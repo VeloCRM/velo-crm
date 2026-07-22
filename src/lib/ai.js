@@ -67,7 +67,7 @@ export function buildAutoReplySystem(knowledgeBase, personality, contactName) {
     formal: 'Respond in a formal, respectful tone suitable for corporate communication.',
   }
 
-  return `You are an AI customer service agent for a business using Velo CRM.
+  return `You are an AI customer service agent for a business using SupCod3 Dental.
 ${tones[personality] || tones.professional}
 The customer's name is ${contactName || 'the customer'}.
 Keep responses concise (1-3 sentences max unless the question requires more detail).
@@ -78,7 +78,7 @@ ${knowledgeBase ? `KNOWLEDGE BASE:\n${knowledgeBase}` : 'No specific knowledge b
 }
 
 export function buildAssistantSystem(context) {
-  return `You are Velo AI, an internal CRM assistant. You help team members with:
+  return `You are SupCod3 AI, an internal CRM assistant. You help team members with:
 - Summarizing contact history and deal status
 - Drafting emails and messages
 - Analyzing CRM data and suggesting next actions

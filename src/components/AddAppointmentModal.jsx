@@ -197,6 +197,7 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
 
   return (
     <Modal onClose={onClose} width={520} dir="ltr">
+      {(close) => (
       <div className="ds-root">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h2 className="text-xl font-semibold text-navy-900 m-0">
@@ -204,7 +205,7 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
         </h2>
         <button
           type="button"
-          onClick={onClose}
+          onClick={close}
           aria-label="Close"
           className="grid place-items-center w-8 h-8 rounded-md text-navy-500 hover:text-navy-800 hover:bg-navy-50 transition-colors"
         >
@@ -212,8 +213,8 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
         </button>
       </div>
 
-      {error && <div style={{ padding: '10px 14px', background: 'rgba(255,71,87,0.12)', color: '#FF6B6B', borderRadius: 'var(--radius-sm)', fontSize: 13, marginBottom: 16, border: '1px solid rgba(255,71,87,0.25)' }}>{error}</div>}
-      {success && <div style={{ padding: '10px 14px', background: 'rgba(0,255,178,0.1)', color: 'var(--accent-green)', borderRadius: 'var(--radius-sm)', fontSize: 13, marginBottom: 16, border: '1px solid rgba(0,255,178,0.25)' }}>{Icons.check(14)} {success}</div>}
+      {error && <div style={{ padding: '10px 14px', background: 'rgb(var(--velo-status-danger-bg))', color: 'rgb(var(--velo-status-danger-fg))', borderRadius: 'var(--radius-sm)', fontSize: 13, marginBottom: 16, border: '1px solid rgb(var(--velo-status-danger-border))' }}>{error}</div>}
+      {success && <div style={{ padding: '10px 14px', background: 'rgb(var(--velo-status-success-bg))', color: 'rgb(var(--velo-status-success-fg))', borderRadius: 'var(--radius-sm)', fontSize: 13, marginBottom: 16, border: '1px solid rgb(var(--velo-status-success-border))' }}>{Icons.check(14)} {success}</div>}
 
       <FormField label="Patient">
         {form.patient_id ? (
@@ -343,12 +344,13 @@ export default function AddAppointmentModal({ onClose, onSave, patients, initial
       </FormField>
 
       <div className="flex gap-2 justify-end mt-4">
-        <Button variant="secondary" onClick={onClose}>Cancel</Button>
+        <Button variant="secondary" onClick={close}>Cancel</Button>
         <Button variant="primary" className="flex-1" onClick={handleSave} loading={loading} disabled={loading}>
           {loading ? 'Saving...' : 'Save Appointment'}
         </Button>
       </div>
       </div>
+      )}
     </Modal>
   )
 }

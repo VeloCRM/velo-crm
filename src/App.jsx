@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useGSAP } from '@gsap/react'
+import { entrance } from './lib/motion'
 import { T } from './translations'
+import { BRAND } from './config/brand'
+import { Logo } from './components/Logo'
 import { C, makeBtn, card } from './design'
 // Sample data is dynamically imported when the URL contains ?demo=1.
 // Production builds never load this module unless a user explicitly opts
@@ -834,13 +838,13 @@ export default function App() {
     : baseVisibleGroups
 
   return (
-    <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:"'DM Sans',-apple-system,sans-serif", direction:dir }}>
+    <div dir={dir} onClick={() => showUserMenu && setShowUserMenu(false)} style={{ display:'flex', height:'100vh', overflow:'hidden', fontFamily:'var(--font-sans)', direction:dir }}>
       {/* ── SIDEBAR (desktop) ────────────────────────────────────────── */}
       <aside
         className="desktop-sidebar relative z-raised flex flex-col bg-navy-50 border-e border-navy-100 overflow-hidden transition-[width,min-width] duration-base ease-standard"
         style={{ width: sidebarCollapsed ? 56 : 228, minWidth: sidebarCollapsed ? 56 : 228 }}
       >
-        <div className={`flex items-center gap-3 border-b border-navy-100 min-h-[72px] py-3.5 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
+        <div className={`flex items-center gap-2 min-w-0 border-b border-navy-100 min-h-[72px] py-3.5 ${sidebarCollapsed ? 'px-2' : 'px-4'}`}>
           {isAgencyMode ? (
             <>
               <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
@@ -849,7 +853,7 @@ export default function App() {
               {!sidebarCollapsed && (
                 <div className="overflow-hidden">
                   <div className="flex items-center gap-2 font-display text-[19px] font-extrabold tracking-[-0.03em] text-navy-900 leading-tight">
-                    {isRTL ? 'وكالة Velo' : 'Velo Agency'}
+                    {BRAND.appName}
                     <span className="text-[9px] font-bold leading-[14px] tracking-[0.05em] uppercase rounded px-1.5 py-0.5 bg-accent-cyan-50 text-accent-cyan-700 ring-1 ring-accent-cyan-100">PRO</span>
                   </div>
                   <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500">{isRTL ? 'لوحة تحكم الوكالة' : 'Agency Control Panel'}</div>
@@ -858,17 +862,17 @@ export default function App() {
             </>
           ) : (
             <>
-              {/* Logo mark — 48x48 (36 when collapsed), tooth glyph in cyan */}
-              <div className={`${sidebarCollapsed ? 'w-9 h-9' : 'w-12 h-12'} rounded-xl bg-accent-cyan-50 ring-1 ring-accent-cyan-100 grid place-items-center shrink-0 transition-[width,height] duration-base ease-standard`}>
-                <svg width={sidebarCollapsed ? 18 : 24} height={sidebarCollapsed ? 18 : 24} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-accent-cyan-600"><path d="M12 2L8 6h3v4h2V6h3L12 2z"/><rect x="8" y="11" width="8" height="4" rx="1"/><path d="M9 15v3a2 2 0 004 0v-3"/><circle cx="9" cy="19" r="1" fill="currentColor"/><circle cx="15" cy="19" r="1" fill="currentColor"/></svg>
-              </div>
+              {/* SC mark (shrink-0) + stacked two-line block: product name on
+                  top, clinic (tenant) name under it — both truncate with
+                  ellipsis when tight. No "by SupCod3" here (login + footer only). */}
+              <Logo variant="navy" withWordmark={false} size={sidebarCollapsed ? 34 : 36} />
               {!sidebarCollapsed && (
-                <div className="overflow-hidden">
-                  <div className="font-display text-[19px] font-bold tracking-[-0.03em] text-navy-900 leading-tight truncate">{orgSettings.name || t.appName}</div>
-                  {orgSettings.name ? (
-                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded bg-accent-cyan-50 text-accent-cyan-700 text-[10px] font-semibold uppercase tracking-wider">{t.appName}</span>
-                  ) : (
-                    <div className="text-[11px] mt-1 font-sans font-medium tracking-wide text-navy-500 truncate">{t.appTagline}</div>
+                <div className="min-w-0 flex-1 overflow-hidden leading-tight">
+                  <div className="text-[15px] font-bold tracking-[-0.01em] truncate"
+                       style={{ color: 'var(--brand-navy)', fontFamily: 'var(--font-sans)' }}>{BRAND.appName}</div>
+                  {orgSettings.name && (
+                    <div className="text-[11px] font-medium truncate"
+                         style={{ color: 'var(--text-secondary)' }}>{orgSettings.name}</div>
                   )}
                 </div>
               )}
@@ -952,11 +956,18 @@ export default function App() {
       {/* ── MAIN ──────────────────────────────────────────────────────── */}
       <main className="mobile-main" style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden', background:'rgb(var(--velo-surface-canvas))' }}>
         <header className="mobile-header" style={{ height:52, minHeight:52, background: '#FFFFFF', borderBottom:'1px solid #DDE7F4', display:'flex', alignItems:'center', padding: isMobile?'0 12px':'0 24px', gap: isMobile?8:16 }}>
-          {/* Mobile: Logo + company name in header */}
+          {/* Mobile: SC mark + stacked two-line block (product name over clinic
+              name). Clinic truncates with ellipsis but never disappears.
+              No "by SupCod3" here (login + footer only). */}
           {isMobile && (
-            <div style={{ display:'flex', alignItems:'center', gap:8, flexShrink:0 }}>
-              <div style={{ width:34, height:34, borderRadius:9, background:'#ECFEFF', border:'1px solid #CFFAFE', display:'flex', alignItems:'center', justifyContent:'center', color:'#0891B2', fontWeight:800, fontSize:15, fontFamily:"'Syne',sans-serif" }}>{(orgSettings.name || 'V').charAt(0).toUpperCase()}</div>
-              <span style={{ fontSize:16, fontWeight:800, color:'#0A2540', fontFamily:"'Syne',sans-serif", letterSpacing:'-0.03em' }}>{orgSettings.name || 'Velo'}</span>
+            <div style={{ display:'flex', alignItems:'center', gap:8, minWidth:0, flex:'1 1 auto', overflow:'hidden' }}>
+              <Logo variant="navy" withWordmark={false} size={30} />
+              <div style={{ minWidth:0, overflow:'hidden', lineHeight:1.15 }}>
+                <div style={{ fontSize:14, fontWeight:700, color:'var(--brand-navy)', fontFamily:'var(--font-sans)', letterSpacing:'-0.02em', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{BRAND.appName}</div>
+                {orgSettings.name && (
+                  <div style={{ fontSize:11, fontWeight:500, color:'var(--text-secondary)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{orgSettings.name}</div>
+                )}
+              </div>
             </div>
           )}
           {/* Search → opens Command Palette */}
@@ -976,11 +987,11 @@ export default function App() {
           <button onClick={() => setNotifOpen(v => !v)} style={{ width:32, height:32, borderRadius:8, border:'1px solid #DDE7F4', background:'#F1F5FB', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', color:'#103562', position:'relative', transition:'all 0.18s ease' }}
             onMouseEnter={e=>e.currentTarget.style.background='#DDE7F4'} onMouseLeave={e=>e.currentTarget.style.background='#F1F5FB'}>
             {Icons.bell(16)}
-            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:'#FF6B6B', color:'#07080E', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #FFFFFF' }}>{notifications.filter(n => !n.read).length}</span>}
+            {notifications.filter(n => !n.read).length > 0 && <span style={{ position:'absolute', top:3, right:3, minWidth:16, height:16, borderRadius:8, background:'var(--status-danger-fg)', color:'var(--brand-white)', fontSize:10, fontWeight:600, display:'inline-flex', alignItems:'center', justifyContent:'center', padding:'0 4px', border:'2px solid #FFFFFF' }}>{notifications.filter(n => !n.read).length}</span>}
           </button>
           {/* User avatar + dropdown */}
           <div style={{ position:'relative' }}>
-            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, #00FFB2, #4DA6FF)', display:'flex', alignItems:'center', justifyContent:'center', color:'#07080E', fontSize:13, fontWeight:600, cursor:'pointer', transition:'transform 0.18s ease', boxShadow:'0 0 12px rgba(0,255,178,0.25)' }}
+            <div onClick={() => setShowUserMenu(v => !v)} style={{ width:32, height:32, borderRadius:'50%', background:'linear-gradient(135deg, var(--brand-teal), var(--brand-navy))', display:'flex', alignItems:'center', justifyContent:'center', color:'var(--brand-white)', fontSize:13, fontWeight:600, cursor:'pointer', transition:'transform 0.18s ease', boxShadow:'0 0 12px rgba(20,184,166,0.25)' }}
               onMouseEnter={e=>e.currentTarget.style.transform='scale(1.05)'} onMouseLeave={e=>e.currentTarget.style.transform='scale(1)'}>
               {(user?.email || 'U').charAt(0).toUpperCase()}
             </div>
@@ -1242,11 +1253,21 @@ export default function App() {
 // Deals, lead-scoring, and notes-timeline are gone. Documents/prescriptions/
 // x-rays were dropped from the dental schema.
 
+// Entrance stagger applies ONLY to this many leading rows (~one viewport).
+// Rows beyond it — and every row appended by "Load more" — never carry
+// data-anim, so the choreography can never run per-item across thousands of
+// records. See the useGSAP guard below.
+const INITIAL_ANIM_COUNT = 12
+
 function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMorePatients, patientsLoadingMore = false, addPatient, updatePatient, deletePatient, setPage, toast, showConfirm, urlPatientId, navigate, isOperator, impersonation, orgId, currentUserId, currentUserRole, patientFilterDoctorId, setPatientFilterDoctorId }) {
   void t
   void lang
   void orgId
   const [search, setSearch] = useState('')
+  // Motion: page scope + a run-once guard so entrance never re-fires on
+  // search, filter, or "Load more" — only on the first populated browse render.
+  const listScopeRef = useRef(null)
+  const didAnimateRef = useRef(false)
 
   // ── Server-side patient search (SB-2) ─────────────────────────────────────
   // A debounced term of >= SEARCH_MIN_CHARS switches the list from the browse
@@ -1385,6 +1406,19 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
   // whole org); in browse mode it's the parent's paginated list. No client filter.
   const filtered = searchActive ? searchResults.rows : patients
 
+  // Bounded entrance choreography. Runs ONCE, on the first populated *browse*
+  // render. The guard blocks every re-fire: search (searchActive), My-patients
+  // filter, and "Load more" (patients.length grows) all leave didAnimateRef set,
+  // so the animation never replays and never fights typing or scrolling. Only
+  // the first INITIAL_ANIM_COUNT rows carry data-anim="row", so the stagger is
+  // capped at ~one viewport regardless of how many thousands of rows are loaded.
+  useGSAP(() => {
+    if (didAnimateRef.current || searchActive || patients.length === 0 || !listScopeRef.current) return
+    didAnimateRef.current = true
+    const mm = entrance(listScopeRef.current)
+    return () => mm.revert()
+  }, { scope: listScopeRef, dependencies: [patients.length, searchActive] })
+
   if (selectedPatientId) {
     // Look in the browse list AND the search results — a patient opened from a
     // search hit may not be in the loaded browse page.
@@ -1424,6 +1458,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
 
   return (
     <div
+      ref={listScopeRef}
       dir={dir}
       className="ds-root min-h-full -m-4 md:-m-8 p-4 md:p-8 box-border"
       style={{ background: 'var(--ds-canvas-gradient)' }}
@@ -1432,7 +1467,7 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
         <div className="ds-ambient" />
 
         {/* ── Header ───────────────────────────────────────────────── */}
-        <header className="flex items-start justify-between gap-4 flex-wrap">
+        <header data-anim="title" className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-semibold text-navy-900 leading-tight tracking-tight m-0">
               {isRTL ? 'المرضى' : 'Patients'}
@@ -1522,7 +1557,9 @@ function PatientsPage({ t, lang, dir, isRTL, patients, patientsTotal = 0, loadMo
                 const name = fullNameOf(p)
                 const isLast = i === filtered.length - 1
                 return (
-                  <li key={p.id} className={isLast ? '' : 'border-b border-navy-100/60'}>
+                  <li key={p.id}
+                    data-anim={i < INITIAL_ANIM_COUNT ? 'row' : undefined}
+                    className={isLast ? '' : 'border-b border-navy-100/60'}>
                     <div
                       role="button"
                       tabIndex={0}
@@ -2065,7 +2102,7 @@ function PatientProfile({ t, dir, isRTL, lang, patient, profileTab, setProfileTa
                     <span
                       aria-hidden="true"
                       className="absolute inset-x-2 -bottom-px h-[3px] rounded-full"
-                      style={{ background: 'linear-gradient(90deg, #103562, #06B6D4)' }}
+                      style={{ background: 'linear-gradient(90deg, var(--brand-navy), var(--brand-teal))' }}
                     />
                   )}
                 </button>

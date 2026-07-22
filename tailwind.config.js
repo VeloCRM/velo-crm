@@ -40,14 +40,15 @@ export default {
           900: '#15140F',
         },
 
-        // Brand mint. mint-500 is the canonical accent; mint-700/800 are the
-        // accessible "mint as text" tokens on light surfaces.
+        // Brand accent — REMAPPED to SupCod3 teal (was mint). Keys unchanged so
+        // existing `text-mint-700` / `bg-mint-500` classes recolor to teal.
+        // Canonical brand = teal-500 #14B8A6; 700/800 are accessible text tones.
         mint: {
-          100: '#D6FFEE',
-          300: '#6FFFD2',
-          500: '#00FFB2', // brand
-          700: '#00A372',
-          800: '#006D4D',
+          100: '#CCFBF1',
+          300: '#5EEAD4',
+          500: '#14B8A6', // brand teal
+          700: '#0D9488',
+          800: '#0F766E',
         },
 
         // Semantic raw — warm-aligned (no jarring cold reds/blues).
@@ -91,21 +92,21 @@ export default {
           950: '#030C1C',
         },
 
-        // Cool accent ramp (cyan/teal family) — used for highlights, focus
-        // rings, link colors, secondary CTAs. Mirrors Tailwind cyan but with
-        // a slightly cooler 500 to read against navy without clashing.
+        // Accent ramp — REMAPPED to SupCod3 teal (was cyan). Keys unchanged so
+        // existing `text-accent-cyan-600` / `bg-accent-cyan-500` classes recolor
+        // to the brand teal. 500 = #14B8A6, 600 = #0F8F82 (hover).
         'accent-cyan': {
-          50:  '#ECFEFF',
-          100: '#CFFAFE',
-          200: '#A5F3FC',
-          300: '#67E8F9',
-          400: '#22D3EE',
-          500: '#06B6D4',  // spec accent
-          600: '#0891B2',
-          700: '#0E7490',
-          800: '#155E75',
-          900: '#164E63',
-          950: '#083344',
+          50:  '#F0FDFA',
+          100: '#CCFBF1',
+          200: '#99F6E4',
+          300: '#5EEAD4',
+          400: '#2DD4BF',
+          500: '#14B8A6',  // brand teal
+          600: '#0F8F82',  // teal hover
+          700: '#0F766E',
+          800: '#115E59',
+          900: '#134E4A',
+          950: '#042F2E',
         },
 
         // Glass surface fills. Components blend these over the page gradient
@@ -183,16 +184,13 @@ export default {
       //  TYPOGRAPHY
       // ──────────────────────────────────────────────────────────────────
       fontFamily: {
-        display: ['Syne', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        sans:    ['"DM Sans"', 'ui-sans-serif', 'system-ui', 'sans-serif'],
-        // Arabic locales should switch to IBM Plex Sans Arabic via :lang(ar)
-        // declarations in src/index.css; tokens stay direction-agnostic.
-
-        // Sprint 1 (Liquid Glass) primary stack. `font-inter` is the canonical
-        // body font for the new design system; `font-ar` swaps in Tajawal for
-        // Arabic copy and is auto-applied to [lang="ar"] via index.css.
-        inter: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
-        ar:    ['Tajawal', '"Noto Sans Arabic"', 'Inter', 'sans-serif'],
+        // SupCod3 rebrand — all Latin stacks point at IBM Plex Sans; money/times
+        // use IBM Plex Mono (`font-mono`). `font-ar` (Tajawal) unchanged.
+        display: ['"IBM Plex Sans"', 'system-ui', 'ui-sans-serif', 'sans-serif'],
+        sans:    ['"IBM Plex Sans"', 'system-ui', 'ui-sans-serif', 'sans-serif'],
+        inter:   ['"IBM Plex Sans"', 'system-ui', 'ui-sans-serif', 'sans-serif'],
+        mono:    ['"IBM Plex Mono"', 'ui-monospace', 'SFMono-Regular', 'monospace'],
+        ar:      ['Tajawal', '"Noto Sans Arabic"', '"IBM Plex Sans"', 'sans-serif'],
       },
 
       // Type scale: [size, { lineHeight, letterSpacing, fontWeight }]
@@ -260,9 +258,9 @@ export default {
         2: '0 1px 0 rgba(20,18,15,0.04), 0 4px 16px -4px rgba(20,18,15,0.06)',
         3: '0 1px 0 rgba(20,18,15,0.04), 0 8px 24px -8px rgba(20,18,15,0.08), 0 2px 6px -2px rgba(20,18,15,0.04)',
         4: '0 1px 0 rgba(20,18,15,0.04), 0 24px 48px -16px rgba(20,18,15,0.16), 0 8px 16px -8px rgba(20,18,15,0.08)',
-        'focus-brand':  '0 0 0 3px rgba(0,255,178,0.30)',
+        'focus-brand':  '0 0 0 3px rgba(20,184,166,0.30)',
         'focus-danger': '0 0 0 3px rgba(192,57,43,0.22)',
-        'glow-mint':    '0 0 24px -4px rgba(0,255,178,0.35)',
+        'glow-mint':    '0 0 24px -4px rgba(20,184,166,0.35)',
 
         // ────────────────────────────────────────────────────────────────
         //  Sprint 1 — Liquid Glass shadows
@@ -337,8 +335,8 @@ export default {
         'fade-slide-up': { from: { opacity: '0', transform: 'translateY(8px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
         'scale-in':      { from: { opacity: '0', transform: 'scale(0.96)' },     to: { opacity: '1', transform: 'scale(1)' } },
         'pulse-ring':    {
-          '0%, 100%': { boxShadow: '0 0 0 0 rgba(0,255,178,0.40)' },
-          '50%':      { boxShadow: '0 0 0 6px rgba(0,255,178,0)' },
+          '0%, 100%': { boxShadow: '0 0 0 0 rgba(20,184,166,0.40)' },
+          '50%':      { boxShadow: '0 0 0 6px rgba(20,184,166,0)' },
         },
         // Sprint 1 — Liquid Glass motion
         'glass-in':      {

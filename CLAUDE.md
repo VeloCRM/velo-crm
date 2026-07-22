@@ -8,8 +8,12 @@ Canonical architecture reference: ARCH-V2-PLATFORM.md — read it before structu
 1. Before building any feature or component: use the brainstorming skill.
    Present a short design and get approval before writing code.
 2. All new logic is test-first (TDD): failing tests first, minimal implementation,
-   watch them pass. Use Vitest. Business logic lives in pure functions under
-   src/lib/ so it is testable without the DOM.
+   watch them pass. Tests run on the Node built-in runner (`npm test` →
+   `node --test`), NOT Vitest — there is no Vitest in this repo. Test files are
+   `*.test.mjs` / `*.test.js` using `node:test` + `node:assert`. Business logic
+   lives in pure functions under src/lib/ so it is testable without the DOM
+   (e.g. the reduced-motion-safe helpers in `src/lib/motion.js` — plain `.js`,
+   no TypeScript in this project).
 3. All bugs go through systematic-debugging: reproduce, read the error, form a
    hypothesis, make ONE change. Never shotgun-fix.
 4. Never claim done without evidence (verification-before-completion): paste

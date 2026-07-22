@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { BRAND } from '../config/brand'
 import { signIn, signUp } from '../lib/auth'
 import {
   acceptInvitation,
@@ -74,7 +75,7 @@ const STRINGS = {
     invalidBody: 'This invitation link is invalid or has expired. Contact the clinic owner for a new link.',
     backToLogin: 'Back to sign in',
     retry: 'Retry',
-    appName: 'Velo',
+    appName: BRAND.appName,
     tagline: 'Dental practice management',
     switchLang: 'العربية',
     lockedOut: 'Too many login attempts. Please wait',
@@ -105,7 +106,7 @@ const STRINGS = {
     invalidBody: 'هذا الرابط غير صالح أو منتهي الصلاحية. تواصل مع مالك العيادة للحصول على رابط جديد.',
     backToLogin: 'العودة لتسجيل الدخول',
     retry: 'إعادة المحاولة',
-    appName: 'فيلو',
+    appName: BRAND.appName,
     tagline: 'إدارة عيادة الأسنان',
     switchLang: 'English',
     lockedOut: 'محاولات كثيرة. يرجى الانتظار',

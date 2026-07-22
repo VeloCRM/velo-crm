@@ -210,9 +210,9 @@ export default function OperatorConsole({ user, onEnterOrg, onSignOut, toast }) 
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: '#fff', fontWeight: 700, fontSize: 15,
             boxShadow: '0 0 16px rgba(0,255,178,0.3)',
-          }}>V</div>
+          }}>SC</div>
           <span style={{ color: '#E8EAF5', fontSize: 18, fontWeight: 600, letterSpacing: -0.3 }}>
-            Velo Agency
+            SupCod3 Dental
           </span>
           <span style={{ fontSize: 9, fontWeight: 700, padding: '3px 8px', borderRadius: 4, background: 'rgba(0,255,178,0.12)', color: '#00FFB2', letterSpacing: '0.06em', textTransform: 'uppercase', border: '1px solid rgba(0,255,178,0.2)' }}>PRO</span>
         </div>
